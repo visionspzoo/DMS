@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, FileText, MessageSquare, Sparkles, MapPin, Trash2, X } from 'lucide-react';
+import { ArrowLeft, FileText, MessageSquare, Sparkles, MapPin, Trash2, X, Send, FileSignature, ThumbsUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { ContractAIAssistant } from './ContractAIAssistant';
@@ -42,6 +42,8 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SidebarTab>('comments');
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
   const [pinMode, setPinMode] = useState(false);
@@ -57,6 +59,19 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   useEffect(() => {
     if (contractId) loadAnnotations();
   }, [contractId]);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (data) setUserRole(data.role);
+    };
+    fetchUserRole();
+  }, [user]);
 
   const loadContract = async () => {
     try {
@@ -178,6 +193,212 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
     setActiveAnnotationId(null);
   };
 
+  const sendToApproval = async () => {
+    if (!user || !userRole || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const roleToNextApprover: Record<string, string> = {
+        'Specjalista': 'Kierownik',
+        'Kierownik': 'Dyrektor',
+        'Dyrektor': 'CEO',
+      };
+
+      const nextApproverRole = roleToNextApprover[userRole];
+      if (!nextApproverRole) {
+        alert('Nie mozna wyslac do akceptacji');
+        return;
+      }
+
+      const { data: nextApprover } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', nextApproverRole)
+        .limit(1)
+        .single();
+
+      if (!nextApprover) {
+        alert(`Nie znaleziono ${nextApproverRole}`);
+        return;
+      }
+
+      const statusMapping: Record<string, string> = {
+        'Specjalista': 'pending_specialist',
+        'Kierownik': 'pending_manager',
+        'Dyrektor': 'pending_director',
+        'CEO': 'pending_ceo',
+      };
+
+      const newStatus = statusMapping[nextApproverRole];
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: newStatus,
+          current_approver: nextApprover.id,
+        })
+        .eq('id', contractId);
+
+      await supabase
+        .from('contract_approvals')
+        .insert({
+          contract_id: contractId,
+          approver_id: nextApprover.id,
+          approver_role: nextApproverRole.toLowerCase(),
+          status: 'pending',
+        });
+
+      loadContract();
+    } catch (error) {
+      console.error('Error sending to approval:', error);
+      alert('Blad podczas wysylania do akceptacji');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const sendToSignature = async () => {
+    if (!user || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const { data: ceoData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'CEO')
+        .limit(1)
+        .single();
+
+      if (!ceoData) {
+        alert('Nie znaleziono CEO');
+        return;
+      }
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'pending_signature',
+          current_approver: ceoData.id,
+        })
+        .eq('id', contractId);
+
+      loadContract();
+    } catch (error) {
+      console.error('Error sending to signature:', error);
+      alert('Blad podczas wysylania do podpisu');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const approveContract = async (currentStatus: string) => {
+    if (!user || !userRole || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const statusMapping: Record<string, { nextStatus: string; nextRole: string }> = {
+        'pending_manager': { nextStatus: 'pending_director', nextRole: 'Dyrektor' },
+        'pending_director': { nextStatus: 'pending_ceo', nextRole: 'CEO' },
+        'pending_ceo': { nextStatus: 'approved', nextRole: '' },
+      };
+
+      const mapping = statusMapping[currentStatus];
+      if (!mapping) {
+        alert('Nie mozna zatwierdzic tej umowy');
+        return;
+      }
+
+      if (mapping.nextRole) {
+        const { data: nextApprover } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', mapping.nextRole)
+          .limit(1)
+          .single();
+
+        if (!nextApprover) {
+          alert('Nie znaleziono nastepnej osoby do akceptacji');
+          return;
+        }
+
+        await supabase
+          .from('contracts')
+          .update({
+            status: mapping.nextStatus,
+            current_approver: nextApprover.id,
+          })
+          .eq('id', contractId);
+
+        await supabase
+          .from('contract_approvals')
+          .insert({
+            contract_id: contractId,
+            approver_id: nextApprover.id,
+            approver_role: mapping.nextRole.toLowerCase(),
+            status: 'pending',
+          });
+      } else {
+        await supabase
+          .from('contracts')
+          .update({
+            status: mapping.nextStatus,
+            current_approver: null,
+          })
+          .eq('id', contractId);
+      }
+
+      await supabase
+        .from('contract_approvals')
+        .update({ status: 'approved' })
+        .eq('contract_id', contractId)
+        .eq('approver_id', user.id);
+
+      loadContract();
+    } catch (error) {
+      console.error('Error approving contract:', error);
+      alert('Blad podczas zatwierdzania umowy');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const rejectContract = async () => {
+    if (!user || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      if (!contract) {
+        alert('Nie znaleziono umowy');
+        return;
+      }
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'draft',
+          current_approver: contract.uploaded_by,
+        })
+        .eq('id', contractId);
+
+      await supabase
+        .from('contract_approvals')
+        .update({ status: 'rejected' })
+        .eq('contract_id', contractId)
+        .eq('approver_id', user.id);
+
+      loadContract();
+    } catch (error) {
+      console.error('Error rejecting contract:', error);
+      alert('Blad podczas odrzucania umowy');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { text: string; className: string }> = {
       draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400' },
@@ -239,6 +460,63 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
             <span>{new Date(contract.created_at).toLocaleDateString('pl-PL')}</span>
             {contract.departments && <span>Dzial: {contract.departments.name}</span>}
           </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {contract.status === 'draft' && contract.uploaded_by === user?.id && (
+            <>
+              <button
+                onClick={sendToApproval}
+                disabled={!!sendingId}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+                title="Wyslij do akceptacji"
+              >
+                <Send className="w-4 h-4" />
+                <span className="hidden sm:inline">Do akceptacji</span>
+              </button>
+              <button
+                onClick={sendToSignature}
+                disabled={!!sendingId}
+                className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+                title="Wyslij do podpisu"
+              >
+                <FileSignature className="w-4 h-4" />
+                <span className="hidden sm:inline">Do podpisu</span>
+              </button>
+            </>
+          )}
+          {contract.status.startsWith('pending') && contract.status !== 'pending_signature' && contract.current_approver === user?.id && (
+            <>
+              <button
+                onClick={() => approveContract(contract.status)}
+                disabled={!!sendingId}
+                className="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+                title="Zatwierdz"
+              >
+                <ThumbsUp className="w-4 h-4" />
+                <span className="hidden sm:inline">Zatwierdz</span>
+              </button>
+              <button
+                onClick={rejectContract}
+                disabled={!!sendingId}
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+                title="Odrzuc"
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Odrzuc</span>
+              </button>
+            </>
+          )}
+          {contract.status === 'pending_signature' && userRole === 'CEO' && (
+            <button
+              onClick={rejectContract}
+              disabled={!!sendingId}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+              title="Odrzuc"
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Odrzuc</span>
+            </button>
+          )}
         </div>
       </div>
 
