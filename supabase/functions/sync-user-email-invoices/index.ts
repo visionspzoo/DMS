@@ -164,14 +164,22 @@ async function syncEmailAccount(
 
   const messages = await client.search("INBOX", {
     since: dateStr,
-    unseen: true,
   });
 
-  console.log(`Found ${messages.length} unread messages`);
+  console.log(`Found ${messages.length} messages in last 30 days`);
+
+  const { data: processedMessages } = await supabase
+    .from("processed_email_messages")
+    .select("message_uid")
+    .eq("email_config_id", config.id);
+
+  const processedUids = new Set(
+    (processedMessages || []).map((m: any) => m.message_uid)
+  );
 
   let syncedCount = 0;
 
-  for (const msgSeq of messages.slice(0, 10)) {
+  for (const msgSeq of messages.slice(0, 50)) {
     try {
       const messageInfo = await client.listMessages("INBOX", msgSeq, [
         "body.peek[]",
@@ -181,8 +189,16 @@ async function syncEmailAccount(
       if (!messageInfo || messageInfo.length === 0) continue;
 
       const message = messageInfo[0];
-      const bodyPart = message["body[]"];
+      const messageUid = message.uid?.toString();
 
+      if (!messageUid) continue;
+
+      if (processedUids.has(messageUid)) {
+        console.log(`Message ${messageUid} already processed, skipping`);
+        continue;
+      }
+
+      const bodyPart = message["body[]"];
       if (!bodyPart) continue;
 
       const { default: PostalMime } = await import("npm:postal-mime@2.2.0");
@@ -190,17 +206,34 @@ async function syncEmailAccount(
       const email = await parser.parse(bodyPart);
 
       if (!email.attachments || email.attachments.length === 0) {
+        await supabase.from("processed_email_messages").insert({
+          email_config_id: config.id,
+          message_uid: messageUid,
+          message_id: email.messageId,
+          attachment_count: 0,
+          invoice_count: 0,
+        });
         continue;
       }
+
+      let attachmentCount = 0;
+      let invoiceCount = 0;
 
       for (const attachment of email.attachments) {
         if (!attachment.filename?.toLowerCase().endsWith(".pdf")) {
           continue;
         }
 
+        attachmentCount++;
         console.log(`Processing attachment: ${attachment.filename}`);
 
         const pdfContent = attachment.content;
+
+        const isInvoice = await verifyIsInvoice(pdfContent);
+        if (!isInvoice) {
+          console.log(`Attachment ${attachment.filename} is not an invoice, skipping`);
+          continue;
+        }
 
         const fileName = `${Date.now()}_${attachment.filename}`;
         const filePath = `invoices/${fileName}`;
@@ -265,8 +298,19 @@ async function syncEmailAccount(
           console.error("OCR error:", ocrError);
         }
 
+        invoiceCount++;
         syncedCount++;
       }
+
+      await supabase.from("processed_email_messages").insert({
+        email_config_id: config.id,
+        message_uid: messageUid,
+        message_id: email.messageId,
+        attachment_count: attachmentCount,
+        invoice_count: invoiceCount,
+      });
+
+      processedUids.add(messageUid);
     } catch (msgError: any) {
       console.error("Error processing message:", msgError);
     }
@@ -276,4 +320,54 @@ async function syncEmailAccount(
   console.log(`Synced ${syncedCount} invoices from ${config.email_address}`);
 
   return syncedCount;
+}
+
+async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
+  try {
+    const base64Content = btoa(
+      String.fromCharCode(...new Uint8Array(pdfContent))
+    );
+
+    const extractResponse = await fetch(
+      `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pdfBase64: base64Content,
+        }),
+      }
+    );
+
+    if (!extractResponse.ok) {
+      console.error("Failed to extract PDF text for verification");
+      return true;
+    }
+
+    const { text } = await extractResponse.json();
+    const lowerText = text.toLowerCase();
+
+    const invoiceKeywords = [
+      "faktura", "invoice", "faktura vat", "faktura proforma",
+      "nr faktury", "invoice number", "invoice no",
+      "nip", "tax id", "vat", "kwota", "amount",
+      "sprzedawca", "seller", "nabywca", "buyer"
+    ];
+
+    const foundKeywords = invoiceKeywords.filter(keyword =>
+      lowerText.includes(keyword)
+    );
+
+    const isInvoice = foundKeywords.length >= 3;
+
+    console.log(`PDF verification: ${isInvoice ? "IS" : "NOT"} an invoice (found ${foundKeywords.length} keywords)`);
+
+    return isInvoice;
+  } catch (error) {
+    console.error("Error verifying PDF:", error);
+    return true;
+  }
 }
