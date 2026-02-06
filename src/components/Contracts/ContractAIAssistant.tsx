@@ -124,33 +124,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     setShowPromptDropdown(false);
   };
 
-  const extractTextFromPDF = async (base64: string): Promise<string> => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ pdf_base64: base64, use_ocr: false }),
-        }
-      );
-
-      if (!response.ok) return '';
-      const data = await response.json();
-      return data.text || '';
-    } catch (error) {
-      console.error('Error extracting text:', error);
-      return '';
-    }
-  };
-
   const analyzeContract = async () => {
     if (!pdfBase64) return;
 
@@ -162,15 +135,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: 'Ekstrakcja tekstu z dokumentu...',
-        timestamp: new Date()
-      }]);
-
-      const pdfText = await extractTextFromPDF(pdfBase64);
-
-      setMessages(prev => prev.filter(m => m.role !== 'system'));
       setMessages(prev => [...prev, {
         role: 'system',
         content: 'Analizuje umowe...',
@@ -190,7 +154,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
             action: 'analyze_contract',
             contract_id: contractId,
             pdf_base64: pdfBase64,
-            pdf_text: pdfText || undefined,
             prompt: promptToUse,
             chat_history: []
           }),
@@ -242,8 +205,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
-      const pdfText = pdfBase64 ? await extractTextFromPDF(pdfBase64) : '';
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
         {
@@ -257,7 +218,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
             action: 'chat',
             contract_id: contractId,
             pdf_base64: pdfBase64 || undefined,
-            pdf_text: pdfText || undefined,
             prompt: userMessage.content,
             chat_history: messages.slice(-5)
           }),

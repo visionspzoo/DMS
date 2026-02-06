@@ -13,7 +13,6 @@ interface AIAgentRequest {
   action?: string;
   contract_id?: string;
   pdf_base64?: string;
-  pdf_text?: string;
   prompt?: string;
   chat_history?: Array<{ role: string; content: string; timestamp: Date }>;
 }
@@ -87,61 +86,64 @@ ${JSON.stringify(invoiceData, null, 2)}`;
   return data.choices[0].message.content;
 }
 
-async function analyzeContract(
+async function analyzeContractWithClaude(
   prompt: string,
-  pdfText: string | null,
   pdfBase64: string | null,
   chatHistory: Array<{ role: string; content: string }>,
   apiKey: string
 ) {
-  const maxTextLength = 30000;
-  const truncatedText = pdfText ? pdfText.substring(0, maxTextLength) : '';
+  const systemPrompt = `Jesteś ekspertem prawnym analizującym umowy. Odpowiadaj w języku polskim, zwięźle i konkretnie.
+Wypunktuj najważniejsze informacje. Używaj formatowania markdown.`;
 
-  const systemPrompt = `Jesteś Agentem AI, który podsumowuje treść umów. Wypunktuj najważniejsze punkty umowy.
+  const userContent: any[] = [];
 
-Odpowiadaj w języku polskim, zwięźle.
-
-${truncatedText ? `Treść umowy:\n${truncatedText}${pdfText && pdfText.length > maxTextLength ? '\n\n[Tekst został skrócony...]' : ''}` : 'UWAGA: Nie udało się wyekstrahować tekstu z dokumentu. Przeanalizuj dokument na podstawie załączonego pliku PDF.'}`;
-
-  const userContent: any[] = [{ type: 'text', text: prompt }];
-
-  if (!truncatedText && pdfBase64) {
+  if (pdfBase64) {
     userContent.push({
-      type: 'file',
-      file: {
-        filename: 'contract.pdf',
-        file_data: `data:application/pdf;base64,${pdfBase64}`,
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: pdfBase64,
       },
     });
   }
 
+  userContent.push({ type: 'text', text: prompt });
+
   const messages: any[] = [
-    { role: 'system', content: systemPrompt },
-    ...chatHistory,
+    ...chatHistory.map(({ role, content }) => ({
+      role: role === 'assistant' ? 'assistant' : 'user',
+      content,
+    })),
     { role: 'user', content: userContent },
   ];
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
       messages,
-      temperature: 0.2,
-      max_tokens: 4000,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+    console.error('Claude API error:', errorText);
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const content = data.choices[0].message.content;
+  const content = data.content
+    .filter((block: any) => block.type === 'text')
+    .map((block: any) => block.text)
+    .join('\n');
 
   return { response: content };
 }
@@ -155,20 +157,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API key not configured',
-          message: 'Agent AI wymaga konfiguracji klucza OpenAI API',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -211,9 +199,23 @@ Deno.serve(async (req: Request) => {
     const userRole = profile?.role || 'kierownik';
 
     const requestData: AIAgentRequest = await req.json();
-    const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_text, pdf_base64, chat_history = [] } = requestData;
+    const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_base64, chat_history = [] } = requestData;
 
     if (action === 'analyze_contract' || action === 'chat') {
+      const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+      if (!anthropicApiKey) {
+        return new Response(
+          JSON.stringify({
+            error: 'Anthropic API key not configured',
+            message: 'Analiza umów wymaga konfiguracji klucza Anthropic API',
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
       if (!prompt) {
         return new Response(
           JSON.stringify({ error: 'Prompt is required for contract analysis' }),
@@ -225,7 +227,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const historyFormatted = chat_history.map(({ role, content }: any) => ({ role, content }));
-      const result = await analyzeContract(prompt, pdf_text || null, pdf_base64 || null, historyFormatted, openaiApiKey);
+      const result = await analyzeContractWithClaude(prompt, pdf_base64 || null, historyFormatted, anthropicApiKey);
 
       return new Response(
         JSON.stringify({
@@ -234,6 +236,20 @@ Deno.serve(async (req: Request) => {
         }),
         {
           status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      return new Response(
+        JSON.stringify({
+          error: 'OpenAI API key not configured',
+          message: 'Agent AI wymaga konfiguracji klucza OpenAI API',
+        }),
+        {
+          status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

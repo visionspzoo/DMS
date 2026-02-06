@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, Loader, FileText, AlertCircle } from 'lucide-react';
+import { Sparkles, Send, Loader, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Message {
@@ -39,89 +39,6 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const extractTextFromPDF = async (base64: string): Promise<string> => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
-
-      console.log('Extracting text from PDF (using extract-pdf-text function)...');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            pdf_base64: base64,
-            use_ocr: false
-          }),
-        }
-      );
-
-      const responseText = await response.text();
-      console.log('Extraction response status:', response.status);
-
-      if (!response.ok) {
-        console.error('Extraction failed:', responseText);
-        return '';
-      }
-
-      const data = JSON.parse(responseText);
-      console.log('Extracted text length:', data.text?.length || 0);
-      console.log('Extraction method:', data.method);
-
-      return data.text || '';
-    } catch (error) {
-      console.error('Error extracting text from PDF:', error);
-      return '';
-    }
-  };
-
-  const extractTextWithOCR = async (base64: string): Promise<string> => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
-
-      console.log('Starting OCR extraction...');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            pdf_base64: base64,
-            use_ocr: true
-          }),
-        }
-      );
-
-      const responseText = await response.text();
-      console.log('OCR Response status:', response.status);
-      console.log('OCR Response:', responseText.substring(0, 200));
-
-      if (!response.ok) {
-        const errorData = JSON.parse(responseText);
-        throw new Error(`OCR error: ${errorData.error || errorData.details || 'Unknown error'}`);
-      }
-
-      const data = JSON.parse(responseText);
-      console.log('OCR extracted text length:', data.text?.length || 0);
-      return data.text || '';
-    } catch (error) {
-      console.error('Error with OCR:', error);
-      throw error;
-    }
-  };
-
   const analyzeContract = async () => {
     if (!pdfBase64) {
       alert('Brak danych PDF do analizy');
@@ -137,51 +54,9 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
 
       setMessages(prev => [...prev, {
         role: 'system',
-        content: 'Ekstrakcja tekstu z dokumentu...',
+        content: 'Analizuję umowę...',
         timestamp: new Date()
       }]);
-
-      let pdfText = await extractTextFromPDF(pdfBase64);
-      console.log('First extraction result length:', pdfText?.length || 0);
-
-      if (!pdfText || pdfText.length < 200) {
-        setMessages(prev => [...prev, {
-          role: 'system',
-          content: `Tekst za krótki (${pdfText?.length || 0} znaków). Używam OCR do dokładniejszego odczytu...`,
-          timestamp: new Date()
-        }]);
-
-        pdfText = await extractTextWithOCR(pdfBase64);
-        console.log('OCR extraction result length:', pdfText?.length || 0);
-      }
-
-      if (!pdfText || pdfText.length < 50) {
-        console.error('Final text too short:', pdfText?.length || 0);
-        console.error('Text preview:', pdfText?.substring(0, 200) || 'EMPTY');
-        throw new Error(`Nie udało się wyekstraktować tekstu z dokumentu (długość: ${pdfText?.length || 0})`);
-      }
-
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: `Wyekstraktowano ${pdfText.length} znaków. Analizuję umowę...`,
-        timestamp: new Date()
-      }]);
-
-      console.log('Sending to AI - text preview:', pdfText.substring(0, 500));
-      console.log('Text length being sent:', pdfText.length);
-
-      const simplePrompt = `Przeanalizuj umowę "${contractTitle}" i wypunktuj najważniejsze informacje:\n- Strony umowy\n- Daty\n- Kwoty\n- Kluczowe zobowiązania\n- Terminy\n- Inne istotne klauzule`;
-
-      const requestBody = {
-        action: 'analyze_contract',
-        contract_id: contractId,
-        pdf_text: pdfText,
-        prompt: simplePrompt,
-        chat_history: []
-      };
-
-      console.log('AI request body keys:', Object.keys(requestBody));
-      console.log('pdf_text type:', typeof requestBody.pdf_text);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
@@ -192,29 +67,29 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({
+            action: 'analyze_contract',
+            contract_id: contractId,
+            pdf_base64: pdfBase64,
+            prompt: `Przeanalizuj umowę "${contractTitle}" i wypunktuj najważniejsze informacje:\n- Strony umowy\n- Daty\n- Kwoty\n- Kluczowe zobowiązania\n- Terminy\n- Inne istotne klauzule`,
+            chat_history: []
+          }),
         }
       );
 
-      const aiResponseText = await response.text();
-      console.log('AI Response status:', response.status);
-      console.log('AI Response full:', aiResponseText);
-
       if (!response.ok) {
-        let errorMessage = 'Unknown error';
+        const errorText = await response.text();
+        let errorMessage = errorText;
         try {
-          const errorData = JSON.parse(aiResponseText);
-          errorMessage = errorData.error || errorData.details || JSON.stringify(errorData);
-        } catch {
-          errorMessage = aiResponseText || 'Failed to parse error';
-        }
-        throw new Error(`AI analysis failed (${response.status}): ${errorMessage}`);
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.details || errorText;
+        } catch { /* use raw text */ }
+        throw new Error(errorMessage);
       }
 
-      const data = JSON.parse(aiResponseText);
+      const data = await response.json();
 
       setMessages(prev => prev.filter(m => m.role !== 'system'));
-
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.response || 'Analiza zakończona',
@@ -225,15 +100,11 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
         setKeyPoints(data.key_points);
       }
     } catch (error) {
-      console.error('Error analyzing contract:', error);
-      console.error('Full error details:', JSON.stringify(error, null, 2));
-
       const errorMessage = error instanceof Error ? error.message : String(error);
-
       setMessages(prev => prev.filter(m => m.role !== 'system'));
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Przepraszam, wystąpił błąd podczas analizy umowy:\n\n${errorMessage}\n\nSprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów.`,
+        content: `Przepraszam, wystąpił błąd podczas analizy umowy:\n\n${errorMessage}`,
         timestamp: new Date()
       }]);
     } finally {
@@ -259,12 +130,6 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
-      const pdfText = pdfBase64 ? await extractTextFromPDF(pdfBase64) : '';
-
-      const contextualPrompt = pdfText
-        ? `KONTEKST - Treść umowy "${contractTitle}":\n${pdfText.substring(0, 8000)}\n\n---\n\nPYTANIE UŻYTKOWNIKA: ${userMessage.content}\n\nOdpowiedz na pytanie na podstawie powyższej umowy.`
-        : userMessage.content;
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
         {
@@ -277,8 +142,8 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
           body: JSON.stringify({
             action: 'chat',
             contract_id: contractId,
-            pdf_text: pdfText,
-            prompt: contextualPrompt,
+            pdf_base64: pdfBase64 || undefined,
+            prompt: userMessage.content,
             chat_history: messages.slice(-5)
           }),
         }
