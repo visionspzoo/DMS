@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -42,13 +42,35 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const [isFromKSEF, setIsFromKSEF] = useState(false);
+  const [ksefInvoiceId, setKsefInvoiceId] = useState<string | null>(null);
+  const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
 
   useEffect(() => {
     loadApprovals();
     loadAuditLogs();
     loadDepartments();
     loadInvoiceDepartments();
+    checkIfFromKSEF();
   }, [invoice.id]);
+
+  const checkIfFromKSEF = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ksef_invoices')
+        .select('id')
+        .eq('transferred_to_invoice_id', invoice.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setIsFromKSEF(true);
+        setKsefInvoiceId(data.id);
+      }
+    } catch (error) {
+      console.error('Error checking if invoice is from KSEF:', error);
+    }
+  };
 
   const loadApprovals = async () => {
     try {
@@ -463,6 +485,66 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleUnassignFromKSEF = async () => {
+    if (!ksefInvoiceId) return;
+
+    setLoading(true);
+    try {
+      if (invoice.google_drive_id) {
+        try {
+          const deleteResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileId: invoice.google_drive_id,
+              }),
+            }
+          );
+
+          if (!deleteResponse.ok) {
+            console.error('Failed to delete from Google Drive:', await deleteResponse.text());
+          } else {
+            console.log('✓ File deleted from Google Drive');
+          }
+        } catch (driveError) {
+          console.error('Error deleting from Google Drive:', driveError);
+        }
+      }
+
+      const { error: updateKsefError } = await supabase
+        .from('ksef_invoices')
+        .update({
+          transferred_to_invoice_id: null,
+          transferred_to_department_id: null,
+          transferred_at: null,
+        })
+        .eq('id', ksefInvoiceId);
+
+      if (updateKsefError) throw updateKsefError;
+
+      const { error: deleteInvoiceError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoice.id);
+
+      if (deleteInvoiceError) throw deleteInvoiceError;
+
+      setShowUnassignKSEFConfirm(false);
+      onClose();
+      onUpdate();
+    } catch (error) {
+      console.error('Error unassigning invoice from KSEF:', error);
+      alert('Nie udało się cofnąć przypisania faktury z KSEF');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
@@ -471,6 +553,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
+                {isFromKSEF && invoice.status === 'draft' && (profile?.role === 'Administrator' || invoice.uploaded_by === profile?.id) && (
+                  <button
+                    onClick={() => setShowUnassignKSEFConfirm(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    <span>Cofnij z KSEF</span>
+                  </button>
+                )}
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
                   <button
                     onClick={handleForwardToCirculation}
@@ -500,7 +591,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
-                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
+                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
@@ -1116,6 +1207,58 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <>
                     <CreditCard className="w-4 h-4" />
                     <span>Oznacz jako opłaconą</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUnassignKSEFConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
+                <Undo2 className="w-6 h-6 text-orange-600 dark:text-orange-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Cofnij przypisanie z KSEF
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tej operacji nie można cofnąć
+                </p>
+              </div>
+            </div>
+
+            <p className="text-slate-700 dark:text-slate-300 mb-6">
+              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{invoice.invoice_number || 'bez numeru'}</strong>?
+              Faktura wróci do listy nieprzypisanych faktur KSEF, a plik zostanie usunięty z Google Drive.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUnassignKSEFConfirm(false)}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleUnassignFromKSEF}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Cofanie...</span>
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-4 h-4" />
+                    <span>Cofnij przypisanie</span>
                   </>
                 )}
               </button>

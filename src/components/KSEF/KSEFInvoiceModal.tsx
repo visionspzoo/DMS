@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -34,14 +34,16 @@ interface KSEFInvoiceModalProps {
   departments: Department[];
   onClose: () => void;
   onTransfer: (departmentId: string) => Promise<void>;
+  onUnassign: (ksefInvoiceId: string) => Promise<void>;
   transferring: boolean;
 }
 
-export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, transferring }: KSEFInvoiceModalProps) {
+export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
 
   useEffect(() => {
     loadPdfContent();
@@ -57,6 +59,11 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, tr
     if (!selectedDepartment) return;
     await onTransfer(selectedDepartment);
     setSelectedDepartment('');
+  };
+
+  const handleUnassign = async () => {
+    await onUnassign(invoice.id);
+    setShowUnassignConfirm(false);
   };
 
   const loadPdfContent = async () => {
@@ -339,12 +346,73 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, tr
                       </span>
                     )}
                   </p>
+                  {profile?.role === 'Administrator' && (
+                    <button
+                      onClick={() => setShowUnassignConfirm(true)}
+                      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium text-sm"
+                    >
+                      <Undo2 className="w-4 h-4" />
+                      Cofnij przypisanie
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {showUnassignConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <Undo2 className="w-6 h-6 text-red-600 dark:text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Cofnij przypisanie
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tej operacji nie można cofnąć
+                </p>
+              </div>
+            </div>
+
+            <p className="text-slate-700 dark:text-slate-300 mb-6">
+              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{invoice.invoice_number}</strong>?
+              Plik zostanie usunięty z Google Drive, a faktura zostanie usunięta z systemu.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUnassignConfirm(false)}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleUnassign}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {transferring ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Cofanie...
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="w-4 h-4" />
+                    Cofnij przypisanie
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

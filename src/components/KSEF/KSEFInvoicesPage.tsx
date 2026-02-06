@@ -210,6 +210,86 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const handleUnassignInvoice = async (ksefInvoiceId: string) => {
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const { data: ksefInvoice, error: ksefError } = await supabase
+        .from('ksef_invoices')
+        .select('transferred_to_invoice_id')
+        .eq('id', ksefInvoiceId)
+        .maybeSingle();
+
+      if (ksefError) throw ksefError;
+      if (!ksefInvoice?.transferred_to_invoice_id) {
+        throw new Error('Faktura nie jest przypisana');
+      }
+
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('google_drive_id, file_url')
+        .eq('id', ksefInvoice.transferred_to_invoice_id)
+        .maybeSingle();
+
+      if (invoiceError) throw invoiceError;
+
+      if (invoice?.google_drive_id) {
+        try {
+          const deleteResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileId: invoice.google_drive_id,
+              }),
+            }
+          );
+
+          if (!deleteResponse.ok) {
+            console.error('Failed to delete from Google Drive:', await deleteResponse.text());
+          } else {
+            console.log('✓ File deleted from Google Drive');
+          }
+        } catch (driveError) {
+          console.error('Error deleting from Google Drive:', driveError);
+        }
+      }
+
+      const { error: deleteInvoiceError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', ksefInvoice.transferred_to_invoice_id);
+
+      if (deleteInvoiceError) throw deleteInvoiceError;
+
+      const { error: updateKsefError } = await supabase
+        .from('ksef_invoices')
+        .update({
+          transferred_to_invoice_id: null,
+          transferred_to_department_id: null,
+          transferred_at: null,
+        })
+        .eq('id', ksefInvoiceId);
+
+      if (updateKsefError) throw updateKsefError;
+
+      setSuccessMessage('Przypisanie faktury zostało cofnięte');
+      setSelectedInvoice(null);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Error unassigning invoice:', err);
+      setError(err.message || 'Nie udało się cofnąć przypisania faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTransferInvoice = async (departmentId: string) => {
     if (!selectedInvoice || !departmentId) {
       setError('Proszę wybrać dział');
@@ -603,6 +683,7 @@ export function KSEFInvoicesPage() {
           departments={departments}
           onClose={() => setSelectedInvoice(null)}
           onTransfer={handleTransferInvoice}
+          onUnassign={handleUnassignInvoice}
           transferring={transferring}
         />
       )}
