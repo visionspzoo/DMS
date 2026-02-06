@@ -549,14 +549,6 @@ export function InvoiceList() {
             >
               Odrzucona
             </button>
-            {selectedStatuses.length > 0 && (
-              <button
-                onClick={() => setSelectedStatuses([])}
-                className="text-xs text-brand-primary hover:text-brand-primary-hover font-medium"
-              >
-                Wyczyść
-              </button>
-            )}
             {availableDepartments.length > 0 && (
               <>
                 <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
@@ -574,14 +566,6 @@ export function InvoiceList() {
                     {dept}
                   </button>
                 ))}
-                {selectedDepartments.length > 0 && (
-                  <button
-                    onClick={() => setSelectedDepartments([])}
-                    className="text-xs text-brand-primary hover:text-brand-primary-hover font-medium"
-                  >
-                    Wyczyść
-                  </button>
-                )}
               </>
             )}
           </div>
