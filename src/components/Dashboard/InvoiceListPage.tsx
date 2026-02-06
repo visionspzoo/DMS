@@ -497,97 +497,92 @@ export function InvoiceList() {
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
         <div className="flex flex-col gap-3">
-          <div className="flex items-start gap-4">
-            <div className="flex items-center gap-2 flex-1">
-              <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Status:</label>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => toggleStatus('draft')}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedStatuses.includes('draft')
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                  }`}
-                >
-                  Robocze
-                </button>
-                <button
-                  onClick={() => toggleStatus('waiting')}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedStatuses.includes('waiting')
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                  }`}
-                >
-                  Oczekujące
-                </button>
-                <button
-                  onClick={() => toggleStatus('pending')}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedStatuses.includes('pending')
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                  }`}
-                >
-                  W weryfikacji
-                </button>
-                <button
-                  onClick={() => toggleStatus('accepted')}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedStatuses.includes('accepted')
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                  }`}
-                >
-                  Zaakceptowana
-                </button>
-                <button
-                  onClick={() => toggleStatus('rejected')}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedStatuses.includes('rejected')
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                  }`}
-                >
-                  Odrzucona
-                </button>
-                {selectedStatuses.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Status:</label>
+            <button
+              onClick={() => toggleStatus('draft')}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                selectedStatuses.includes('draft')
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              Robocze
+            </button>
+            <button
+              onClick={() => toggleStatus('waiting')}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                selectedStatuses.includes('waiting')
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              Oczekujące
+            </button>
+            <button
+              onClick={() => toggleStatus('pending')}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                selectedStatuses.includes('pending')
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              W weryfikacji
+            </button>
+            <button
+              onClick={() => toggleStatus('accepted')}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                selectedStatuses.includes('accepted')
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              Zaakceptowana
+            </button>
+            <button
+              onClick={() => toggleStatus('rejected')}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                selectedStatuses.includes('rejected')
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              Odrzucona
+            </button>
+            {selectedStatuses.length > 0 && (
+              <button
+                onClick={() => setSelectedStatuses([])}
+                className="text-xs text-brand-primary hover:text-brand-primary-hover font-medium"
+              >
+                Wyczyść
+              </button>
+            )}
+            {availableDepartments.length > 0 && (
+              <>
+                <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Działy:</label>
+                {availableDepartments.map(dept => (
                   <button
-                    onClick={() => setSelectedStatuses([])}
+                    key={dept}
+                    onClick={() => toggleDepartment(dept)}
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                      selectedDepartments.includes(dept)
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+                    }`}
+                  >
+                    {dept}
+                  </button>
+                ))}
+                {selectedDepartments.length > 0 && (
+                  <button
+                    onClick={() => setSelectedDepartments([])}
                     className="text-xs text-brand-primary hover:text-brand-primary-hover font-medium"
                   >
                     Wyczyść
                   </button>
                 )}
-              </div>
-            </div>
-            {availableDepartments.length > 0 && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Działy:</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {availableDepartments.map(dept => (
-                    <button
-                      key={dept}
-                      onClick={() => toggleDepartment(dept)}
-                      className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                        selectedDepartments.includes(dept)
-                          ? 'bg-brand-primary text-white'
-                          : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-                      }`}
-                    >
-                      {dept}
-                    </button>
-                  ))}
-                  {selectedDepartments.length > 0 && (
-                    <button
-                      onClick={() => setSelectedDepartments([])}
-                      className="text-xs text-brand-primary hover:text-brand-primary-hover font-medium"
-                    >
-                      Wyczyść
-                    </button>
-                  )}
-                </div>
-              </div>
+              </>
             )}
           </div>
           <div className="flex items-center gap-4">
