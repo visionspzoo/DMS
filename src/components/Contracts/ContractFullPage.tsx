@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, FileText, MessageSquare, Sparkles } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, FileText, MessageSquare, Sparkles, MapPin, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { ContractAIAssistant } from './ContractAIAssistant';
 import { ContractCommentsPanel } from './ContractCommentsPanel';
-import { PdfAnnotationLayer } from './PdfAnnotationLayer';
+import { PdfAnnotationLayer, PIN_COLORS } from './PdfAnnotationLayer';
+import type { PdfAnnotation, PendingPin } from './PdfAnnotationLayer';
 
 interface Contract {
   id: string;
@@ -29,6 +30,12 @@ interface ContractFullPageProps {
   onBack: () => void;
 }
 
+function getColorForUser(userId: string, allUserIds: string[]): string {
+  const colors = Object.keys(PIN_COLORS);
+  const idx = allUserIds.indexOf(userId);
+  return colors[idx % colors.length];
+}
+
 export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) {
   const { user } = useAuth();
   const [contract, setContract] = useState<Contract | null>(null);
@@ -36,8 +43,19 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SidebarTab>('comments');
 
+  const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
+  const [pinMode, setPinMode] = useState(false);
+  const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
+  const [commentInput, setCommentInput] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+
   useEffect(() => {
     loadContract();
+  }, [contractId]);
+
+  useEffect(() => {
+    if (contractId) loadAnnotations();
   }, [contractId]);
 
   const loadContract = async () => {
@@ -79,14 +97,94 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
     }
   };
 
+  const loadAnnotations = async () => {
+    const { data, error } = await supabase
+      .from('contract_pdf_annotations')
+      .select('*, profiles(full_name, email)')
+      .eq('contract_id', contractId)
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      setAnnotations(data);
+    }
+  };
+
+  const handleOverlayClick = useCallback((x: number, y: number) => {
+    setPendingPin({ x_percent: x, y_percent: y });
+    setCommentInput('');
+    setActiveAnnotationId(null);
+  }, []);
+
+  const handlePinClick = useCallback((id: string) => {
+    setActiveAnnotationId(prev => prev === id ? null : id);
+    setPendingPin(null);
+  }, []);
+
+  const handleCancelPending = useCallback(() => {
+    setPendingPin(null);
+    setCommentInput('');
+  }, []);
+
+  const handleSaveAnnotation = async () => {
+    if (!user || !pendingPin || !commentInput.trim()) return;
+
+    try {
+      setSubmitting(true);
+      const allUserIds = [...new Set(annotations.map(a => a.user_id))];
+      if (!allUserIds.includes(user.id)) allUserIds.push(user.id);
+      const color = getColorForUser(user.id, allUserIds);
+
+      const { error } = await supabase
+        .from('contract_pdf_annotations')
+        .insert({
+          contract_id: contractId,
+          user_id: user.id,
+          x_percent: pendingPin.x_percent,
+          y_percent: pendingPin.y_percent,
+          comment: commentInput.trim(),
+          color,
+        });
+
+      if (error) throw error;
+
+      setPendingPin(null);
+      setCommentInput('');
+      setPinMode(false);
+      await loadAnnotations();
+    } catch (err) {
+      console.error('Error saving annotation:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteAnnotation = async (id: string) => {
+    const { error } = await supabase
+      .from('contract_pdf_annotations')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setAnnotations(prev => prev.filter(a => a.id !== id));
+      if (activeAnnotationId === id) setActiveAnnotationId(null);
+    }
+  };
+
+  const togglePinMode = () => {
+    setPinMode(prev => !prev);
+    setPendingPin(null);
+    setCommentInput('');
+    setActiveAnnotationId(null);
+  };
+
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { text: string; className: string }> = {
-      draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
-      pending_manager: { text: 'Oczekuje na kierownika', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-      pending_director: { text: 'Oczekuje na dyrektora', className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-      pending_ceo: { text: 'Oczekuje na CEO', className: 'bg-blue-100 text-brand-primary dark:bg-blue-900/30' },
-      approved: { text: 'Zatwierdzona', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-      rejected: { text: 'Odrzucona', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+      draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600' },
+      pending_manager: { text: 'Oczekuje na kierownika', className: 'bg-yellow-100 text-yellow-700' },
+      pending_director: { text: 'Oczekuje na dyrektora', className: 'bg-orange-100 text-orange-700' },
+      pending_ceo: { text: 'Oczekuje na CEO', className: 'bg-blue-100 text-blue-700' },
+      approved: { text: 'Zatwierdzona', className: 'bg-green-100 text-green-700' },
+      rejected: { text: 'Odrzucona', className: 'bg-red-100 text-red-700' },
     };
     const badge = badges[status] || badges.draft;
     return (
@@ -114,6 +212,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   }
 
   const hasPdf = !!pdfBase64 && !contract.google_doc_id;
+  const allUserIds = [...new Set(annotations.map(a => a.user_id))];
 
   return (
     <div className="h-full flex flex-col bg-light-bg dark:bg-dark-bg overflow-hidden">
@@ -137,7 +236,6 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
             {contract.departments && <span>Dzial: {contract.departments.name}</span>}
           </div>
         </div>
-
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -161,8 +259,18 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
             </div>
           ) : pdfBase64 ? (
             <PdfAnnotationLayer
-              contractId={contract.id}
               pdfBase64={pdfBase64}
+              annotations={annotations}
+              pinMode={pinMode}
+              pendingPin={pendingPin}
+              activeAnnotationId={activeAnnotationId}
+              commentInput={commentInput}
+              submitting={submitting}
+              onOverlayClick={handleOverlayClick}
+              onPinClick={handlePinClick}
+              onCommentChange={setCommentInput}
+              onSaveAnnotation={handleSaveAnnotation}
+              onCancelPending={handleCancelPending}
             />
           ) : (
             <div className="flex items-center justify-center h-full bg-light-surface-variant dark:bg-dark-surface-variant">
@@ -175,6 +283,98 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
         </div>
 
         <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden">
+          {hasPdf && (
+            <div className="border-b border-slate-200 dark:border-slate-700/50 flex-shrink-0">
+              <div className="px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5" />
+                    Adnotacje ({annotations.length})
+                  </h4>
+                  <button
+                    onClick={togglePinMode}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                      pinMode
+                        ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
+                        : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/30 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                    }`}
+                  >
+                    {pinMode ? (
+                      <>
+                        <X className="w-3 h-3" />
+                        Anuluj
+                      </>
+                    ) : (
+                      <>
+                        <MapPin className="w-3 h-3" />
+                        Dodaj
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {annotations.length === 0 ? (
+                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark py-1">
+                    Kliknij "Dodaj" i zaznacz miejsce na PDF
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {annotations.map((ann, idx) => {
+                      const colorKey = ann.color || getColorForUser(ann.user_id, allUserIds);
+                      const colors = PIN_COLORS[colorKey] || PIN_COLORS.blue;
+                      const isActive = activeAnnotationId === ann.id;
+
+                      return (
+                        <div
+                          key={ann.id}
+                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all border ${
+                            isActive
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/30'
+                              : 'border-transparent hover:bg-slate-50 dark:hover:bg-dark-surface-variant'
+                          }`}
+                          onClick={() => handlePinClick(ann.id)}
+                        >
+                          <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                            <MapPin className={`w-3.5 h-3.5 ${colors.text}`} fill="currentColor" strokeWidth={0} />
+                            <span className="text-[10px] font-bold text-text-secondary-light dark:text-text-secondary-dark w-3 text-center">
+                              {idx + 1}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark truncate">
+                                {ann.profiles?.full_name || 'Uzytkownik'}
+                              </span>
+                              <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
+                                {new Date(ann.created_at).toLocaleString('pl-PL', {
+                                  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark line-clamp-2 mt-0.5 leading-relaxed">
+                              {ann.comment}
+                            </p>
+                          </div>
+                          {user?.id === ann.user_id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteAnnotation(ann.id);
+                              }}
+                              className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex border-b border-slate-200 dark:border-slate-700/50 flex-shrink-0">
             <button
               onClick={() => setActiveTab('comments')}
