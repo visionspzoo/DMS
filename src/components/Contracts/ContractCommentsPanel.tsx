@@ -27,6 +27,7 @@ interface ContractCommentsPanelProps {
   contractStatus: string;
   currentApprover: string | null;
   onContractUpdate: () => void;
+  annotationsSection?: React.ReactNode;
 }
 
 export function ContractCommentsPanel({
@@ -34,6 +35,7 @@ export function ContractCommentsPanel({
   contractStatus,
   currentApprover,
   onContractUpdate,
+  annotationsSection,
 }: ContractCommentsPanelProps) {
   const { user } = useAuth();
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -271,6 +273,8 @@ export function ContractCommentsPanel({
                 </div>
               )}
             </div>
+
+            {annotationsSection}
 
             {canApprove && (
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 space-y-3">
