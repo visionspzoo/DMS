@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
+import { KSEFConfiguration } from './KSEFConfiguration';
 import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
 
 interface KSEFInvoice {
@@ -31,11 +32,13 @@ interface Department {
   name: string;
 }
 
-type TabType = 'unassigned' | 'assigned';
+type MainTabType = 'invoices' | 'configuration';
+type InvoiceTabType = 'unassigned' | 'assigned';
 
 export function KSEFInvoicesPage() {
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('unassigned');
+  const [mainTab, setMainTab] = useState<MainTabType>('invoices');
+  const [invoiceTab, setInvoiceTab] = useState<InvoiceTabType>('unassigned');
   const [invoices, setInvoices] = useState<KSEFInvoice[]>([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [assignedCount, setAssignedCount] = useState(0);
@@ -63,7 +66,7 @@ export function KSEFInvoicesPage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [activeTab]);
+  }, [invoiceTab]);
 
   const checkKSEFConnection = async () => {
     try {
@@ -115,7 +118,7 @@ export function KSEFInvoicesPage() {
         .from('ksef_invoices')
         .select('*');
 
-      if (activeTab === 'unassigned') {
+      if (invoiceTab === 'unassigned') {
         query = query.is('transferred_to_invoice_id', null);
       } else {
         query = query.not('transferred_to_invoice_id', 'is', null);
@@ -512,70 +515,102 @@ export function KSEFInvoicesPage() {
                 <span>Połączono z KSEF</span>
               </div>
             )}
-            <button
-              onClick={handleFetchInvoices}
-              disabled={fetching}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
-            >
-              {fetching ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Pobieranie...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  Pobierz faktury
-                </>
-              )}
-            </button>
+            {mainTab === 'invoices' && (
+              <button
+                onClick={handleFetchInvoices}
+                disabled={fetching}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
+              >
+                {fetching ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Pobieranie...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Pobierz faktury
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700 mb-4">
           <button
-            onClick={() => {
-              setLoading(true);
-              setActiveTab('unassigned');
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
-              activeTab === 'unassigned'
+            onClick={() => setMainTab('invoices')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+              mainTab === 'invoices'
                 ? 'border-brand-primary text-brand-primary'
                 : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
             }`}
           >
-            Nieprzypisane ({unassignedCount})
+            <FileText className="w-4 h-4" />
+            Faktury
           </button>
           <button
-            onClick={() => {
-              setLoading(true);
-              setActiveTab('assigned');
-            }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
-              activeTab === 'assigned'
+            onClick={() => setMainTab('configuration')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+              mainTab === 'configuration'
                 ? 'border-brand-primary text-brand-primary'
                 : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
             }`}
           >
-            Przypisane ({assignedCount})
+            <Settings className="w-4 h-4" />
+            Konfiguracja
           </button>
         </div>
 
-        {error && (
+        {mainTab === 'invoices' && (
+          <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => {
+                setLoading(true);
+                setInvoiceTab('unassigned');
+              }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+                invoiceTab === 'unassigned'
+                  ? 'border-brand-primary text-brand-primary'
+                  : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+              }`}
+            >
+              Nieprzypisane ({unassignedCount})
+            </button>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setInvoiceTab('assigned');
+              }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+                invoiceTab === 'assigned'
+                  ? 'border-brand-primary text-brand-primary'
+                  : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+              }`}
+            >
+              Przypisane ({assignedCount})
+            </button>
+          </div>
+        )}
+
+        {mainTab === 'invoices' && error && (
           <div className="mt-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg flex items-start gap-2 text-sm">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {successMessage && (
+        {mainTab === 'invoices' && successMessage && (
           <div className="mt-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-3 py-2 rounded-lg text-sm">
             {successMessage}
           </div>
         )}
       </div>
 
-      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+      {mainTab === 'configuration' ? (
+        <KSEFConfiguration />
+      ) : (
+        <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         {invoices.length === 0 ? (
           <div className="p-6 text-center">
             <FileText className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
@@ -603,12 +638,12 @@ export function KSEFInvoicesPage() {
                   <th className="px-3 py-2 text-right text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                     Kwota brutto
                   </th>
-                  {activeTab === 'assigned' && (
+                  {invoiceTab === 'assigned' && (
                     <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                       Dział
                     </th>
                   )}
-                  {activeTab === 'assigned' && (
+                  {invoiceTab === 'assigned' && (
                     <th className="px-3 py-2 text-center text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                       Status
                     </th>
@@ -655,7 +690,7 @@ export function KSEFInvoicesPage() {
                         {invoice.currency}
                       </span>
                     </td>
-                    {activeTab === 'assigned' && (
+                    {invoiceTab === 'assigned' && (
                       <>
                         <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark text-sm">
                           {invoice.transferred_to_department_id
@@ -676,6 +711,7 @@ export function KSEFInvoicesPage() {
           </div>
         )}
       </div>
+      )}
 
       {selectedInvoice && (
         <KSEFInvoiceModal
