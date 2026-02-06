@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, FileText, MessageSquare, Sparkles, Highlighter, Eye } from 'lucide-react';
+import { ArrowLeft, FileText, MessageSquare, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { ContractAIAssistant } from './ContractAIAssistant';
 import { ContractCommentsPanel } from './ContractCommentsPanel';
-import { ContractTextAnnotator } from './ContractTextAnnotator';
+import { PdfAnnotationLayer } from './PdfAnnotationLayer';
 
 interface Contract {
   id: string;
@@ -23,7 +23,6 @@ interface Contract {
 }
 
 type SidebarTab = 'comments' | 'ai';
-type ViewMode = 'pdf' | 'annotate';
 
 interface ContractFullPageProps {
   contractId: string;
@@ -36,10 +35,6 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SidebarTab>('comments');
-  const [viewMode, setViewMode] = useState<ViewMode>('pdf');
-  const [extractedText, setExtractedText] = useState<string | null>(null);
-  const [extractingText, setExtractingText] = useState(false);
-  const [annotationCount, setAnnotationCount] = useState(0);
 
   useEffect(() => {
     loadContract();
@@ -81,48 +76,6 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
       }
     } catch (error) {
       console.error('Error loading PDF data:', error);
-    }
-  };
-
-  const extractText = async () => {
-    if (!pdfBase64 || extractedText !== null) return;
-
-    try {
-      setExtractingText(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ pdf_base64: pdfBase64, use_ocr: false }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setExtractedText(data.text || '');
-      } else {
-        setExtractedText('');
-      }
-    } catch (error) {
-      console.error('Error extracting text:', error);
-      setExtractedText('');
-    } finally {
-      setExtractingText(false);
-    }
-  };
-
-  const handleSwitchToAnnotate = () => {
-    setViewMode('annotate');
-    if (extractedText === null) {
-      extractText();
     }
   };
 
@@ -185,71 +138,11 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
           </div>
         </div>
 
-        {hasPdf && (
-          <div className="flex items-center bg-slate-100 dark:bg-dark-surface-variant rounded-lg p-0.5 gap-0.5">
-            <button
-              onClick={() => setViewMode('pdf')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                viewMode === 'pdf'
-                  ? 'bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark shadow-sm'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
-              }`}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              PDF
-            </button>
-            <button
-              onClick={handleSwitchToAnnotate}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                viewMode === 'annotate'
-                  ? 'bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark shadow-sm'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
-              }`}
-            >
-              <Highlighter className="w-3.5 h-3.5" />
-              Adnotacje
-              {annotationCount > 0 && (
-                <span className="ml-0.5 px-1.5 py-0 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-semibold">
-                  {annotationCount}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-hidden border-r border-slate-200 dark:border-slate-700/50">
-          {viewMode === 'annotate' && hasPdf ? (
-            extractingText ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
-                <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                  Ekstrakcja tekstu z dokumentu...
-                </p>
-              </div>
-            ) : extractedText && extractedText.length > 50 ? (
-              <ContractTextAnnotator
-                contractId={contract.id}
-                text={extractedText}
-                onAnnotationCountChange={setAnnotationCount}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
-                <FileText className="w-12 h-12 text-slate-300 dark:text-slate-600" />
-                <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark max-w-md">
-                  Nie udalo sie wyekstrahowac tekstu z tego dokumentu.
-                  Moze to byc skan -- adnotacje sa dostepne tylko dla dokumentow z wbudowanym tekstem.
-                </p>
-                <button
-                  onClick={() => setViewMode('pdf')}
-                  className="mt-2 px-4 py-2 text-sm text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                >
-                  Powrot do widoku PDF
-                </button>
-              </div>
-            )
-          ) : contract.google_doc_id ? (
+          {contract.google_doc_id ? (
             <div className="flex flex-col items-center justify-center h-full p-8 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-dark-surface dark:to-dark-bg">
               <FileText className="w-14 h-14 text-brand-primary mb-4" />
               <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">Dokument Google Docs</h4>
@@ -267,10 +160,9 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
               </a>
             </div>
           ) : pdfBase64 ? (
-            <iframe
-              src={`data:application/pdf;base64,${pdfBase64}`}
-              className="w-full h-full"
-              title="Podglad PDF"
+            <PdfAnnotationLayer
+              contractId={contract.id}
+              pdfBase64={pdfBase64}
             />
           ) : (
             <div className="flex items-center justify-center h-full bg-light-surface-variant dark:bg-dark-surface-variant">
