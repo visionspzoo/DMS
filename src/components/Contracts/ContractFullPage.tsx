@@ -109,8 +109,8 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
     }
   };
 
-  const handleOverlayClick = useCallback((x: number, y: number) => {
-    setPendingPin({ x_percent: x, y_percent: y });
+  const handleOverlayClick = useCallback((page: number, x: number, y: number) => {
+    setPendingPin({ page_number: page, x_percent: x, y_percent: y });
     setCommentInput('');
     setActiveAnnotationId(null);
   }, []);
@@ -139,6 +139,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
         .insert({
           contract_id: contractId,
           user_id: user.id,
+          page_number: pendingPin.page_number,
           x_percent: pendingPin.x_percent,
           y_percent: pendingPin.y_percent,
           comment: commentInput.trim(),
@@ -346,7 +347,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
                                 {ann.profiles?.full_name || 'Uzytkownik'}
                               </span>
                               <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
-                                {new Date(ann.created_at).toLocaleString('pl-PL', {
+                                str. {ann.page_number} | {new Date(ann.created_at).toLocaleString('pl-PL', {
                                   day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                                 })}
                               </span>
