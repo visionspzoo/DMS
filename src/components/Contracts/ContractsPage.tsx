@@ -3,7 +3,6 @@ import { FileText, Upload, Clock, CheckCircle, XCircle, Eye } from 'lucide-react
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UploadContract } from './UploadContract';
-import { ContractDetails } from './ContractDetails';
 
 interface Contract {
   id: string;
@@ -22,12 +21,15 @@ interface Contract {
   uploader?: { full_name: string };
 }
 
-export function ContractsPage() {
+interface ContractsPageProps {
+  onOpenContract: (id: string) => void;
+}
+
+export function ContractsPage({ onOpenContract }: ContractsPageProps) {
   const { user } = useAuth();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
@@ -160,7 +162,7 @@ export function ContractsPage() {
           {contracts.map((contract) => (
             <div
               key={contract.id}
-              onClick={() => setSelectedContract(contract)}
+              onClick={() => onOpenContract(contract.id)}
               className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 hover:border-brand-primary/30 transition-all cursor-pointer"
             >
               <div className="flex items-start justify-between gap-3">
@@ -207,13 +209,6 @@ export function ContractsPage() {
         />
       )}
 
-      {selectedContract && (
-        <ContractDetails
-          contract={selectedContract}
-          onClose={() => setSelectedContract(null)}
-          onUpdate={loadContracts}
-        />
-      )}
     </div>
   );
 }

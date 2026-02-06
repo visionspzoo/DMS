@@ -6,19 +6,21 @@ import { UploadInvoice } from './components/Dashboard/UploadInvoicePage';
 import { InvoiceList } from './components/Dashboard/InvoiceListPage';
 import AIAgent from './components/AIAgent/AIAgent';
 import { ContractsPage } from './components/Contracts/ContractsPage';
+import { ContractFullPage } from './components/Contracts/ContractFullPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
 import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { useState } from 'react';
 import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog } from 'lucide-react';
 
-type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'ksef' | 'configuration';
+type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'configuration';
 
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
   const [appView, setAppView] = useState<AppView>('dashboard');
   const [darkMode, setDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -137,7 +139,23 @@ function AppContent() {
           {appView === 'dashboard' && <Dashboard />}
           {appView === 'invoices' && <InvoiceList />}
           {appView === 'ksef' && <KSEFInvoicesPage />}
-          {appView === 'contracts' && <ContractsPage />}
+          {appView === 'contracts' && (
+            <ContractsPage
+              onOpenContract={(id: string) => {
+                setSelectedContractId(id);
+                setAppView('contract-detail');
+              }}
+            />
+          )}
+          {appView === 'contract-detail' && selectedContractId && (
+            <ContractFullPage
+              contractId={selectedContractId}
+              onBack={() => {
+                setSelectedContractId(null);
+                setAppView('contracts');
+              }}
+            />
+          )}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
