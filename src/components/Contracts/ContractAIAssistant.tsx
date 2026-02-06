@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search, RotateCcw } from 'lucide-react';
+import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search, RotateCcw, GitBranch } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -16,13 +16,32 @@ interface SavedPrompt {
   created_at: string;
 }
 
+interface AdminPrompt {
+  id: string;
+  name: string;
+  prompt_text: string;
+}
+
+interface PipelineStep {
+  step_order: number;
+  step_name: string;
+  prompt_text: string;
+}
+
+interface Pipeline {
+  id: string;
+  name: string;
+  description: string;
+  steps: PipelineStep[];
+}
+
 interface ContractAIAssistantProps {
   contractId: string;
   contractTitle: string;
   pdfBase64: string | null;
 }
 
-const WELCOME_MESSAGE = 'Jestem asystentem AI do analizy umow. Wybierz prompt analizy lub wpisz wlasny, a nastepnie kliknij "Analizuj" aby rozpoczac.';
+const WELCOME_MESSAGE = 'Jestem asystentem AI do analizy umow. Wybierz prompt analizy, pipeline lub wpisz wlasny, a nastepnie kliknij "Analizuj" aby rozpoczac.';
 
 export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: ContractAIAssistantProps) {
   const { user } = useAuth();
@@ -31,15 +50,39 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [analyzed, setAnalyzed] = useState(false);
+  const [progressText, setProgressText] = useState('');
+
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
-  const [selectedPromptId, setSelectedPromptId] = useState<string>('');
+  const [adminPrompts, setAdminPrompts] = useState<AdminPrompt[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+
+  const [selectedPromptId, setSelectedPromptId] = useState('');
+  const [selectedAdminPromptId, setSelectedAdminPromptId] = useState('');
+  const [selectedPipelineId, setSelectedPipelineId] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
+
   const [promptName, setPromptName] = useState('');
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isPipelineSelected = !!selectedPipelineId;
+  const selectedPipeline = pipelines.find(p => p.id === selectedPipelineId);
+  const selectedUserPrompt = savedPrompts.find(p => p.id === selectedPromptId);
+  const selectedAdminPrompt = adminPrompts.find(p => p.id === selectedAdminPromptId);
+
+  const dropdownLabel = selectedPipeline
+    ? `Pipeline: ${selectedPipeline.name}`
+    : selectedAdminPrompt
+    ? selectedAdminPrompt.name
+    : selectedUserPrompt
+    ? selectedUserPrompt.name
+    : 'Wybierz prompt lub pipeline...';
+
+  const hasSelection = !!(selectedPromptId || selectedAdminPromptId || selectedPipelineId);
 
   const loadChatHistory = useCallback(async () => {
     if (!user) return;
@@ -55,28 +98,19 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const restored: Message[] = data.map(row => ({
+        setMessages(data.map(row => ({
           role: row.role as 'user' | 'assistant',
           content: row.content,
           timestamp: new Date(row.created_at),
-        }));
-        setMessages(restored);
+        })));
         setAnalyzed(true);
       } else {
-        setMessages([{
-          role: 'assistant',
-          content: WELCOME_MESSAGE,
-          timestamp: new Date(),
-        }]);
+        setMessages([{ role: 'assistant', content: WELCOME_MESSAGE, timestamp: new Date() }]);
         setAnalyzed(false);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
-      setMessages([{
-        role: 'assistant',
-        content: WELCOME_MESSAGE,
-        timestamp: new Date(),
-      }]);
+      setMessages([{ role: 'assistant', content: WELCOME_MESSAGE, timestamp: new Date() }]);
     } finally {
       setLoadingHistory(false);
     }
@@ -85,6 +119,8 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
   useEffect(() => {
     loadChatHistory();
     loadSavedPrompts();
+    loadAdminPrompts();
+    loadPipelines();
   }, [loadChatHistory]);
 
   useEffect(() => {
@@ -101,44 +137,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const persistMessages = async (newMessages: Array<{ role: string; content: string }>) => {
-    if (!user) return;
-    try {
-      const rows = newMessages.map(m => ({
-        contract_id: contractId,
-        user_id: user.id,
-        role: m.role,
-        content: m.content,
-      }));
-      const { error } = await supabase
-        .from('contract_chat_messages')
-        .insert(rows);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error persisting chat messages:', error);
-    }
-  };
-
-  const clearHistory = async () => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('contract_chat_messages')
-        .delete()
-        .eq('contract_id', contractId)
-        .eq('user_id', user.id);
-      if (error) throw error;
-      setMessages([{
-        role: 'assistant',
-        content: WELCOME_MESSAGE,
-        timestamp: new Date(),
-      }]);
-      setAnalyzed(false);
-    } catch (error) {
-      console.error('Error clearing chat history:', error);
-    }
-  };
-
   const loadSavedPrompts = async () => {
     if (!user) return;
     try {
@@ -154,17 +152,110 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     }
   };
 
+  const loadAdminPrompts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_admin_prompts')
+        .select('id, name, prompt_text')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setAdminPrompts(data || []);
+    } catch (error) {
+      console.error('Error loading admin prompts:', error);
+    }
+  };
+
+  const loadPipelines = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_pipelines')
+        .select('id, name, description, steps:contract_pipeline_steps(step_order, step_name, prompt_text)')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setPipelines(
+        (data || []).map((p: any) => ({
+          ...p,
+          steps: (p.steps || []).sort((a: PipelineStep, b: PipelineStep) => a.step_order - b.step_order),
+        }))
+      );
+    } catch (error) {
+      console.error('Error loading pipelines:', error);
+    }
+  };
+
+  function clearSelection() {
+    setSelectedPromptId('');
+    setSelectedAdminPromptId('');
+    setSelectedPipelineId('');
+    setCustomPrompt('');
+    setShowPromptDropdown(false);
+  }
+
+  function selectUserPrompt(prompt: SavedPrompt) {
+    setSelectedPromptId(prompt.id);
+    setSelectedAdminPromptId('');
+    setSelectedPipelineId('');
+    setCustomPrompt(prompt.prompt_text);
+    setShowPromptDropdown(false);
+  }
+
+  function selectAdminPrompt(prompt: AdminPrompt) {
+    setSelectedAdminPromptId(prompt.id);
+    setSelectedPromptId('');
+    setSelectedPipelineId('');
+    setCustomPrompt(prompt.prompt_text);
+    setShowPromptDropdown(false);
+  }
+
+  function selectPipeline(pipeline: Pipeline) {
+    setSelectedPipelineId(pipeline.id);
+    setSelectedPromptId('');
+    setSelectedAdminPromptId('');
+    setCustomPrompt('');
+    setShowPromptDropdown(false);
+  }
+
+  const persistMessages = async (newMessages: Array<{ role: string; content: string }>) => {
+    if (!user) return;
+    try {
+      const rows = newMessages.map(m => ({
+        contract_id: contractId,
+        user_id: user.id,
+        role: m.role,
+        content: m.content,
+      }));
+      const { error } = await supabase.from('contract_chat_messages').insert(rows);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error persisting chat messages:', error);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('contract_chat_messages')
+        .delete()
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setMessages([{ role: 'assistant', content: WELCOME_MESSAGE, timestamp: new Date() }]);
+      setAnalyzed(false);
+    } catch (error) {
+      console.error('Error clearing chat history:', error);
+    }
+  };
+
   const handleSavePrompt = async () => {
     if (!user || !promptName.trim() || !customPrompt.trim()) return;
     try {
       setSavingPrompt(true);
       const { error } = await supabase
         .from('contract_ai_prompts')
-        .insert({
-          user_id: user.id,
-          name: promptName.trim(),
-          prompt_text: customPrompt.trim(),
-        });
+        .insert({ user_id: user.id, name: promptName.trim(), prompt_text: customPrompt.trim() });
       if (error) throw error;
       setPromptName('');
       setShowSaveForm(false);
@@ -178,25 +269,13 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
 
   const handleDeletePrompt = async (promptId: string) => {
     try {
-      const { error } = await supabase
-        .from('contract_ai_prompts')
-        .delete()
-        .eq('id', promptId);
+      const { error } = await supabase.from('contract_ai_prompts').delete().eq('id', promptId);
       if (error) throw error;
-      if (selectedPromptId === promptId) {
-        setSelectedPromptId('');
-        setCustomPrompt('');
-      }
+      if (selectedPromptId === promptId) clearSelection();
       await loadSavedPrompts();
     } catch (error) {
       console.error('Error deleting prompt:', error);
     }
-  };
-
-  const handleSelectPrompt = (prompt: SavedPrompt) => {
-    setSelectedPromptId(prompt.id);
-    setCustomPrompt(prompt.prompt_text);
-    setShowPromptDropdown(false);
   };
 
   const getSession = async () => {
@@ -245,11 +324,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     setLoading(true);
 
     try {
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: 'Analizuje umowe...',
-        timestamp: new Date()
-      }]);
+      setMessages(prev => [...prev, { role: 'system', content: 'Analizuje umowe...', timestamp: new Date() }]);
 
       const data = await callAI('analyze_contract', promptToUse, [], true);
 
@@ -278,17 +353,88 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       }]);
     } finally {
       setLoading(false);
+      setProgressText('');
+    }
+  };
+
+  const executePipeline = async () => {
+    if (!pdfBase64 || !selectedPipeline || selectedPipeline.steps.length === 0) return;
+
+    setLoading(true);
+
+    try {
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: `Uruchamiam pipeline "${selectedPipeline.name}"...`,
+        timestamp: new Date(),
+      }]);
+
+      const results: string[] = [];
+      const previousContext: Array<{ role: string; content: string }> = [];
+      const totalSteps = selectedPipeline.steps.length;
+
+      for (let i = 0; i < totalSteps; i++) {
+        const step = selectedPipeline.steps[i];
+        const progress = `Krok ${i + 1}/${totalSteps}: ${step.step_name}...`;
+        setProgressText(progress);
+
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.role !== 'system');
+          return [...filtered, { role: 'system', content: progress, timestamp: new Date() }];
+        });
+
+        const data = await callAI('analyze_contract', step.prompt_text, previousContext, true);
+
+        const stepResult = data.response || '';
+        results.push(`## ${step.step_name}\n\n${stepResult}`);
+
+        previousContext.push(
+          { role: 'user', content: step.prompt_text },
+          { role: 'assistant', content: stepResult },
+        );
+      }
+
+      const combinedResult = results.join('\n\n---\n\n');
+      const userMsg = { role: 'user', content: `Pipeline: ${selectedPipeline.name}` };
+      const assistantMsg = { role: 'assistant', content: combinedResult };
+
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.role !== 'system');
+        return [
+          ...filtered,
+          { ...userMsg, timestamp: new Date() } as Message,
+          { ...assistantMsg, timestamp: new Date() } as Message,
+        ];
+      });
+
+      await persistMessages([userMsg, assistantMsg]);
+      setAnalyzed(true);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setMessages(prev => prev.filter(m => m.role !== 'system'));
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Wystapil blad podczas pipeline: ${errorMessage}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setLoading(false);
+      setProgressText('');
+    }
+  };
+
+  const handleAnalyzeClick = () => {
+    if (isPipelineSelected) {
+      executePipeline();
+    } else {
+      analyzeContract();
     }
   };
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    const userMessage: Message = {
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date()
-    };
+    const userMessage: Message = { role: 'user', content: input.trim(), timestamp: new Date() };
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
@@ -299,19 +445,10 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content !== WELCOME_MESSAGE)
         .map(({ role, content }) => ({ role, content }));
 
-      const data = await callAI(
-        'chat',
-        userMessage.content,
-        persistedHistory.slice(-10),
-        true,
-      );
+      const data = await callAI('chat', userMessage.content, persistedHistory.slice(-10), true);
 
       const aiContent = data.response || 'Przepraszam, nie moglem wygenerowac odpowiedzi.';
-      const assistantMsg: Message = {
-        role: 'assistant',
-        content: aiContent,
-        timestamp: new Date()
-      };
+      const assistantMsg: Message = { role: 'assistant', content: aiContent, timestamp: new Date() };
 
       setMessages(prev => [...prev, assistantMsg]);
       await persistMessages([
@@ -332,14 +469,14 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `Przepraszam, wystapil blad. Sprobuj ponownie.${detail ? ` (${detail})` : ''}`,
-        timestamp: new Date()
+        timestamp: new Date(),
       }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const selectedPrompt = savedPrompts.find(p => p.id === selectedPromptId);
+  const canSaveCustomPrompt = customPrompt.trim() && !selectedPromptId && !selectedAdminPromptId && !selectedPipelineId;
 
   if (loadingHistory) {
     return (
@@ -384,7 +521,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700/50 space-y-3 flex-shrink-0 bg-slate-50 dark:bg-dark-surface-variant">
           <div className="space-y-2">
             <label className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark uppercase tracking-wide">
-              Prompt analizy
+              Prompt analizy / Pipeline
             </label>
 
             <div className="relative" ref={dropdownRef}>
@@ -392,114 +529,187 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
                 onClick={() => setShowPromptDropdown(!showPromptDropdown)}
                 className="w-full flex items-center justify-between px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface text-sm text-left hover:border-brand-primary transition-colors"
               >
-                <span className={`truncate ${selectedPrompt ? 'text-text-primary-light dark:text-text-primary-dark' : 'text-text-secondary-light dark:text-text-secondary-dark'}`}>
-                  {selectedPrompt ? selectedPrompt.name : 'Wybierz zapisany prompt...'}
+                <span className={`truncate flex items-center gap-1.5 ${hasSelection ? 'text-text-primary-light dark:text-text-primary-dark' : 'text-text-secondary-light dark:text-text-secondary-dark'}`}>
+                  {isPipelineSelected && <GitBranch className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                  {dropdownLabel}
                 </span>
                 <ChevronDown className={`w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0 transition-transform ${showPromptDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {showPromptDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
                   <button
-                    onClick={() => {
-                      setSelectedPromptId('');
-                      setCustomPrompt('');
-                      setShowPromptDropdown(false);
-                    }}
+                    onClick={clearSelection}
                     className="w-full px-3 py-2 text-left text-sm text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant flex items-center gap-2"
                   >
                     <Plus className="w-3 h-3" />
                     Wlasny prompt
                   </button>
-                  {savedPrompts.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                      Brak zapisanych promptow
-                    </div>
-                  ) : (
-                    savedPrompts.map((prompt) => (
-                      <div
-                        key={prompt.id}
-                        className={`flex items-center justify-between px-3 py-2 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant ${
-                          selectedPromptId === prompt.id ? 'bg-blue-50 dark:bg-blue-900/10' : ''
-                        }`}
-                      >
+
+                  {adminPrompts.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary-light dark:text-text-secondary-dark bg-slate-50 dark:bg-dark-surface-variant border-t border-slate-100 dark:border-slate-700/30">
+                        Prompty systemowe
+                      </div>
+                      {adminPrompts.map(prompt => (
                         <button
-                          onClick={() => handleSelectPrompt(prompt)}
-                          className="flex-1 text-left text-sm text-text-primary-light dark:text-text-primary-dark truncate"
+                          key={prompt.id}
+                          onClick={() => selectAdminPrompt(prompt)}
+                          className={`w-full px-3 py-2 text-left text-sm text-text-primary-light dark:text-text-primary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant truncate ${
+                            selectedAdminPromptId === prompt.id ? 'bg-blue-50 dark:bg-blue-900/10' : ''
+                          }`}
                         >
                           {prompt.name}
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeletePrompt(prompt.id);
-                          }}
-                          className="p-1 hover:bg-red-50 dark:hover:bg-red-900/10 rounded text-red-500 flex-shrink-0 ml-2"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {pipelines.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary-light dark:text-text-secondary-dark bg-slate-50 dark:bg-dark-surface-variant border-t border-slate-100 dark:border-slate-700/30">
+                        Pipeline
                       </div>
-                    ))
+                      {pipelines.map(pipeline => (
+                        <button
+                          key={pipeline.id}
+                          onClick={() => selectPipeline(pipeline)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant flex items-center gap-2 ${
+                            selectedPipelineId === pipeline.id ? 'bg-blue-50 dark:bg-blue-900/10' : ''
+                          }`}
+                        >
+                          <GitBranch className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+                          <span className="truncate text-text-primary-light dark:text-text-primary-dark">{pipeline.name}</span>
+                          <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
+                            ({pipeline.steps.length} {pipeline.steps.length === 1 ? 'krok' : pipeline.steps.length < 5 ? 'kroki' : 'krokow'})
+                          </span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {savedPrompts.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary-light dark:text-text-secondary-dark bg-slate-50 dark:bg-dark-surface-variant border-t border-slate-100 dark:border-slate-700/30">
+                        Moje prompty
+                      </div>
+                      {savedPrompts.map(prompt => (
+                        <div
+                          key={prompt.id}
+                          className={`flex items-center justify-between px-3 py-2 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant ${
+                            selectedPromptId === prompt.id ? 'bg-blue-50 dark:bg-blue-900/10' : ''
+                          }`}
+                        >
+                          <button
+                            onClick={() => selectUserPrompt(prompt)}
+                            className="flex-1 text-left text-sm text-text-primary-light dark:text-text-primary-dark truncate"
+                          >
+                            {prompt.name}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeletePrompt(prompt.id); }}
+                            className="p-1 hover:bg-red-50 dark:hover:bg-red-900/10 rounded text-red-500 flex-shrink-0 ml-2"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {adminPrompts.length === 0 && pipelines.length === 0 && savedPrompts.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark border-t border-slate-100 dark:border-slate-700/30">
+                      Brak zapisanych promptow i pipeline
+                    </div>
                   )}
                 </div>
               )}
             </div>
 
-            <textarea
-              value={customPrompt}
-              onChange={(e) => {
-                setCustomPrompt(e.target.value);
-                setSelectedPromptId('');
-              }}
-              rows={3}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark text-sm resize-none"
-              placeholder="Wpisz wlasny prompt analizy lub wybierz z listy powyzej..."
-            />
-
-            {customPrompt.trim() && !selectedPromptId && (
-              <div>
-                {showSaveForm ? (
-                  <div className="flex gap-2">
-                    <input
-                      value={promptName}
-                      onChange={(e) => setPromptName(e.target.value)}
-                      className="flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark text-xs"
-                      placeholder="Nazwa prompta..."
-                    />
-                    <button
-                      onClick={handleSavePrompt}
-                      disabled={savingPrompt || !promptName.trim()}
-                      className="px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition-colors disabled:opacity-50 text-xs font-medium"
-                    >
-                      {savingPrompt ? '...' : 'Zapisz'}
-                    </button>
-                    <button
-                      onClick={() => { setShowSaveForm(false); setPromptName(''); }}
-                      className="px-2 py-1.5 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant rounded-lg transition-colors text-xs"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowSaveForm(true)}
-                    className="flex items-center gap-1.5 text-xs text-brand-primary hover:text-brand-primary-hover transition-colors"
-                  >
-                    <Save className="w-3 h-3" />
-                    Zapisz prompt na pozniej
-                  </button>
+            {isPipelineSelected && selectedPipeline ? (
+              <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-2.5 space-y-1.5">
+                {selectedPipeline.description && (
+                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{selectedPipeline.description}</p>
                 )}
+                <div className="space-y-1">
+                  {selectedPipeline.steps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-4 h-4 rounded-full bg-brand-primary/10 text-brand-primary font-bold flex items-center justify-center flex-shrink-0 text-[10px]">
+                        {i + 1}
+                      </span>
+                      <span className="text-text-primary-light dark:text-text-primary-dark">{step.step_name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
+            ) : (
+              <>
+                <textarea
+                  value={customPrompt}
+                  onChange={(e) => {
+                    setCustomPrompt(e.target.value);
+                    setSelectedPromptId('');
+                    setSelectedAdminPromptId('');
+                  }}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark text-sm resize-none"
+                  placeholder="Wpisz wlasny prompt analizy lub wybierz z listy powyzej..."
+                />
+
+                {canSaveCustomPrompt && (
+                  <div>
+                    {showSaveForm ? (
+                      <div className="flex gap-2">
+                        <input
+                          value={promptName}
+                          onChange={(e) => setPromptName(e.target.value)}
+                          className="flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark text-xs"
+                          placeholder="Nazwa prompta..."
+                        />
+                        <button
+                          onClick={handleSavePrompt}
+                          disabled={savingPrompt || !promptName.trim()}
+                          className="px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition-colors disabled:opacity-50 text-xs font-medium"
+                        >
+                          {savingPrompt ? '...' : 'Zapisz'}
+                        </button>
+                        <button
+                          onClick={() => { setShowSaveForm(false); setPromptName(''); }}
+                          className="px-2 py-1.5 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant rounded-lg transition-colors text-xs"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowSaveForm(true)}
+                        className="flex items-center gap-1.5 text-xs text-brand-primary hover:text-brand-primary-hover transition-colors"
+                      >
+                        <Save className="w-3 h-3" />
+                        Zapisz prompt na pozniej
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           <button
-            onClick={analyzeContract}
+            onClick={handleAnalyzeClick}
             disabled={loading || !pdfBase64}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-primary text-white hover:bg-brand-primary-hover rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+            className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium ${
+              isPipelineSelected
+                ? 'bg-teal-600 hover:bg-teal-700'
+                : 'bg-brand-primary hover:bg-brand-primary-hover'
+            }`}
           >
-            <Search className="w-4 h-4" />
-            {loading ? 'Analizuje...' : 'Analizuj umowe'}
+            {isPipelineSelected ? <GitBranch className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+            {loading
+              ? (progressText || 'Analizuje...')
+              : isPipelineSelected
+              ? 'Uruchom pipeline'
+              : 'Analizuj umowe'}
           </button>
         </div>
       )}

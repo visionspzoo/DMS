@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
+import AIPromptsSettings from './AIPromptsSettings';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -44,7 +45,7 @@ export default function SettingsPanel() {
   });
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'ai_prompts'>('users');
 
   useEffect(() => {
     loadUsers();
@@ -313,7 +314,18 @@ export default function SettingsPanel() {
           }`}
         >
           <Building2 className="w-4 h-4" />
-          Działy
+          Dzialy
+        </button>
+        <button
+          onClick={() => setActiveTab('ai_prompts')}
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+            activeTab === 'ai_prompts'
+              ? 'bg-brand-primary text-white'
+              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          AI Umowy
         </button>
       </div>
 
@@ -734,6 +746,10 @@ export default function SettingsPanel() {
 
         {activeTab === 'departments' && (
           <DepartmentManagement />
+        )}
+
+        {activeTab === 'ai_prompts' && (
+          <AIPromptsSettings />
         )}
     </div>
   );
