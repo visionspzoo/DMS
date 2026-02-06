@@ -153,7 +153,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
   const extractTextWithOCR = async (base64: string): Promise<string> => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
+      if (!session) return '';
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
@@ -167,12 +167,12 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         }
       );
 
-      if (!response.ok) throw new Error('OCR failed');
+      if (!response.ok) return '';
       const data = await response.json();
       return data.text || '';
     } catch (error) {
       console.error('Error with OCR:', error);
-      throw error;
+      return '';
     }
   };
 
