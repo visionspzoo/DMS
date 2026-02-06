@@ -156,24 +156,24 @@ export default function NotificationBell() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+          <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 dark:bg-red-600 text-white text-xs rounded-full flex items-center justify-center font-medium">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[32rem] overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-            <h3 className="font-semibold text-gray-900">Powiadomienia</h3>
+        <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 max-h-[32rem] overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-700">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Powiadomienia</h3>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
               >
                 Oznacz wszystkie jako przeczytane
               </button>
@@ -182,17 +182,17 @@ export default function NotificationBell() {
 
           <div className="overflow-y-auto flex-1">
             {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-500">
+              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                 <Bell className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>Brak powiadomień</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
-                      !notification.is_read ? 'bg-blue-50' : ''
+                    className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${
+                      !notification.is_read ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -203,31 +203,31 @@ export default function NotificationBell() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className={`text-sm font-medium ${
-                            !notification.is_read ? 'text-gray-900' : 'text-gray-700'
+                            !notification.is_read ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'
                           }`}>
                             {notification.title}
                           </h4>
                           <button
                             onClick={() => deleteNotification(notification.id)}
-                            className="flex-shrink-0 p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                            className="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
 
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                           {notification.message}
                         </p>
 
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-gray-500 dark:text-gray-500">
                             {formatTime(notification.created_at)}
                           </span>
 
                           {!notification.is_read && (
                             <button
                               onClick={() => markAsRead(notification.id)}
-                              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                             >
                               Oznacz jako przeczytane
                             </button>
