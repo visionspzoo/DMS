@@ -69,7 +69,6 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
         .eq('id', user.id)
         .maybeSingle();
       if (data) {
-        console.log('User role loaded:', data.role);
         setUserRole(data.role);
       }
     };
@@ -87,12 +86,6 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
       if (error) throw error;
       if (data) {
         setContract(data);
-        console.log('Contract loaded:', {
-          status: data.status,
-          uploaded_by: data.uploaded_by,
-          current_approver: data.current_approver,
-          user_id: user?.id,
-        });
         if (!data.google_doc_id) {
           loadPdfData(data.id);
         }
@@ -448,6 +441,17 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const hasPdf = !!pdfBase64 && !contract.google_doc_id;
   const allUserIds = [...new Set(annotations.map(a => a.user_id))];
 
+  const roleToStatus: Record<string, string> = {
+    'Specjalista': 'pending_specialist',
+    'Kierownik': 'pending_manager',
+    'Dyrektor': 'pending_director',
+    'CEO': 'pending_ceo',
+  };
+  const isAtMyLevel = userRole ? roleToStatus[userRole] === contract.status : false;
+  const isMyContract = contract.uploaded_by === user?.id;
+  const canForward = isAtMyLevel && (isMyContract || contract.current_approver === user?.id);
+  const canApproveReject = contract.status.startsWith('pending') && contract.status !== 'pending_signature' && contract.current_approver === user?.id;
+
   return (
     <div className="h-full flex flex-col bg-light-bg dark:bg-dark-bg overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-light-surface dark:bg-dark-surface border-b border-slate-200 dark:border-slate-700/50 flex-shrink-0">
@@ -471,7 +475,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {contract.status === 'draft' && contract.uploaded_by === user?.id && (
+          {(contract.status === 'draft' && isMyContract || canForward) && (
             <>
               <button
                 onClick={sendToApproval}
@@ -491,7 +495,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
               </button>
             </>
           )}
-          {contract.status.startsWith('pending') && contract.status !== 'pending_signature' && contract.current_approver === user?.id && (
+          {canApproveReject && (
             <>
               <button
                 onClick={() => approveContract(contract.status)}
