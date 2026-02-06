@@ -7,6 +7,7 @@ import { InvoiceList } from './components/Dashboard/InvoiceListPage';
 import AIAgent from './components/AIAgent/AIAgent';
 import { ContractsPage } from './components/Contracts/ContractsPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
+import NotificationBell from './components/Dashboard/NotificationBell';
 import { useState } from 'react';
 import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download } from 'lucide-react';
 
@@ -110,6 +111,7 @@ function AppContent() {
         {/* Top Bar */}
         <header className="bg-light-surface dark:bg-dark-surface border-b border-slate-200 dark:border-slate-700/50 px-4 py-2">
           <div className="flex items-center justify-end gap-2">
+            <NotificationBell />
             <button
               onClick={() => setDarkMode(!darkMode)}
               className="p-1.5 text-text-primary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant rounded-lg transition-colors"
