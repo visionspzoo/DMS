@@ -1,14 +1,15 @@
 /*
   # Sync User Email Invoices Edge Function
 
-  This function connects to user's email accounts via IMAP,
+  This function connects to user's email accounts via Gmail API (OAuth),
   downloads PDF attachments, and imports them as invoices.
 
   Features:
-  - IMAP connection to various email providers
+  - Gmail API connection with OAuth tokens
   - PDF attachment extraction
   - Automatic invoice creation
   - OCR processing integration
+  - Smart duplicate detection
 */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -24,10 +25,9 @@ interface EmailConfig {
   user_id: string;
   email_address: string;
   provider: string;
-  imap_server: string;
-  imap_port: number;
-  email_username: string;
-  email_password: string;
+  oauth_access_token: string;
+  oauth_refresh_token: string;
+  oauth_token_expiry: string;
   is_active: boolean;
 }
 
@@ -134,39 +134,96 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+async function refreshAccessToken(
+  supabase: any,
+  config: EmailConfig
+): Promise<string> {
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID")!;
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      refresh_token: config.oauth_refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error("Failed to refresh access token");
+  }
+
+  const tokens = await tokenResponse.json();
+
+  const expiryDate = new Date();
+  expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
+
+  await supabase
+    .from("user_email_configs")
+    .update({
+      oauth_access_token: tokens.access_token,
+      oauth_token_expiry: expiryDate.toISOString(),
+    })
+    .eq("id", config.id);
+
+  return tokens.access_token;
+}
+
+async function getValidAccessToken(
+  supabase: any,
+  config: EmailConfig
+): Promise<string> {
+  const expiryTime = new Date(config.oauth_token_expiry).getTime();
+  const now = new Date().getTime();
+
+  if (now >= expiryTime - 5 * 60 * 1000) {
+    console.log("Token expired or expiring soon, refreshing...");
+    return await refreshAccessToken(supabase, config);
+  }
+
+  return config.oauth_access_token;
+}
+
 async function syncEmailAccount(
   supabase: any,
   config: EmailConfig,
   userId: string
 ): Promise<number> {
-  console.log(`Connecting to ${config.email_address} via IMAP...`);
+  console.log(`Connecting to Gmail for ${config.email_address}...`);
 
-  const ImapClient = (await import("npm:emailjs-imap-client@3.1.0")).default;
-
-  const client = new ImapClient(config.imap_server, config.imap_port, {
-    auth: {
-      user: config.email_username,
-      pass: config.email_password,
-    },
-    useSecureTransport: true,
-    logLevel: "error",
-  });
-
-  await client.connect();
-  console.log("Connected to IMAP server");
-
-  await client.selectMailbox("INBOX");
-  console.log("Selected INBOX");
+  const accessToken = await getValidAccessToken(supabase, config);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const dateStr = thirtyDaysAgo.toISOString().split("T")[0].replace(/-/g, "");
+  const afterDate = Math.floor(thirtyDaysAgo.getTime() / 1000);
 
-  const messages = await client.search("INBOX", {
-    since: dateStr,
-  });
+  const listResponse = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=after:${afterDate} has:attachment`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
 
-  console.log(`Found ${messages.length} messages in last 30 days`);
+  if (!listResponse.ok) {
+    const errorData = await listResponse.json();
+    throw new Error(`Failed to list messages: ${JSON.stringify(errorData)}`);
+  }
+
+  const { messages } = await listResponse.json();
+
+  if (!messages || messages.length === 0) {
+    console.log("No messages found with attachments");
+    return 0;
+  }
+
+  console.log(`Found ${messages.length} messages with attachments`);
 
   const { data: processedMessages } = await supabase
     .from("processed_email_messages")
@@ -179,144 +236,146 @@ async function syncEmailAccount(
 
   let syncedCount = 0;
 
-  for (const msgSeq of messages.slice(0, 50)) {
+  for (const msg of messages) {
     try {
-      const messageInfo = await client.listMessages("INBOX", msgSeq, [
-        "body.peek[]",
-        "uid",
-      ]);
+      const messageId = msg.id;
 
-      if (!messageInfo || messageInfo.length === 0) continue;
-
-      const message = messageInfo[0];
-      const messageUid = message.uid?.toString();
-
-      if (!messageUid) continue;
-
-      if (processedUids.has(messageUid)) {
-        console.log(`Message ${messageUid} already processed, skipping`);
+      if (processedUids.has(messageId)) {
+        console.log(`Message ${messageId} already processed, skipping`);
         continue;
       }
 
-      const bodyPart = message["body[]"];
-      if (!bodyPart) continue;
+      const messageResponse = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
 
-      const { default: PostalMime } = await import("npm:postal-mime@2.2.0");
-      const parser = new PostalMime();
-      const email = await parser.parse(bodyPart);
-
-      if (!email.attachments || email.attachments.length === 0) {
-        await supabase.from("processed_email_messages").insert({
-          email_config_id: config.id,
-          message_uid: messageUid,
-          message_id: email.messageId,
-          attachment_count: 0,
-          invoice_count: 0,
-        });
+      if (!messageResponse.ok) {
+        console.error(`Failed to fetch message ${messageId}`);
         continue;
       }
+
+      const message = await messageResponse.json();
 
       let attachmentCount = 0;
       let invoiceCount = 0;
 
-      for (const attachment of email.attachments) {
-        if (!attachment.filename?.toLowerCase().endsWith(".pdf")) {
-          continue;
-        }
+      if (message.payload.parts) {
+        for (const part of message.payload.parts) {
+          if (part.filename && part.filename.toLowerCase().endsWith(".pdf") && part.body.attachmentId) {
+            attachmentCount++;
+            console.log(`Processing attachment: ${part.filename}`);
 
-        attachmentCount++;
-        console.log(`Processing attachment: ${attachment.filename}`);
+            const attachmentResponse = await fetch(
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${part.body.attachmentId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
 
-        const pdfContent = attachment.content;
-
-        const isInvoice = await verifyIsInvoice(pdfContent);
-        if (!isInvoice) {
-          console.log(`Attachment ${attachment.filename} is not an invoice, skipping`);
-          continue;
-        }
-
-        const fileName = `${Date.now()}_${attachment.filename}`;
-        const filePath = `invoices/${fileName}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("documents")
-          .upload(filePath, pdfContent, {
-            contentType: "application/pdf",
-          });
-
-        if (uploadError) {
-          console.error("Upload error:", uploadError);
-          continue;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from("documents")
-          .getPublicUrl(filePath);
-
-        const base64Content = btoa(
-          String.fromCharCode(...new Uint8Array(pdfContent))
-        );
-
-        const { data: invoiceData, error: insertError } = await supabase
-          .from("invoices")
-          .insert({
-            file_url: publicUrl,
-            pdf_base64: base64Content,
-            uploaded_by: userId,
-            description: `Faktura z email: ${config.email_address}`,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error("Insert error:", insertError);
-          continue;
-        }
-
-        console.log(`Created invoice: ${invoiceData.id}`);
-
-        try {
-          const ocrResponse = await fetch(
-            `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                fileUrl: publicUrl,
-                invoiceId: invoiceData.id,
-              }),
+            if (!attachmentResponse.ok) {
+              console.error(`Failed to fetch attachment ${part.filename}`);
+              continue;
             }
-          );
 
-          if (ocrResponse.ok) {
-            console.log(`OCR processed for invoice ${invoiceData.id}`);
+            const attachmentData = await attachmentResponse.json();
+            const pdfData = Uint8Array.from(atob(attachmentData.data.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+            const isInvoice = await verifyIsInvoice(pdfData);
+            if (!isInvoice) {
+              console.log(`Attachment ${part.filename} is not an invoice, skipping`);
+              continue;
+            }
+
+            const fileName = `${Date.now()}_${part.filename}`;
+            const filePath = `invoices/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+              .from("documents")
+              .upload(filePath, pdfData, {
+                contentType: "application/pdf",
+              });
+
+            if (uploadError) {
+              console.error("Upload error:", uploadError);
+              continue;
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+              .from("documents")
+              .getPublicUrl(filePath);
+
+            const base64Content = btoa(
+              String.fromCharCode(...new Uint8Array(pdfData))
+            );
+
+            const { data: invoiceData, error: insertError } = await supabase
+              .from("invoices")
+              .insert({
+                file_url: publicUrl,
+                pdf_base64: base64Content,
+                uploaded_by: userId,
+                description: `Faktura z email: ${config.email_address}`,
+              })
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error("Insert error:", insertError);
+              continue;
+            }
+
+            console.log(`Created invoice: ${invoiceData.id}`);
+
+            try {
+              const ocrResponse = await fetch(
+                `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    fileUrl: publicUrl,
+                    invoiceId: invoiceData.id,
+                  }),
+                }
+              );
+
+              if (ocrResponse.ok) {
+                console.log(`OCR processed for invoice ${invoiceData.id}`);
+              }
+            } catch (ocrError) {
+              console.error("OCR error:", ocrError);
+            }
+
+            invoiceCount++;
+            syncedCount++;
           }
-        } catch (ocrError) {
-          console.error("OCR error:", ocrError);
         }
-
-        invoiceCount++;
-        syncedCount++;
       }
 
       await supabase.from("processed_email_messages").insert({
         email_config_id: config.id,
-        message_uid: messageUid,
-        message_id: email.messageId,
+        message_uid: messageId,
+        message_id: messageId,
         attachment_count: attachmentCount,
         invoice_count: invoiceCount,
       });
 
-      processedUids.add(messageUid);
+      processedUids.add(messageId);
     } catch (msgError: any) {
       console.error("Error processing message:", msgError);
     }
   }
 
-  await client.close();
   console.log(`Synced ${syncedCount} invoices from ${config.email_address}`);
 
   return syncedCount;

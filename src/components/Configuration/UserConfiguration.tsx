@@ -18,24 +18,14 @@ interface EmailConfig {
   user_id: string;
   email_address: string;
   provider: string;
-  imap_server: string;
-  imap_port: number;
-  email_username: string;
-  email_password: string;
+  oauth_access_token: string | null;
+  oauth_refresh_token: string | null;
+  oauth_token_expiry: string | null;
   is_active: boolean;
   last_sync_at: string | null;
   created_at: string;
   updated_at: string;
 }
-
-const EMAIL_PROVIDERS = {
-  gmail: { name: 'Gmail', server: 'imap.gmail.com', port: 993 },
-  outlook: { name: 'Outlook', server: 'outlook.office365.com', port: 993 },
-  wp: { name: 'WP', server: 'imap.wp.pl', port: 993 },
-  onet: { name: 'Onet', server: 'imap.poczta.onet.pl', port: 993 },
-  interia: { name: 'Interia', server: 'poczta.interia.pl', port: 993 },
-  custom: { name: 'Własny IMAP', server: '', port: 993 },
-};
 
 export default function UserConfiguration() {
   const { user, profile } = useAuth();
@@ -47,24 +37,75 @@ export default function UserConfiguration() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [emailConfigs, setEmailConfigs] = useState<EmailConfig[]>([]);
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [emailForm, setEmailForm] = useState({
-    email_address: '',
-    provider: 'gmail',
-    imap_server: 'imap.gmail.com',
-    imap_port: 993,
-    email_username: '',
-    email_password: '',
-  });
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
 
   useEffect(() => {
     loadConfiguration();
     loadEmailConfigs();
+    handleOAuthCallback();
   }, [user]);
+
+  const handleOAuthCallback = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const error = urlParams.get('error');
+
+    if (error) {
+      setEmailMessage({ type: 'error', text: `Google OAuth error: ${error}` });
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (code) {
+      setEmailMessage({ type: 'success', text: 'Przetwarzanie autoryzacji Google...' });
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw new Error('Brak sesji użytkownika');
+        }
+
+        const redirectUri = `${window.location.origin}${window.location.pathname}`;
+
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth-callback`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              code,
+              redirect_uri: redirectUri,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Błąd podczas przetwarzania');
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+          setEmailMessage({ type: 'success', text: `Połączono z kontem: ${result.email}` });
+          await loadEmailConfigs();
+        } else {
+          throw new Error(result.error || 'Nieznany błąd');
+        }
+      } catch (error: any) {
+        console.error('OAuth callback error:', error);
+        setEmailMessage({ type: 'error', text: error.message || 'Wystąpił błąd podczas autoryzacji' });
+      } finally {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  };
 
   const loadConfiguration = async () => {
     try {
@@ -109,67 +150,32 @@ export default function UserConfiguration() {
     }
   };
 
-  const handleProviderChange = (provider: string) => {
-    const providerConfig = EMAIL_PROVIDERS[provider as keyof typeof EMAIL_PROVIDERS];
-    setEmailForm({
-      ...emailForm,
-      provider,
-      imap_server: providerConfig.server,
-      imap_port: providerConfig.port,
-    });
-  };
-
-  const handleAddEmail = async () => {
-    if (!emailForm.email_address.trim() || !emailForm.email_username.trim() || !emailForm.email_password.trim()) {
-      setEmailMessage({ type: 'error', text: 'Proszę wypełnić wszystkie pola' });
-      return;
-    }
-
-    if (!emailForm.email_address.includes('@')) {
-      setEmailMessage({ type: 'error', text: 'Nieprawidłowy adres email' });
-      return;
-    }
-
-    if (emailForm.provider === 'custom' && !emailForm.imap_server.trim()) {
-      setEmailMessage({ type: 'error', text: 'Proszę podać adres serwera IMAP' });
-      return;
-    }
-
-    setEmailSaving(true);
+  const handleConnectGoogle = async () => {
+    setConnectingGoogle(true);
     setEmailMessage(null);
 
     try {
-      const { error } = await supabase
-        .from('user_email_configs')
-        .insert({
-          user_id: user?.id,
-          email_address: emailForm.email_address,
-          provider: emailForm.provider,
-          imap_server: emailForm.imap_server,
-          imap_port: emailForm.imap_port,
-          email_username: emailForm.email_username,
-          email_password: emailForm.email_password,
-          is_active: true,
-        });
+      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      const REDIRECT_URI = `${window.location.origin}${window.location.pathname}`;
 
-      if (error) throw error;
+      const scopes = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/userinfo.email',
+      ].join(' ');
 
-      setEmailMessage({ type: 'success', text: 'Skrzynka email została dodana pomyślnie' });
-      setShowEmailForm(false);
-      setEmailForm({
-        email_address: '',
-        provider: 'gmail',
-        imap_server: 'imap.gmail.com',
-        imap_port: 993,
-        email_username: '',
-        email_password: '',
-      });
-      await loadEmailConfigs();
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${GOOGLE_CLIENT_ID}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&scope=${encodeURIComponent(scopes)}` +
+        `&access_type=offline` +
+        `&prompt=consent`;
+
+      window.location.href = authUrl;
     } catch (error: any) {
-      console.error('Error adding email config:', error);
-      setEmailMessage({ type: 'error', text: 'Błąd: ' + error.message });
-    } finally {
-      setEmailSaving(false);
+      console.error('Error connecting to Google:', error);
+      setEmailMessage({ type: 'error', text: 'Błąd podczas łączenia z Google: ' + error.message });
+      setConnectingGoogle(false);
     }
   };
 
@@ -464,10 +470,10 @@ export default function UserConfiguration() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-              Skrzynki Email
+              Skrzynki Email (Google Workspace)
             </h2>
             <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-              Automatyczny import faktur z załączników email
+              Automatyczny import faktur z załączników email przez OAuth
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -482,134 +488,39 @@ export default function UserConfiguration() {
               </button>
             )}
             <button
-              onClick={() => setShowEmailForm(!showEmailForm)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-xs"
+              onClick={handleConnectGoogle}
+              disabled={connectingGoogle}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
             >
-              <Plus className="w-3 h-3" />
-              Dodaj skrzynkę
+              {connectingGoogle ? (
+                <>
+                  <Loader className="w-3 h-3 animate-spin" />
+                  Łączenie...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3 h-3" />
+                  Połącz z Google
+                </>
+              )}
             </button>
           </div>
         </div>
 
-        {showEmailForm && (
-          <div className="mb-4 p-3 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg border border-slate-300 dark:border-slate-600">
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                    Adres email
-                  </label>
-                  <input
-                    type="email"
-                    value={emailForm.email_address}
-                    onChange={(e) => setEmailForm({ ...emailForm, email_address: e.target.value })}
-                    placeholder="twoj@email.com"
-                    className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                    Provider
-                  </label>
-                  <select
-                    value={emailForm.provider}
-                    onChange={(e) => handleProviderChange(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  >
-                    {Object.entries(EMAIL_PROVIDERS).map(([key, value]) => (
-                      <option key={key} value={key}>{value.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {emailForm.provider === 'custom' && (
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Serwer IMAP
-                    </label>
-                    <input
-                      type="text"
-                      value={emailForm.imap_server}
-                      onChange={(e) => setEmailForm({ ...emailForm, imap_server: e.target.value })}
-                      placeholder="imap.example.com"
-                      className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Port
-                    </label>
-                    <input
-                      type="number"
-                      value={emailForm.imap_port}
-                      onChange={(e) => setEmailForm({ ...emailForm, imap_port: parseInt(e.target.value) })}
-                      className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                    Login/Username
-                  </label>
-                  <input
-                    type="text"
-                    value={emailForm.email_username}
-                    onChange={(e) => setEmailForm({ ...emailForm, email_username: e.target.value })}
-                    placeholder="login"
-                    className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                    Hasło
-                  </label>
-                  <input
-                    type="password"
-                    value={emailForm.email_password}
-                    onChange={(e) => setEmailForm({ ...emailForm, email_password: e.target.value })}
-                    placeholder="••••••••"
-                    className="w-full px-2 py-1.5 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                <Info className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] text-blue-800 dark:text-blue-300">
-                  Dla Gmail użyj <strong>hasła aplikacji</strong>, nie głównego hasła. Włącz weryfikację dwuetapową i wygeneruj hasło aplikacji w ustawieniach konta Google.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowEmailForm(false)}
-                  className="px-3 py-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
-                >
-                  Anuluj
-                </button>
-                <button
-                  onClick={handleAddEmail}
-                  disabled={emailSaving}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium text-xs"
-                >
-                  {emailSaving ? (
-                    <>
-                      <Loader className="w-3 h-3 animate-spin" />
-                      Zapisywanie...
-                    </>
-                  ) : (
-                    'Dodaj'
-                  )}
-                </button>
-              </div>
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div className="flex items-start gap-2">
+            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 dark:text-blue-300">
+              <p className="font-semibold mb-1">Jak to działa?</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Połącz swoje konto Google Workspace przez OAuth</li>
+                <li>System automatycznie pobiera załączniki PDF z wiadomości email</li>
+                <li>OCR weryfikuje czy załącznik to faktura przed importem</li>
+                <li>Tylko faktury są importowane - inne pliki są ignorowane</li>
+              </ul>
             </div>
           </div>
-        )}
+        </div>
 
         {emailMessage && (
           <div
@@ -638,7 +549,7 @@ export default function UserConfiguration() {
 
         {emailConfigs.length === 0 ? (
           <div className="text-center py-6 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-            Nie masz jeszcze żadnych skonfigurowanych skrzynek email
+            Nie masz jeszcze żadnych połączonych kont Google Workspace
           </div>
         ) : (
           <div className="space-y-2">
@@ -664,7 +575,7 @@ export default function UserConfiguration() {
                         </span>
                       </div>
                       <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-                        {EMAIL_PROVIDERS[emailConfig.provider as keyof typeof EMAIL_PROVIDERS]?.name || emailConfig.provider} • {emailConfig.imap_server}:{emailConfig.imap_port}
+                        Google Workspace • OAuth
                       </p>
                       {emailConfig.last_sync_at && (
                         <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
