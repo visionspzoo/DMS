@@ -108,7 +108,7 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
       const roleMapping: Record<string, string> = {
         manager: 'pending_director',
         director: 'pending_ceo',
-        ceo: 'approved',
+        ceo: 'pending_signature',
       };
 
       const nextStatus = roleMapping[myApproval.approver_role] || contract.status;

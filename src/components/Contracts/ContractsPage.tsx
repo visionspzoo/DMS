@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UploadContract } from './UploadContract';
@@ -18,43 +18,85 @@ interface Contract {
   uploaded_by: string;
   department_id: string | null;
   departments?: { name: string };
-  uploader?: { full_name: string };
 }
+
+type TabKey = 'robocze' | 'oczekujace' | 'do_podpisu' | 'podpisane';
 
 interface ContractsPageProps {
   onOpenContract: (id: string) => void;
 }
+
+const STATUS_LABELS: Record<string, { text: string; className: string }> = {
+  draft: { text: 'Szkic', className: 'bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400' },
+  pending_manager: { text: 'U kierownika', className: 'bg-yellow-500/10 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-400' },
+  pending_director: { text: 'U dyrektora', className: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' },
+  pending_ceo: { text: 'U CEO', className: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400' },
+  pending_signature: { text: 'Do podpisu', className: 'bg-teal-500/10 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400' },
+  signed: { text: 'Podpisana', className: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' },
+  approved: { text: 'Zatwierdzona', className: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' },
+  rejected: { text: 'Odrzucona', className: 'bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400' },
+};
 
 export function ContractsPage({ onOpenContract }: ContractsPageProps) {
   const { user } = useAuth();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<TabKey>('robocze');
+  const [counts, setCounts] = useState<Record<TabKey, number>>({ robocze: 0, oczekujace: 0, do_podpisu: 0, podpisane: 0 });
 
   useEffect(() => {
     if (user) {
       loadContracts();
+      loadCounts();
     }
-  }, [user, statusFilter]);
+  }, [user, activeTab]);
+
+  const loadCounts = async () => {
+    if (!user) return;
+    try {
+      const { data: all } = await supabase
+        .from('contracts')
+        .select('id, uploaded_by, current_approver, status');
+
+      if (!all) return;
+
+      setCounts({
+        robocze: all.filter(c => c.uploaded_by === user.id).length,
+        oczekujace: all.filter(c => c.current_approver === user.id && c.status.startsWith('pending_')).length,
+        do_podpisu: all.filter(c => c.status === 'pending_signature').length,
+        podpisane: all.filter(c => c.status === 'signed').length,
+      });
+    } catch {
+      // ignore
+    }
+  };
 
   const loadContracts = async () => {
+    if (!user) return;
     try {
       setLoading(true);
       let query = supabase
         .from('contracts')
-        .select(`
-          *,
-          departments(name)
-        `)
+        .select('*, departments(name)')
         .order('created_at', { ascending: false });
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      switch (activeTab) {
+        case 'robocze':
+          query = query.eq('uploaded_by', user.id);
+          break;
+        case 'oczekujace':
+          query = query.eq('current_approver', user.id).in('status', ['pending_manager', 'pending_director', 'pending_ceo']);
+          break;
+        case 'do_podpisu':
+          query = query.eq('status', 'pending_signature');
+          break;
+        case 'podpisane':
+          query = query.eq('status', 'signed');
+          break;
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
       setContracts(data || []);
     } catch (error: any) {
@@ -65,33 +107,35 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
   };
 
   const getStatusBadge = (status: string) => {
-    const badges: Record<string, { text: string; className: string; icon: any }> = {
-      draft: { text: 'Szkic', className: 'bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400', icon: FileText },
-      pending_manager: { text: 'Oczekuje na kierownika', className: 'bg-yellow-500/10 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-400', icon: Clock },
-      pending_director: { text: 'Oczekuje na dyrektora', className: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400', icon: Clock },
-      pending_ceo: { text: 'Oczekuje na CEO', className: 'bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20', icon: Clock },
-      approved: { text: 'Zatwierdzona', className: 'bg-status-success/10 text-status-success dark:bg-status-success/20', icon: CheckCircle },
-      rejected: { text: 'Odrzucona', className: 'bg-status-error/10 text-status-error dark:bg-status-error/20', icon: XCircle },
-    };
-
-    const badge = badges[status] || badges.draft;
-    const Icon = badge.icon;
-
+    const badge = STATUS_LABELS[status] || STATUS_LABELS.draft;
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.className}`}>
-        <Icon className="w-3 h-3" />
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.className}`}>
         {badge.text}
       </span>
     );
+  };
+
+  const tabs: { key: TabKey; label: string; icon: typeof FileText }[] = [
+    { key: 'robocze', label: 'Robocze', icon: FileText },
+    { key: 'oczekujace', label: 'Oczekujace', icon: Inbox },
+    { key: 'do_podpisu', label: 'Do podpisu', icon: PenTool },
+    { key: 'podpisane', label: 'Podpisane', icon: CheckCircle },
+  ];
+
+  const emptyMessages: Record<TabKey, { title: string; desc: string }> = {
+    robocze: { title: 'Brak umow', desc: 'Dodaj pierwsza umowe, aby rozpoczac' },
+    oczekujace: { title: 'Brak oczekujacych', desc: 'Nie masz umow czekajacych na Twoja decyzje' },
+    do_podpisu: { title: 'Brak umow do podpisu', desc: 'Zadna umowa nie oczekuje na podpis' },
+    podpisane: { title: 'Brak podpisanych umow', desc: 'Nie ma jeszcze podpisanych umow' },
   };
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Obieg umów</h1>
+          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Obieg umow</h1>
           <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
-            Zarządzaj umowami i śledź proces akceptacji
+            Zarzadzaj umowami i sledz proces akceptacji
           </p>
         </div>
         <button
@@ -99,41 +143,38 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
           className="flex items-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg transition-colors font-medium text-sm"
         >
           <Upload className="w-4 h-4" />
-          Dodaj umowę
+          Dodaj umowe
         </button>
       </div>
 
-      <div className="mb-4 flex gap-2 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
-        <button
-          onClick={() => setStatusFilter('all')}
-          className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-            statusFilter === 'all'
-              ? 'bg-brand-primary text-white'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          Wszystkie
-        </button>
-        <button
-          onClick={() => setStatusFilter('pending_manager')}
-          className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-            statusFilter === 'pending_manager'
-              ? 'bg-brand-primary text-white'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          Oczekujące
-        </button>
-        <button
-          onClick={() => setStatusFilter('approved')}
-          className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-            statusFilter === 'approved'
-              ? 'bg-brand-primary text-white'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          Zatwierdzone
-        </button>
+      <div className="mb-4 flex bg-light-surface dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-slate-700/50 p-1 gap-1">
+        {tabs.map(({ key, label, icon: Icon }) => {
+          const isActive = activeTab === key;
+          const count = counts[key];
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-medium transition-all text-sm relative ${
+                isActive
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+              {count > 0 && (
+                <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold leading-none px-1 ${
+                  isActive
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-200 dark:bg-slate-600 text-text-secondary-light dark:text-text-secondary-dark'
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -144,18 +185,20 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-8 text-center">
           <FileText className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
           <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-            Brak umów
+            {emptyMessages[activeTab].title}
           </h3>
           <p className="text-text-secondary-light dark:text-text-secondary-dark mb-4 text-sm">
-            Dodaj pierwszą umowę, aby rozpocząć
+            {emptyMessages[activeTab].desc}
           </p>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg transition-colors font-medium text-sm"
-          >
-            <Upload className="w-4 h-4" />
-            Dodaj umowę
-          </button>
+          {activeTab === 'robocze' && (
+            <button
+              onClick={() => setShowUpload(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg transition-colors font-medium text-sm"
+            >
+              <Upload className="w-4 h-4" />
+              Dodaj umowe
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-3">
@@ -163,7 +206,7 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
             <div
               key={contract.id}
               onClick={() => onOpenContract(contract.id)}
-              className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 hover:border-brand-primary/30 transition-all cursor-pointer"
+              className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 hover:border-brand-primary/30 transition-all cursor-pointer group"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -186,11 +229,11 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
                       {new Date(contract.created_at).toLocaleDateString('pl-PL')}
                     </span>
                     {contract.departments && (
-                      <span>Dział: {contract.departments.name}</span>
+                      <span>Dzial: {contract.departments.name}</span>
                     )}
                   </div>
                 </div>
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Eye className="w-4 h-4 text-brand-primary" />
                 </div>
               </div>
@@ -205,10 +248,10 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
           onSuccess={() => {
             setShowUpload(false);
             loadContracts();
+            loadCounts();
           }}
         />
       )}
-
     </div>
   );
 }

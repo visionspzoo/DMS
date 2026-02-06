@@ -180,12 +180,14 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { text: string; className: string }> = {
-      draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600' },
-      pending_manager: { text: 'Oczekuje na kierownika', className: 'bg-yellow-100 text-yellow-700' },
-      pending_director: { text: 'Oczekuje na dyrektora', className: 'bg-orange-100 text-orange-700' },
-      pending_ceo: { text: 'Oczekuje na CEO', className: 'bg-blue-100 text-blue-700' },
-      approved: { text: 'Zatwierdzona', className: 'bg-green-100 text-green-700' },
-      rejected: { text: 'Odrzucona', className: 'bg-red-100 text-red-700' },
+      draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400' },
+      pending_manager: { text: 'U kierownika', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' },
+      pending_director: { text: 'U dyrektora', className: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' },
+      pending_ceo: { text: 'U CEO', className: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' },
+      pending_signature: { text: 'Do podpisu', className: 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400' },
+      signed: { text: 'Podpisana', className: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' },
+      approved: { text: 'Zatwierdzona', className: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' },
+      rejected: { text: 'Odrzucona', className: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' },
     };
     const badge = badges[status] || badges.draft;
     return (
