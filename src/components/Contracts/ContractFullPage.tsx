@@ -99,6 +99,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({ pdf_base64: pdfBase64, use_ocr: false }),
         }

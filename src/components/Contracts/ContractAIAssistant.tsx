@@ -136,6 +136,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({ pdf_base64: base64, use_ocr: false }),
         }
@@ -183,6 +184,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             action: 'analyze_contract',
@@ -249,6 +251,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             action: 'chat',
