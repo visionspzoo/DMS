@@ -205,18 +205,18 @@ RETURNS text AS $$
 DECLARE
   current_year text;
   next_number integer;
-  contract_number text;
+  new_contract_number text;
 BEGIN
   current_year := TO_CHAR(CURRENT_DATE, 'YYYY');
 
-  SELECT COALESCE(MAX(CAST(SUBSTRING(contract_number FROM '\d+$') AS integer)), 0) + 1
+  SELECT COALESCE(MAX(CAST(SUBSTRING(contracts.contract_number FROM '\d+$') AS integer)), 0) + 1
   INTO next_number
   FROM contracts
-  WHERE contract_number LIKE 'UMW/' || current_year || '/%';
+  WHERE contracts.contract_number LIKE 'UMW/' || current_year || '/%';
 
-  contract_number := 'UMW/' || current_year || '/' || LPAD(next_number::text, 4, '0');
+  new_contract_number := 'UMW/' || current_year || '/' || LPAD(next_number::text, 4, '0');
 
-  RETURN contract_number;
+  RETURN new_contract_number;
 END;
 $$ LANGUAGE plpgsql;
 
