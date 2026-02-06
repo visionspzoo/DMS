@@ -110,11 +110,24 @@ Wypunktuj najważniejsze informacje. Używaj formatowania markdown.`;
 
   userContent.push({ type: 'text', text: prompt });
 
+  const validHistory = chatHistory
+    .filter(({ role }) => role === 'user' || role === 'assistant')
+    .reduce((acc: any[], msg) => {
+      const mappedRole = msg.role === 'assistant' ? 'assistant' : 'user';
+      if (acc.length > 0 && acc[acc.length - 1].role === mappedRole) {
+        acc[acc.length - 1].content += '\n' + msg.content;
+      } else {
+        acc.push({ role: mappedRole, content: msg.content });
+      }
+      return acc;
+    }, []);
+
+  if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
+    validHistory.pop();
+  }
+
   const messages: any[] = [
-    ...chatHistory.map(({ role, content }) => ({
-      role: role === 'assistant' ? 'assistant' : 'user',
-      content,
-    })),
+    ...validHistory,
     { role: 'user', content: userContent },
   ];
 

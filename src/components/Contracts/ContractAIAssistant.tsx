@@ -205,6 +205,10 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
+      const recentHistory = messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .slice(-6);
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
         {
@@ -219,12 +223,15 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
             contract_id: contractId,
             pdf_base64: pdfBase64 || undefined,
             prompt: userMessage.content,
-            chat_history: messages.slice(-5)
+            chat_history: recentHistory.map(({ role, content }) => ({ role, content }))
           }),
         }
       );
 
-      if (!response.ok) throw new Error('Blad odpowiedzi AI');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
 
       const data = await response.json();
 
