@@ -13,6 +13,7 @@ interface AIAgentRequest {
   action?: string;
   contract_id?: string;
   pdf_base64?: string;
+  pdf_text?: string;
   prompt?: string;
   chat_history?: Array<{ role: string; content: string; timestamp: Date }>;
 }
@@ -89,6 +90,7 @@ ${JSON.stringify(invoiceData, null, 2)}`;
 async function analyzeContract(
   prompt: string,
   pdfText: string | null,
+  pdfBase64: string | null,
   chatHistory: Array<{ role: string; content: string }>,
   apiKey: string
 ) {
@@ -99,12 +101,24 @@ async function analyzeContract(
 
 Odpowiadaj w języku polskim, zwięźle.
 
-${truncatedText ? `Treść umowy:\n${truncatedText}${pdfText && pdfText.length > maxTextLength ? '\n\n[Tekst został skrócony...]' : ''}` : 'UWAGA: Nie mam dostępu do treści umowy.'}`;
+${truncatedText ? `Treść umowy:\n${truncatedText}${pdfText && pdfText.length > maxTextLength ? '\n\n[Tekst został skrócony...]' : ''}` : 'UWAGA: Nie udało się wyekstrahować tekstu z dokumentu. Przeanalizuj dokument na podstawie załączonego pliku PDF.'}`;
 
-  const messages = [
+  const userContent: any[] = [{ type: 'text', text: prompt }];
+
+  if (!truncatedText && pdfBase64) {
+    userContent.push({
+      type: 'file',
+      file: {
+        filename: 'contract.pdf',
+        file_data: `data:application/pdf;base64,${pdfBase64}`,
+      },
+    });
+  }
+
+  const messages: any[] = [
     { role: 'system', content: systemPrompt },
     ...chatHistory,
-    { role: 'user', content: prompt },
+    { role: 'user', content: userContent },
   ];
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -115,7 +129,7 @@ ${truncatedText ? `Treść umowy:\n${truncatedText}${pdfText && pdfText.length >
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      messages: messages,
+      messages,
       temperature: 0.2,
       max_tokens: 4000,
     }),
@@ -129,12 +143,7 @@ ${truncatedText ? `Treść umowy:\n${truncatedText}${pdfText && pdfText.length >
   const data = await response.json();
   const content = data.choices[0].message.content;
 
-  const keyPointsMatch = content.match(/(?:Najważniejsze punkty|Kluczowe punkty|Najważniejsze informacje|Key points):?\s*\n((?:[-•*]\s*.+\n?)+)/i);
-  const keyPoints = keyPointsMatch
-    ? keyPointsMatch[1].split('\n').filter((line: string) => line.trim()).map((line: string) => line.replace(/^[-•*]\s*/, '').trim())
-    : [];
-
-  return { response: content, key_points: keyPoints };
+  return { response: content };
 }
 
 Deno.serve(async (req: Request) => {
@@ -202,13 +211,7 @@ Deno.serve(async (req: Request) => {
     const userRole = profile?.role || 'kierownik';
 
     const requestData: AIAgentRequest = await req.json();
-    const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_text, chat_history = [] } = requestData;
-
-    console.log(`AI Agent action: ${action} from user ${user.id} (${userRole})`);
-    console.log('Request keys:', Object.keys(requestData));
-    console.log('pdf_text present:', !!pdf_text);
-    console.log('pdf_text length:', pdf_text?.length || 0);
-    console.log('pdf_text preview:', pdf_text?.substring(0, 200) || 'N/A');
+    const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_text, pdf_base64, chat_history = [] } = requestData;
 
     if (action === 'analyze_contract' || action === 'chat') {
       if (!prompt) {
@@ -222,7 +225,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const historyFormatted = chat_history.map(({ role, content }: any) => ({ role, content }));
-      const result = await analyzeContract(prompt, pdf_text || null, historyFormatted, openaiApiKey);
+      const result = await analyzeContract(prompt, pdf_text || null, pdf_base64 || null, historyFormatted, openaiApiKey);
 
       return new Response(
         JSON.stringify({

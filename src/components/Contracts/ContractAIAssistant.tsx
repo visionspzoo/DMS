@@ -150,32 +150,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     }
   };
 
-  const extractTextWithOCR = async (base64: string): Promise<string> => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return '';
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ pdf_base64: base64, use_ocr: true }),
-        }
-      );
-
-      if (!response.ok) return '';
-      const data = await response.json();
-      return data.text || '';
-    } catch (error) {
-      console.error('Error with OCR:', error);
-      return '';
-    }
-  };
-
   const analyzeContract = async () => {
     if (!pdfBase64) return;
 
@@ -193,24 +167,12 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         timestamp: new Date()
       }]);
 
-      let pdfText = await extractTextFromPDF(pdfBase64);
+      const pdfText = await extractTextFromPDF(pdfBase64);
 
-      if (!pdfText || pdfText.length < 200) {
-        setMessages(prev => [...prev, {
-          role: 'system',
-          content: 'Tekst za krotki. Uzywam OCR...',
-          timestamp: new Date()
-        }]);
-        pdfText = await extractTextWithOCR(pdfBase64);
-      }
-
-      if (!pdfText || pdfText.length < 50) {
-        throw new Error('Nie udalo sie wyekstraktowac tekstu z dokumentu');
-      }
-
+      setMessages(prev => prev.filter(m => m.role !== 'system'));
       setMessages(prev => [...prev, {
         role: 'system',
-        content: `Wyekstraktowano ${pdfText.length} znakow. Analizuje umowe...`,
+        content: 'Analizuje umowe...',
         timestamp: new Date()
       }]);
 
@@ -225,7 +187,8 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           body: JSON.stringify({
             action: 'analyze_contract',
             contract_id: contractId,
-            pdf_text: pdfText,
+            pdf_base64: pdfBase64,
+            pdf_text: pdfText || undefined,
             prompt: promptToUse,
             chat_history: []
           }),
@@ -279,10 +242,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
 
       const pdfText = pdfBase64 ? await extractTextFromPDF(pdfBase64) : '';
 
-      const contextualPrompt = pdfText
-        ? `KONTEKST - Tresc umowy "${contractTitle}":\n${pdfText.substring(0, 8000)}\n\n---\n\nPYTANIE UZYTKOWNIKA: ${userMessage.content}\n\nOdpowiedz na pytanie na podstawie powyzszej umowy.`
-        : userMessage.content;
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
         {
@@ -294,8 +253,9 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           body: JSON.stringify({
             action: 'chat',
             contract_id: contractId,
-            pdf_text: pdfText,
-            prompt: contextualPrompt,
+            pdf_base64: pdfBase64 || undefined,
+            pdf_text: pdfText || undefined,
+            prompt: userMessage.content,
             chat_history: messages.slice(-5)
           }),
         }
