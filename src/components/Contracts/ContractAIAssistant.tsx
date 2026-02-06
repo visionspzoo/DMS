@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -22,11 +22,14 @@ interface ContractAIAssistantProps {
   pdfBase64: string | null;
 }
 
+const WELCOME_MESSAGE = 'Jestem asystentem AI do analizy umow. Wybierz prompt analizy lub wpisz wlasny, a nastepnie kliknij "Analizuj" aby rozpoczac.';
+
 export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: ContractAIAssistantProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const [analyzed, setAnalyzed] = useState(false);
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string>('');
@@ -38,14 +41,51 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const loadChatHistory = useCallback(async () => {
+    if (!user) return;
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from('contract_chat_messages')
+        .select('role, content, created_at')
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const restored: Message[] = data.map(row => ({
+          role: row.role as 'user' | 'assistant',
+          content: row.content,
+          timestamp: new Date(row.created_at),
+        }));
+        setMessages(restored);
+        setAnalyzed(true);
+      } else {
+        setMessages([{
+          role: 'assistant',
+          content: WELCOME_MESSAGE,
+          timestamp: new Date(),
+        }]);
+        setAnalyzed(false);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      setMessages([{
+        role: 'assistant',
+        content: WELCOME_MESSAGE,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [contractId, user]);
+
   useEffect(() => {
-    setMessages([{
-      role: 'assistant',
-      content: `Jestem asystentem AI do analizy umow. Wybierz prompt analizy lub wpisz wlasny, a nastepnie kliknij "Analizuj" aby rozpoczac.`,
-      timestamp: new Date()
-    }]);
+    loadChatHistory();
     loadSavedPrompts();
-  }, [contractTitle]);
+  }, [loadChatHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -61,6 +101,44 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const persistMessages = async (newMessages: Array<{ role: string; content: string }>) => {
+    if (!user) return;
+    try {
+      const rows = newMessages.map(m => ({
+        contract_id: contractId,
+        user_id: user.id,
+        role: m.role,
+        content: m.content,
+      }));
+      const { error } = await supabase
+        .from('contract_chat_messages')
+        .insert(rows);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error persisting chat messages:', error);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('contract_chat_messages')
+        .delete()
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setMessages([{
+        role: 'assistant',
+        content: WELCOME_MESSAGE,
+        timestamp: new Date(),
+      }]);
+      setAnalyzed(false);
+    } catch (error) {
+      console.error('Error clearing chat history:', error);
+    }
+  };
+
   const loadSavedPrompts = async () => {
     if (!user) return;
     try {
@@ -69,7 +147,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
       setSavedPrompts(data || []);
     } catch (error) {
@@ -88,7 +165,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           name: promptName.trim(),
           prompt_text: customPrompt.trim(),
         });
-
       if (error) throw error;
       setPromptName('');
       setShowSaveForm(false);
@@ -106,7 +182,6 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
         .from('contract_ai_prompts')
         .delete()
         .eq('id', promptId);
-
       if (error) throw error;
       if (selectedPromptId === promptId) {
         setSelectedPromptId('');
@@ -124,6 +199,44 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     setShowPromptDropdown(false);
   };
 
+  const getSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Brak sesji');
+    return session;
+  };
+
+  const callAI = async (
+    action: string,
+    prompt: string,
+    chatHistory: Array<{ role: string; content: string }>,
+    includePdf: boolean,
+  ) => {
+    const session = await getSession();
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action,
+          contract_id: contractId,
+          pdf_base64: includePdf ? (pdfBase64 || undefined) : undefined,
+          prompt,
+          chat_history: chatHistory,
+        }),
+      }
+    );
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText);
+    }
+    return response.json();
+  };
+
   const analyzeContract = async () => {
     if (!pdfBase64) return;
 
@@ -132,48 +245,28 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
-
       setMessages(prev => [...prev, {
         role: 'system',
         content: 'Analizuje umowe...',
         timestamp: new Date()
       }]);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            action: 'analyze_contract',
-            contract_id: contractId,
-            pdf_base64: pdfBase64,
-            prompt: promptToUse,
-            chat_history: []
-          }),
-        }
-      );
+      const data = await callAI('analyze_contract', promptToUse, [], true);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
+      const userMsg = { role: 'user', content: promptToUse };
+      const aiContent = data.response || 'Analiza zakonczona';
+      const assistantMsg = { role: 'assistant', content: aiContent };
 
-      const data = await response.json();
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.role !== 'system');
+        return [
+          ...filtered,
+          { ...userMsg, timestamp: new Date() } as Message,
+          { ...assistantMsg, timestamp: new Date() } as Message,
+        ];
+      });
 
-      setMessages(prev => prev.filter(m => m.role !== 'system'));
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Umowe przeanalizowano pomyslnie. Oto wyniki:\n\n${data.response || 'Analiza zakonczona'}\n\n---\nMozesz teraz zadawac pytania dotyczace tej umowy.`,
-        timestamp: new Date()
-      }]);
-
+      await persistMessages([userMsg, assistantMsg]);
       setAnalyzed(true);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -202,44 +295,29 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
-
-      const recentHistory = messages
+      const persistedHistory = messages
         .filter(m => m.role === 'user' || m.role === 'assistant')
-        .slice(-6);
+        .map(({ role, content }) => ({ role, content }));
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            action: 'chat',
-            contract_id: contractId,
-            pdf_base64: pdfBase64 || undefined,
-            prompt: userMessage.content,
-            chat_history: recentHistory.map(({ role, content }) => ({ role, content }))
-          }),
-        }
+      const data = await callAI(
+        'chat',
+        userMessage.content,
+        persistedHistory.slice(-10),
+        true,
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-
-      const data = await response.json();
-
-      setMessages(prev => [...prev, {
+      const aiContent = data.response || 'Przepraszam, nie moglem wygenerowac odpowiedzi.';
+      const assistantMsg: Message = {
         role: 'assistant',
-        content: data.response || 'Przepraszam, nie moglem wygenerowac odpowiedzi.',
+        content: aiContent,
         timestamp: new Date()
-      }]);
+      };
+
+      setMessages(prev => [...prev, assistantMsg]);
+      await persistMessages([
+        { role: 'user', content: userMessage.content },
+        { role: 'assistant', content: aiContent },
+      ]);
     } catch (error) {
       console.error('Error sending message:', error);
       setMessages(prev => [...prev, {
@@ -254,12 +332,41 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
 
   const selectedPrompt = savedPrompts.find(p => p.id === selectedPromptId);
 
+  if (loadingHistory) {
+    return (
+      <div className="h-full flex flex-col bg-light-surface dark:bg-dark-surface">
+        <div className="bg-gradient-to-r from-brand-primary to-blue-700 px-4 py-3 flex-shrink-0">
+          <div className="flex items-center gap-2 text-white">
+            <Sparkles className="w-4 h-4" />
+            <h3 className="font-semibold text-sm">Asystent AI</h3>
+          </div>
+          <p className="text-blue-100 text-xs mt-0.5">Analiza i pytania o umowe</p>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <Loader className="w-5 h-5 animate-spin text-brand-primary" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col bg-light-surface dark:bg-dark-surface">
       <div className="bg-gradient-to-r from-brand-primary to-blue-700 px-4 py-3 flex-shrink-0">
-        <div className="flex items-center gap-2 text-white">
-          <Sparkles className="w-4 h-4" />
-          <h3 className="font-semibold text-sm">Asystent AI</h3>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-white">
+            <Sparkles className="w-4 h-4" />
+            <h3 className="font-semibold text-sm">Asystent AI</h3>
+          </div>
+          {analyzed && (
+            <button
+              onClick={clearHistory}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-100 hover:text-white hover:bg-white/10 rounded transition-colors"
+              title="Wyczysc historie czatu"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Nowa analiza
+            </button>
+          )}
         </div>
         <p className="text-blue-100 text-xs mt-0.5">Analiza i pytania o umowe</p>
       </div>
