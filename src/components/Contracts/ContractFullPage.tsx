@@ -68,7 +68,10 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
-      if (data) setUserRole(data.role);
+      if (data) {
+        console.log('User role loaded:', data.role);
+        setUserRole(data.role);
+      }
     };
     fetchUserRole();
   }, [user]);
@@ -84,6 +87,12 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
       if (error) throw error;
       if (data) {
         setContract(data);
+        console.log('Contract loaded:', {
+          status: data.status,
+          uploaded_by: data.uploaded_by,
+          current_approver: data.current_approver,
+          user_id: user?.id,
+        });
         if (!data.google_doc_id) {
           loadPdfData(data.id);
         }
@@ -467,20 +476,18 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
               <button
                 onClick={sendToApproval}
                 disabled={!!sendingId}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
-                title="Wyslij do akceptacji"
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap"
               >
                 <Send className="w-4 h-4" />
-                <span className="hidden sm:inline">Do akceptacji</span>
+                Do akceptacji
               </button>
               <button
                 onClick={sendToSignature}
                 disabled={!!sendingId}
-                className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
-                title="Wyslij do podpisu"
+                className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap"
               >
                 <FileSignature className="w-4 h-4" />
-                <span className="hidden sm:inline">Do podpisu</span>
+                Do podpisu
               </button>
             </>
           )}
@@ -489,20 +496,18 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
               <button
                 onClick={() => approveContract(contract.status)}
                 disabled={!!sendingId}
-                className="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
-                title="Zatwierdz"
+                className="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap"
               >
                 <ThumbsUp className="w-4 h-4" />
-                <span className="hidden sm:inline">Zatwierdz</span>
+                Zatwierdz
               </button>
               <button
                 onClick={rejectContract}
                 disabled={!!sendingId}
-                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
-                title="Odrzuc"
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap"
               >
                 <X className="w-4 h-4" />
-                <span className="hidden sm:inline">Odrzuc</span>
+                Odrzuc
               </button>
             </>
           )}
@@ -510,11 +515,10 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
             <button
               onClick={rejectContract}
               disabled={!!sendingId}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
-              title="Odrzuc"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap"
             >
               <X className="w-4 h-4" />
-              <span className="hidden sm:inline">Odrzuc</span>
+              Odrzuc
             </button>
           )}
         </div>
