@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react';
+import { X, CheckCircle, XCircle, Clock, Sparkles, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { ContractViewer } from './ContractViewer';
@@ -87,11 +87,21 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
   };
 
 
-  const handleApprove = async () => {
+  const handleSendForward = async () => {
     if (!user) return;
 
     try {
       setSubmitting(true);
+
+      if (contract.status === 'pending_signature') {
+        await supabase
+          .from('contracts')
+          .update({ status: 'signed' })
+          .eq('id', contract.id);
+        onUpdate();
+        onClose();
+        return;
+      }
 
       const myApproval = approvals.find(a => a.profiles && a.approver_role);
       if (!myApproval) return;
@@ -106,6 +116,7 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
         .eq('id', myApproval.id);
 
       const roleMapping: Record<string, string> = {
+        specialist: 'pending_manager',
         manager: 'pending_director',
         director: 'pending_ceo',
         ceo: 'pending_signature',
@@ -121,10 +132,14 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
       onUpdate();
       onClose();
     } catch (error) {
-      console.error('Error approving:', error);
+      console.error('Error sending forward:', error);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleApprove = async () => {
+    await handleSendForward();
   };
 
   const handleReject = async () => {
@@ -161,6 +176,7 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
+      specialist: 'Specjalista',
       manager: 'Kierownik',
       director: 'Dyrektor',
       ceo: 'CEO',
@@ -307,7 +323,9 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
 
           {contract.status.startsWith('pending') && contract.current_approver === user?.id && (
             <div className="border-t border-slate-200 pt-6">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Twoja decyzja</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                {contract.status === 'pending_signature' ? 'Podpisz umowę' : 'Twoja decyzja'}
+              </h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -331,12 +349,12 @@ export function ContractDetails({ contract, onClose, onUpdate }: ContractDetails
                     Odrzuć
                   </button>
                   <button
-                    onClick={handleApprove}
+                    onClick={handleSendForward}
                     disabled={submitting}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
                   >
-                    <CheckCircle className="w-5 h-5" />
-                    Zatwierdź
+                    <ArrowRight className="w-5 h-5" />
+                    {contract.status === 'pending_signature' ? 'Podpisz' : 'Prześlij dalej'}
                   </button>
                 </div>
               </div>

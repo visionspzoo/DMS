@@ -181,6 +181,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { text: string; className: string }> = {
       draft: { text: 'Szkic', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400' },
+      pending_specialist: { text: 'U specjalisty', className: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' },
       pending_manager: { text: 'U kierownika', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' },
       pending_director: { text: 'U dyrektora', className: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400' },
       pending_ceo: { text: 'U CEO', className: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' },

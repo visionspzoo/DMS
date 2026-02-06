@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Send, Trash2, Highlighter } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Send, Trash2, Highlighter, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -100,6 +100,7 @@ export function ContractCommentsPanel({
         .eq('id', myApproval.id);
 
       const roleMapping: Record<string, string> = {
+        specialist: 'pending_manager',
         manager: 'pending_director',
         director: 'pending_ceo',
         ceo: 'pending_signature',
@@ -190,8 +191,63 @@ export function ContractCommentsPanel({
     }
   };
 
+  const handleSendForward = async () => {
+    if (!user) return;
+    try {
+      setSubmitting(true);
+
+      if (contractStatus === 'pending_signature') {
+        await supabase
+          .from('contracts')
+          .update({ status: 'signed' })
+          .eq('id', contractId);
+        setApprovalComment('');
+        onContractUpdate();
+        return;
+      }
+
+      const myApproval = approvals.find(a => a.profiles && a.approver_role);
+      if (!myApproval) return;
+
+      await supabase
+        .from('contract_approvals')
+        .update({
+          status: 'approved',
+          comment: approvalComment || null,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', myApproval.id);
+
+      const roleMapping: Record<string, string> = {
+        specialist: 'pending_manager',
+        manager: 'pending_director',
+        director: 'pending_ceo',
+        ceo: 'pending_signature',
+      };
+      const nextStatus = roleMapping[myApproval.approver_role] || contractStatus;
+
+      await supabase
+        .from('contracts')
+        .update({ status: nextStatus })
+        .eq('id', contractId);
+
+      setApprovalComment('');
+      onContractUpdate();
+      loadApprovals();
+    } catch (error) {
+      console.error('Error sending forward:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = { manager: 'Kierownik', director: 'Dyrektor', ceo: 'CEO' };
+    const labels: Record<string, string> = {
+      specialist: 'Specjalista',
+      manager: 'Kierownik',
+      director: 'Dyrektor',
+      ceo: 'CEO'
+    };
     return labels[role] || role;
   };
 
@@ -204,6 +260,7 @@ export function ContractCommentsPanel({
   };
 
   const canApprove = contractStatus.startsWith('pending') && currentApprover === user?.id;
+  const canSign = contractStatus === 'pending_signature' && currentApprover === user?.id;
 
   return (
     <div className="h-full flex flex-col bg-light-surface dark:bg-dark-surface">
@@ -276,10 +333,10 @@ export function ContractCommentsPanel({
 
             {annotationsSection}
 
-            {canApprove && (
+            {(canApprove || canSign) && (
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 space-y-3">
                 <h4 className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                  Twoja decyzja
+                  {canSign ? 'Podpisz umowe' : 'Twoja decyzja'}
                 </h4>
                 <textarea
                   value={approvalComment}
@@ -298,12 +355,12 @@ export function ContractCommentsPanel({
                     Odrzuc
                   </button>
                   <button
-                    onClick={handleApprove}
+                    onClick={handleSendForward}
                     disabled={submitting}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors disabled:opacity-50 text-sm font-medium"
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    Zatwierdz
+                    <ArrowRight className="w-4 h-4" />
+                    {canSign ? 'Podpisz' : 'Przeslij dalej'}
                   </button>
                 </div>
               </div>

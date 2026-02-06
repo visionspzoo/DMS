@@ -28,6 +28,7 @@ interface ContractsPageProps {
 
 const STATUS_LABELS: Record<string, { text: string; className: string }> = {
   draft: { text: 'Szkic', className: 'bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400' },
+  pending_specialist: { text: 'U specjalisty', className: 'bg-purple-500/10 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400' },
   pending_manager: { text: 'U kierownika', className: 'bg-yellow-500/10 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-400' },
   pending_director: { text: 'U dyrektora', className: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' },
   pending_ceo: { text: 'U CEO', className: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400' },
@@ -86,7 +87,7 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
           query = query.eq('uploaded_by', user.id);
           break;
         case 'oczekujace':
-          query = query.eq('current_approver', user.id).in('status', ['pending_manager', 'pending_director', 'pending_ceo']);
+          query = query.eq('current_approver', user.id).in('status', ['pending_specialist', 'pending_manager', 'pending_director', 'pending_ceo']);
           break;
         case 'do_podpisu':
           query = query.eq('status', 'pending_signature');
