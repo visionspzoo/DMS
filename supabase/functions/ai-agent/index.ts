@@ -35,55 +35,189 @@ async function queryInvoiceDatabase(supabase: any, userRole: string, userId: str
   return invoices || [];
 }
 
-async function queryWithOpenAI(
+async function queryMLData(supabase: any) {
+  const { data: tagLearning } = await supabase
+    .from('tag_learning')
+    .select(`
+      vendor_name,
+      supplier_nip,
+      description_keywords,
+      tag:tag_id(id, name, color),
+      department:department_id(id, name),
+      amount_bucket,
+      frequency
+    `)
+    .order('frequency', { ascending: false })
+    .limit(100);
+
+  const { data: tags } = await supabase
+    .from('tags')
+    .select('id, name, color');
+
+  const { data: recentPredictions } = await supabase
+    .from('ml_tag_predictions')
+    .select(`
+      invoice_id,
+      tag:tag_id(id, name),
+      confidence,
+      source,
+      applied,
+      dismissed,
+      created_at
+    `)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  const { data: invoiceTags } = await supabase
+    .from('invoice_tags')
+    .select(`
+      invoice_id,
+      tag:tag_id(id, name)
+    `)
+    .limit(200);
+
+  return {
+    tagLearning: tagLearning || [],
+    tags: tags || [],
+    recentPredictions: recentPredictions || [],
+    invoiceTags: invoiceTags || [],
+  };
+}
+
+async function queryDepartmentStats(supabase: any) {
+  const { data: departments } = await supabase
+    .from('departments')
+    .select('id, name, monthly_limit, parent_department_id');
+
+  return departments || [];
+}
+
+async function queryWithClaude(
   message: string,
   invoiceData: any[],
+  mlData: any,
+  departments: any[],
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string
 ) {
-  const systemPrompt = `Jesteś asystentem AI pomagającym w zarządzaniu fakturami.
-Masz dostęp do bazy danych faktur i możesz odpowiadać na pytania dotyczące:
+  const tagLearningStats = mlData.tagLearning.reduce((acc: any, item: any) => {
+    const vendorKey = item.vendor_name || item.supplier_nip || 'unknown';
+    if (!acc[vendorKey]) acc[vendorKey] = [];
+    acc[vendorKey].push({
+      tag: item.tag?.name,
+      frequency: item.frequency,
+      amount_bucket: item.amount_bucket,
+      department: item.department?.name,
+    });
+    return acc;
+  }, {});
+
+  const predictionStats = {
+    total: mlData.recentPredictions.length,
+    applied: mlData.recentPredictions.filter((p: any) => p.applied).length,
+    dismissed: mlData.recentPredictions.filter((p: any) => p.dismissed).length,
+    avgConfidence: mlData.recentPredictions.length > 0
+      ? (mlData.recentPredictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / mlData.recentPredictions.length).toFixed(2)
+      : 0,
+  };
+
+  const tagUsage = mlData.invoiceTags.reduce((acc: any, it: any) => {
+    const tagName = it.tag?.name || 'unknown';
+    acc[tagName] = (acc[tagName] || 0) + 1;
+    return acc;
+  }, {});
+
+  const systemPrompt = `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania fakturami i analizy danych finansowych.
+Masz dostęp do pełnej bazy danych faktur, danych uczenia maszynowego (ML) i statystyk systemu.
+
+Możesz odpowiadać na pytania dotyczące:
 - Liczby faktur według statusu, działu, dostawcy
 - Sum wartości faktur (w PLN i innych walutach)
 - Dat wystawienia i terminów płatności
-- Statusów faktur (draft, waiting, accepted, rejected, paid)
-- Działów i limitów miesięcznych
+- Statusów faktur (draft=robocza, waiting=oczekujące, accepted=zaakceptowana, rejected=odrzucona, paid=opłacona)
+- Działów, limitów miesięcznych i hierarchii
 - Dostawców i ich numerów NIP/VAT ID
+- Tagów i kategorii faktur
+- Danych ML: wzorców tagowania, predykcji, trafności sugestii
+- Analizy trendów i wzorców w danych
+
+DANE SYSTEMU ML:
+1. Wzorce tagowania (nauka z akcji użytkowników):
+${JSON.stringify(tagLearningStats, null, 2)}
+
+2. Statystyki predykcji ML:
+${JSON.stringify(predictionStats, null, 2)}
+
+3. Popularne tagi i ich użycie:
+${JSON.stringify(tagUsage, null, 2)}
+
+4. Dostępne tagi w systemie:
+${JSON.stringify(mlData.tags.map((t: any) => t.name), null, 2)}
+
+DANE FAKTUR (JSON):
+${JSON.stringify(invoiceData.slice(0, 200), null, 2)}
+
+DANE DZIAŁÓW:
+${JSON.stringify(departments, null, 2)}
 
 Odpowiadaj w języku polskim, zwięźle i konkretnie.
+Używaj formatowania markdown gdy to pomaga czytelności.
 Zawsze podawaj źródło informacji (liczba faktur, suma wartości itp.).
-Jeśli nie masz wystarczających danych, powiedz o tym.
+Gdy pytanie dotyczy ML/tagów, uwzględnij dane z systemu uczenia maszynowego.
+Jeśli nie masz wystarczających danych, powiedz o tym.`;
 
-Dane faktur (JSON):
-${JSON.stringify(invoiceData, null, 2)}`;
+  const validHistory = conversationHistory
+    .filter(({ role }) => role === 'user' || role === 'assistant')
+    .reduce((acc: any[], msg) => {
+      const mappedRole = msg.role === 'assistant' ? 'assistant' : 'user';
+      if (acc.length > 0 && acc[acc.length - 1].role === mappedRole) {
+        acc[acc.length - 1].content += '\n' + msg.content;
+      } else {
+        acc.push({ role: mappedRole, content: msg.content });
+      }
+      return acc;
+    }, []);
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...conversationHistory,
+  while (validHistory.length > 0 && validHistory[0].role === 'assistant') {
+    validHistory.shift();
+  }
+
+  if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
+    validHistory.pop();
+  }
+
+  const messages: any[] = [
+    ...validHistory,
     { role: 'user', content: message },
   ];
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: messages,
-      temperature: 0.3,
-      max_tokens: 1500,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  const content = data.content
+    .filter((block: any) => block.type === 'text')
+    .map((block: any) => block.text)
+    .join('\n');
+
+  return content;
 }
 
 async function analyzeContractWithClaude(
@@ -215,24 +349,24 @@ Deno.serve(async (req: Request) => {
 
     const userRole = profile?.role || 'kierownik';
 
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!anthropicApiKey) {
+      return new Response(
+        JSON.stringify({
+          error: 'Anthropic API key not configured',
+          message: 'AuruśAI wymaga konfiguracji klucza Anthropic API',
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     const requestData: AIAgentRequest = await req.json();
     const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_base64, chat_history = [] } = requestData;
 
     if (action === 'analyze_contract' || action === 'chat') {
-      const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-      if (!anthropicApiKey) {
-        return new Response(
-          JSON.stringify({
-            error: 'Anthropic API key not configured',
-            message: 'Analiza umów wymaga konfiguracji klucza Anthropic API',
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-
       if (!prompt) {
         return new Response(
           JSON.stringify({ error: 'Prompt is required for contract analysis' }),
@@ -258,20 +392,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API key not configured',
-          message: 'Agent AI wymaga konfiguracji klucza OpenAI API',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
     if (!message) {
       return new Response(
         JSON.stringify({ error: 'Message is required' }),
@@ -282,13 +402,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const invoiceData = await queryInvoiceDatabase(supabase, userRole, user.id);
+    const [invoiceData, mlData, departments] = await Promise.all([
+      queryInvoiceDatabase(supabase, userRole, user.id),
+      queryMLData(supabase),
+      queryDepartmentStats(supabase),
+    ]);
 
-    const aiResponse = await queryWithOpenAI(
+    const aiResponse = await queryWithClaude(
       message,
       invoiceData,
+      mlData,
+      departments,
       conversationHistory,
-      openaiApiKey
+      anthropicApiKey
     );
 
     return new Response(

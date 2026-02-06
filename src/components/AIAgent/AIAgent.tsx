@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Brain } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Message {
@@ -14,7 +14,7 @@ export default function AIAgent() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Witaj! Jestem asystentem AI do zarządzania fakturami. Możesz zapytać mnie o:\n\n• Liczbę faktur według statusu lub działu\n• Sumy wartości faktur w różnych walutach\n• Informacje o konkretnych dostawcach\n• Terminy płatności\n• Statystyki miesięczne\n\nJak mogę Ci pomóc?',
+      content: 'Witaj! Jestem AuruśAI - asystentem do zarządzania fakturami i analizy danych. Korzystam z Claude AI i uczenia maszynowego.\n\nMogę pomóc z:\n\n• Analiza faktur - statusy, kwoty, terminy\n• Dane ML - wzorce tagowania, predykcje, trafność sugestii\n• Statystyki - trendy, działy, dostawcy\n• Raporty - podsumowania miesięczne, walutowe\n\nJak mogę Ci pomóc?',
       timestamp: new Date(),
     },
   ]);
@@ -111,9 +111,11 @@ export default function AIAgent() {
 
   const quickQuestions = [
     'Ile mam faktur do akceptacji?',
-    'Jaka jest suma zaakceptowanych faktur w tym miesiącu?',
+    'Jaka jest suma faktur w tym miesiącu?',
+    'Jakie wzorce tagowania wykrył ML?',
+    'Pokaż statystyki predykcji ML',
     'Które faktury oczekują na płatność?',
-    'Pokaż faktury w EUR',
+    'Pokaż popularne tagi',
   ];
 
   const handleQuickQuestion = (question: string) => {
@@ -144,13 +146,13 @@ export default function AIAgent() {
                   className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
                     message.role === 'user'
                       ? 'bg-gradient-to-br from-blue-500 to-cyan-500'
-                      : 'bg-gradient-to-br from-purple-500 to-indigo-600'
+                      : 'bg-gradient-to-br from-teal-500 to-emerald-600'
                   }`}
                 >
                   {message.role === 'user' ? (
                     <User className="w-5 h-5 text-white" />
                   ) : (
-                    <Bot className="w-5 h-5 text-white" />
+                    <Brain className="w-5 h-5 text-white" />
                   )}
                 </div>
                 <div
@@ -178,12 +180,12 @@ export default function AIAgent() {
             ))}
             {loading && (
               <div className="flex gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-white" />
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1">
                   <div className="inline-block px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800">
-                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                    <Loader2 className="w-5 h-5 animate-spin text-teal-600" />
                   </div>
                 </div>
               </div>
@@ -219,12 +221,12 @@ export default function AIAgent() {
                 onKeyPress={handleKeyPress}
                 placeholder="Zadaj pytanie o faktury..."
                 disabled={loading}
-                className="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleSendMessage}
                 disabled={!input.trim() || loading}
-                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl"
+                className="px-6 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
