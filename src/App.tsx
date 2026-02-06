@@ -54,7 +54,7 @@ function AppContent() {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+    <div className={`h-screen ${darkMode ? 'dark' : ''}`}>
       {/* Sidebar */}
       <aside className={`fixed left-0 top-0 h-screen ${sidebarOpen ? 'w-64' : 'w-16'} bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark border-r border-slate-200 dark:border-slate-700/50 transition-all duration-300 flex flex-col z-40`}>
         {/* Logo */}
@@ -106,7 +106,7 @@ function AppContent() {
       </aside>
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col ${sidebarOpen ? 'ml-64' : 'ml-16'} transition-all duration-300`}>
+      <div className={`h-screen flex flex-col ${sidebarOpen ? 'ml-64' : 'ml-16'} transition-all duration-300`}>
         {/* Top Bar */}
         <header className="bg-light-surface dark:bg-dark-surface border-b border-slate-200 dark:border-slate-700/50 px-4 py-2">
           <div className="flex items-center justify-end gap-2">

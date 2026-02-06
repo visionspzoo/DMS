@@ -120,7 +120,7 @@ export default function AIAgent() {
   };
 
   return (
-    <div className="min-h-full bg-light-bg dark:bg-dark-bg p-4">
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="mb-4">
         <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
           AuruśAI

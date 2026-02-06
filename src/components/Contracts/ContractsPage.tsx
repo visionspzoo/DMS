@@ -84,7 +84,7 @@ export function ContractsPage() {
   };
 
   return (
-    <div className="min-h-full bg-light-bg dark:bg-dark-bg p-4">
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Obieg umów</h1>

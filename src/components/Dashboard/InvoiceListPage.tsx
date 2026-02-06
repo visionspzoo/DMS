@@ -403,7 +403,7 @@ export function InvoiceList() {
   }
 
   return (
-    <div className="min-h-full bg-light-bg dark:bg-dark-bg p-4">
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="mb-4">
         <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Faktury w Obiegu</h1>
         <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">

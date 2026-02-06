@@ -374,7 +374,7 @@ export function KSEFInvoicesPage() {
   }
 
   return (
-    <div className="min-h-full bg-light-bg dark:bg-dark-bg p-4">
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
           <div>
