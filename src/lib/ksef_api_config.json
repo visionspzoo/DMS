@@ -1,0 +1,264 @@
+{
+  "service": {
+    "name": "KSeF Invoice API",
+    "description": "API do pobierania faktur z Krajowego Systemu e-Faktur (KSeF) - listy faktur, dane rekordów, pliki PDF i XML",
+    "version": "1.0.0",
+    "nip": "5851490834"
+  },
+  "connection": {
+    "baseUrl": "https://ksef-invoice-fetch.replit.app",
+    "baseUrl_comment": "Produkcyjny adres API KSEF na Replit",
+    "authentication": {
+      "type": "API Key",
+      "header": "x-api-key",
+      "key": "e33611b31b84e9cc52a26493af9c0aa9f2ab7b35990117ca8d955317b87433e3"
+    },
+    "timeout_ms": 30000,
+    "content_type": "application/json"
+  },
+  "endpoints": {
+    "status": {
+      "method": "GET",
+      "path": "/api/external/status",
+      "description": "Sprawdź status serwisu i sesji KSeF",
+      "response_example": {
+        "success": true,
+        "data": {
+          "service": "KSeF Invoice API",
+          "version": "1.0.0",
+          "nip": "5851490834",
+          "ksefSession": {
+            "active": true,
+            "validUntil": "2026-02-06T15:30:00.000Z"
+          },
+          "endpoints": [
+            "GET /api/external/status",
+            "GET /api/external/invoices",
+            "GET /api/external/invoices/:ksefNumber",
+            "GET /api/external/invoices/:ksefNumber/pdf",
+            "GET /api/external/invoices/:ksefNumber/xml"
+          ]
+        }
+      }
+    },
+    "invoices_list": {
+      "method": "GET",
+      "path": "/api/external/invoices",
+      "description": "Pobierz listę faktur z KSeF z filtrami",
+      "query_parameters": {
+        "dateFrom": {
+          "type": "string",
+          "format": "YYYY-MM-DD",
+          "required": true,
+          "example": "2025-12-01",
+          "description": "Data początkowa wyszukiwania"
+        },
+        "dateTo": {
+          "type": "string",
+          "format": "YYYY-MM-DD",
+          "required": true,
+          "example": "2026-02-06",
+          "description": "Data końcowa wyszukiwania"
+        },
+        "subjectType": {
+          "type": "string",
+          "enum": ["subject1", "subject2"],
+          "default": "subject2",
+          "description": "subject1 = faktury wystawione (sprzedaż), subject2 = faktury otrzymane (zakupy)"
+        },
+        "invoiceType": {
+          "type": "string",
+          "enum": ["all", "VAT", "KOR", "ZAL"],
+          "default": "all",
+          "description": "Typ faktury: all=wszystkie, VAT=podstawowa, KOR=korekta, ZAL=zaliczka"
+        },
+        "pageSize": {
+          "type": "number",
+          "min": 10,
+          "max": 250,
+          "default": 25,
+          "description": "Liczba faktur na stronie"
+        },
+        "pageOffset": {
+          "type": "number",
+          "min": 0,
+          "default": 0,
+          "description": "Przesunięcie strony (paginacja)"
+        }
+      },
+      "example_request": "GET /api/external/invoices?dateFrom=2025-12-01&dateTo=2026-02-06&subjectType=subject2&invoiceType=all&pageSize=25&pageOffset=0",
+      "response_example": {
+        "success": true,
+        "data": {
+          "invoices": [
+            {
+              "ksefNumber": "5252674798-20260202-D70460CBDF5F-32",
+              "invoiceNumber": "00084469/PL/N/PLN/2026/01",
+              "issueDate": "2026-02-02",
+              "invoicingDate": "2026-02-02",
+              "acquisitionDate": "2026-02-02T13:45:22.123Z",
+              "seller": {
+                "nip": "5252674798",
+                "name": "Allegro sp. z o.o."
+              },
+              "buyer": {
+                "identifier": { "type": "NIP", "value": "5851490834" },
+                "name": "AURA HERBALS SP. Z O.O."
+              },
+              "netAmount": 1500.00,
+              "vatAmount": 345.00,
+              "grossAmount": 1845.00,
+              "currency": "PLN",
+              "invoiceType": "VAT",
+              "hasAttachment": false,
+              "isSelfInvoicing": false
+            }
+          ],
+          "numberOfElements": 17,
+          "hasMore": false,
+          "pageSize": 25,
+          "pageOffset": 0
+        },
+        "meta": {
+          "nip": "5851490834",
+          "requestedAt": "2026-02-06T12:00:00.000Z",
+          "filters": {
+            "dateFrom": "2025-12-01",
+            "dateTo": "2026-02-06",
+            "subjectType": "subject2",
+            "invoiceType": "all"
+          }
+        }
+      }
+    },
+    "invoice_detail": {
+      "method": "GET",
+      "path": "/api/external/invoices/{ksefNumber}",
+      "description": "Pobierz pełne dane faktury (sparsowane z XML KSeF)",
+      "path_parameters": {
+        "ksefNumber": {
+          "type": "string",
+          "required": true,
+          "example": "5252674798-20260202-D70460CBDF5F-32",
+          "description": "Numer KSeF faktury"
+        }
+      },
+      "response_example": {
+        "success": true,
+        "data": {
+          "ksefNumber": "5252674798-20260202-D70460CBDF5F-32",
+          "invoiceNumber": "00084469/PL/N/PLN/2026/01",
+          "issueDate": "2026-02-02",
+          "saleDate": "",
+          "periodFrom": "2026-01-01",
+          "periodTo": "2026-01-31",
+          "invoiceType": "VAT",
+          "seller": {
+            "prefixVat": "PL",
+            "nip": "5252674798",
+            "name": "Allegro sp. z o.o.",
+            "address1": "ul. Wierzbięcice 1B",
+            "address2": "61-569 Poznań",
+            "country": "PL"
+          },
+          "buyer": {
+            "nip": "5851490834",
+            "name": "AURA HERBALS SP. Z O.O.",
+            "address1": "ul. Grunwaldzka 49/2",
+            "address2": "81-754 Sopot",
+            "country": "PL",
+            "corrAddress1": "ul. Grunwaldzka 49/2",
+            "corrAddress2": "81-754 Sopot",
+            "corrCountry": "PL",
+            "customerNumber": "AuraHerbals"
+          },
+          "lineItems": [
+            {
+              "lineNumber": "1",
+              "name": "Usługa marketingowa",
+              "unit": "usł.",
+              "quantity": 1,
+              "unitPrice": 1500.00,
+              "vatRate": "23",
+              "netValue": 1500.00,
+              "grossValue": 1845.00
+            }
+          ],
+          "additionalDescriptions": [
+            {
+              "key": "Numer klienta",
+              "value": "AuraHerbals"
+            }
+          ],
+          "bdo": "",
+          "systemInfo": "",
+          "netAmount": 1500.00,
+          "vatAmount": 345.00,
+          "grossAmount": 1845.00,
+          "currency": "PLN",
+          "verificationUrl": "https://qr.ksef.mf.gov.pl/invoice/5252674798/02-02-2026"
+        },
+        "meta": {
+          "ksefNumber": "5252674798-20260202-D70460CBDF5F-32",
+          "requestedAt": "2026-02-06T12:00:00.000Z",
+          "format": "parsed"
+        }
+      }
+    },
+    "invoice_pdf": {
+      "method": "GET",
+      "path": "/api/external/invoices/{ksefNumber}/pdf",
+      "description": "Pobierz fakturę jako PDF (format rządowy KSeF)",
+      "path_parameters": {
+        "ksefNumber": {
+          "type": "string",
+          "required": true,
+          "example": "5252674798-20260202-D70460CBDF5F-32"
+        }
+      },
+      "response": {
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"faktura-{ksefNumber}.pdf\"",
+        "body": "Binary PDF data"
+      }
+    },
+    "invoice_xml": {
+      "method": "GET",
+      "path": "/api/external/invoices/{ksefNumber}/xml",
+      "description": "Pobierz fakturę jako surowy XML z KSeF",
+      "path_parameters": {
+        "ksefNumber": {
+          "type": "string",
+          "required": true,
+          "example": "5252674798-20260202-D70460CBDF5F-32"
+        }
+      },
+      "response": {
+        "content_type": "application/xml",
+        "content_disposition": "attachment; filename=\"faktura-{ksefNumber}.xml\"",
+        "body": "Raw KSeF XML invoice data"
+      }
+    }
+  },
+  "error_codes": {
+    "UNAUTHORIZED": "Brak lub nieprawidłowy klucz API (header x-api-key)",
+    "API_KEY_NOT_CONFIGURED": "Klucz API nie jest skonfigurowany po stronie serwera",
+    "FETCH_ERROR": "Błąd komunikacji z KSeF API lub parsowania danych",
+    "PDF_ERROR": "Błąd generowania pliku PDF",
+    "XML_ERROR": "Błąd pobierania pliku XML z KSeF"
+  },
+  "error_response_format": {
+    "success": false,
+    "error": "Opis błędu",
+    "code": "KOD_BŁĘDU"
+  },
+  "integration_examples": {
+    "curl_status": "curl -H 'x-api-key: TWOJ_KLUCZ_API' https://TWOJ_ADRES/api/external/status",
+    "curl_invoices": "curl -H 'x-api-key: TWOJ_KLUCZ_API' 'https://TWOJ_ADRES/api/external/invoices?dateFrom=2025-12-01&dateTo=2026-02-06'",
+    "curl_invoice_detail": "curl -H 'x-api-key: TWOJ_KLUCZ_API' https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF",
+    "curl_pdf": "curl -H 'x-api-key: TWOJ_KLUCZ_API' -o faktura.pdf https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF/pdf",
+    "curl_xml": "curl -H 'x-api-key: TWOJ_KLUCZ_API' -o faktura.xml https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF/xml",
+    "javascript_fetch": "const response = await fetch('https://TWOJ_ADRES/api/external/invoices?dateFrom=2025-12-01&dateTo=2026-02-06', { headers: { 'x-api-key': 'TWOJ_KLUCZ_API' } }); const data = await response.json();",
+    "python_requests": "import requests; r = requests.get('https://TWOJ_ADRES/api/external/invoices', params={'dateFrom': '2025-12-01', 'dateTo': '2026-02-06'}, headers={'x-api-key': 'TWOJ_KLUCZ_API'}); data = r.json()"
+  }
+}

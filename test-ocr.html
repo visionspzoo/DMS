@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test OCR Function</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .success {
+      background: #d1fae5;
+      border: 1px solid #10b981;
+      color: #065f46;
+    }
+    .error {
+      background: #fee2e2;
+      border: 1px solid #ef4444;
+      color: #991b1b;
+    }
+    .info {
+      background: #dbeafe;
+      border: 1px solid #3b82f6;
+      color: #1e40af;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 600;
+      color: #374151;
+    }
+    .help {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Test OCR Function</h1>
+    <p>Narzędzie do testowania funkcji OCR bez interfejsu aplikacji</p>
+
+    <label for="supabaseUrl">Supabase URL</label>
+    <input
+      type="text"
+      id="supabaseUrl"
+      placeholder="https://twoj-projekt.supabase.co"
+      value=""
+    >
+    <div class="help">Znajdź w Project Settings → API → Project URL</div>
+
+    <label for="anonKey">Anon Key</label>
+    <input
+      type="text"
+      id="anonKey"
+      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      value=""
+    >
+    <div class="help">Znajdź w Project Settings → API → anon public</div>
+
+    <label for="fileUrl">URL do PDF</label>
+    <input
+      type="text"
+      id="fileUrl"
+      placeholder="https://twoj-projekt.supabase.co/storage/v1/object/public/documents/invoices/..."
+      value=""
+    >
+    <div class="help">Skopiuj URL pliku z Supabase Storage</div>
+
+    <label for="invoiceId">Invoice ID</label>
+    <input
+      type="text"
+      id="invoiceId"
+      placeholder="uuid faktury"
+      value=""
+    >
+    <div class="help">UUID faktury z tabeli invoices</div>
+
+    <button id="testBtn" onclick="testOCR()">Testuj OCR</button>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    // Load saved values
+    document.getElementById('supabaseUrl').value = localStorage.getItem('supabaseUrl') || '';
+    document.getElementById('anonKey').value = localStorage.getItem('anonKey') || '';
+    document.getElementById('fileUrl').value = localStorage.getItem('fileUrl') || '';
+    document.getElementById('invoiceId').value = localStorage.getItem('invoiceId') || '';
+
+    async function testOCR() {
+      const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
+      const anonKey = document.getElementById('anonKey').value.trim();
+      const fileUrl = document.getElementById('fileUrl').value.trim();
+      const invoiceId = document.getElementById('invoiceId').value.trim();
+      const resultDiv = document.getElementById('result');
+      const testBtn = document.getElementById('testBtn');
+
+      // Save values
+      localStorage.setItem('supabaseUrl', supabaseUrl);
+      localStorage.setItem('anonKey', anonKey);
+      localStorage.setItem('fileUrl', fileUrl);
+      localStorage.setItem('invoiceId', invoiceId);
+
+      // Validation
+      if (!supabaseUrl || !anonKey || !fileUrl || !invoiceId) {
+        resultDiv.className = 'result error';
+        resultDiv.textContent = 'Wypełnij wszystkie pola!';
+        return;
+      }
+
+      testBtn.disabled = true;
+      resultDiv.className = 'result info';
+      resultDiv.textContent = 'Wysyłanie żądania do OCR...\n\nEndpoint: ' + supabaseUrl + '/functions/v1/process-invoice-ocr';
+
+      try {
+        const ocrUrl = `${supabaseUrl}/functions/v1/process-invoice-ocr`;
+
+        console.log('=== OCR TEST ===');
+        console.log('URL:', ocrUrl);
+        console.log('File URL:', fileUrl);
+        console.log('Invoice ID:', invoiceId);
+
+        const response = await fetch(ocrUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${anonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileUrl: fileUrl,
+            invoiceId: invoiceId,
+          }),
+        });
+
+        console.log('Response Status:', response.status);
+        console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
+
+        const responseText = await response.text();
+        console.log('Response Body:', responseText);
+
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          throw new Error('Nieprawidłowa odpowiedź JSON: ' + responseText);
+        }
+
+        if (!response.ok) {
+          resultDiv.className = 'result error';
+          resultDiv.textContent = `❌ BŁĄD OCR\n\nStatus: ${response.status}\n\n` +
+            JSON.stringify(data, null, 2) +
+            '\n\n🔧 CO SPRAWDZIĆ:\n' +
+            '1. Czy klucz MISTRAL_API_KEY jest dodany w Supabase?\n' +
+            '   → Project Settings → Edge Functions → Secrets\n' +
+            '2. Sprawdź logi w Supabase Dashboard\n' +
+            '   → Edge Functions → process-invoice-ocr → Logs\n' +
+            '3. Czy plik PDF jest dostępny publicznie?\n' +
+            '   → Otwórz File URL w nowej karcie';
+          return;
+        }
+
+        resultDiv.className = 'result success';
+        resultDiv.textContent = `✅ OCR SUKCES!\n\n` +
+          `API użyte: ${data.usedApi}\n\n` +
+          `Wyodrębnione dane:\n` +
+          JSON.stringify(data.data, null, 2) +
+          '\n\n✓ Sprawdź tabelę invoices - dane powinny być zaktualizowane!';
+
+      } catch (error) {
+        console.error('Test error:', error);
+        resultDiv.className = 'result error';
+        resultDiv.textContent = `❌ WYJĄTEK\n\n${error.message}\n\n` +
+          `Stack:\n${error.stack || 'brak'}\n\n` +
+          'Sprawdź konsolę (F12) dla pełnych szczegółów.';
+      } finally {
+        testBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
