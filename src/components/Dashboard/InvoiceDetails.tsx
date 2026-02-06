@@ -980,7 +980,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 </div>
               </div>
 
-              <InvoiceTags invoiceId={invoice.id} isEditing={isEditing} />
+              <InvoiceTags
+                invoiceId={invoice.id}
+                isEditing={isEditing}
+                supplierName={invoice.supplier_name}
+                supplierNip={invoice.supplier_nip}
+                description={invoice.description}
+                grossAmount={invoice.gross_amount}
+                currency={invoice.currency}
+                departmentId={invoice.department_id}
+              />
 
               {approvals.length > 0 && (
                 <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
