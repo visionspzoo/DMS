@@ -85,6 +85,28 @@ export function PdfAnnotationLayer({
   }, [pendingPin]);
 
   useEffect(() => {
+    if (!activeAnnotationId || !containerRef.current) return;
+    const ann = annotations.find(a => a.id === activeAnnotationId);
+    if (!ann) return;
+    const pageEl = pageRefs.current.get(ann.page_number);
+    if (!pageEl) return;
+
+    const pinY = (ann.y_percent / 100) * pageEl.offsetHeight;
+    const pinX = (ann.x_percent / 100) * pageEl.offsetWidth;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const pageRect = pageEl.getBoundingClientRect();
+
+    const scrollTop = containerRef.current.scrollTop + (pageRect.top - containerRect.top) + pinY - containerRef.current.clientHeight / 2;
+    const scrollLeft = containerRef.current.scrollLeft + (pageRect.left - containerRect.left) + pinX - containerRef.current.clientWidth / 2;
+
+    containerRef.current.scrollTo({
+      top: Math.max(0, scrollTop),
+      left: Math.max(0, scrollLeft),
+      behavior: 'smooth',
+    });
+  }, [activeAnnotationId, annotations]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
         onCancelPending();
