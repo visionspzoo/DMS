@@ -296,7 +296,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
 
     try {
       const persistedHistory = messages
-        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content !== WELCOME_MESSAGE)
         .map(({ role, content }) => ({ role, content }));
 
       const data = await callAI(
@@ -320,9 +320,18 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
       ]);
     } catch (error) {
       console.error('Error sending message:', error);
+      let detail = '';
+      if (error instanceof Error) {
+        try {
+          const parsed = JSON.parse(error.message);
+          detail = parsed.error || parsed.message || error.message;
+        } catch {
+          detail = error.message;
+        }
+      }
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Przepraszam, wystapil blad. Sprobuj ponownie.',
+        content: `Przepraszam, wystapil blad. Sprobuj ponownie.${detail ? ` (${detail})` : ''}`,
         timestamp: new Date()
       }]);
     } finally {

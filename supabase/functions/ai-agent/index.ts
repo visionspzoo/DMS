@@ -122,6 +122,10 @@ Wypunktuj najważniejsze informacje. Używaj formatowania markdown.`;
       return acc;
     }, []);
 
+  while (validHistory.length > 0 && validHistory[0].role === 'assistant') {
+    validHistory.shift();
+  }
+
   if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
     validHistory.pop();
   }
