@@ -14,16 +14,18 @@ Deno.serve(async (req: Request) => {
   try {
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-    
+    const claudeKey = Deno.env.get("ANTHROPIC_API_KEY");
+
     const allEnvVars = Object.keys(Deno.env.toObject());
-    const apiRelatedVars = allEnvVars.filter(k => 
-      k.includes('API') || k.includes('KEY') || k.includes('OPENAI') || k.includes('MISTRAL')
+    const apiRelatedVars = allEnvVars.filter(k =>
+      k.includes('API') || k.includes('KEY') || k.includes('OPENAI') || k.includes('MISTRAL') || k.includes('ANTHROPIC')
     );
 
     return new Response(
       JSON.stringify({
         openai: openaiKey ? `Configured (${openaiKey.substring(0, 10)}...${openaiKey.substring(openaiKey.length - 4)})` : "NOT CONFIGURED",
         mistral: mistralKey ? `Configured (${mistralKey.substring(0, 10)}...${mistralKey.substring(mistralKey.length - 4)})` : "NOT CONFIGURED",
+        claude: claudeKey ? `Configured (${claudeKey.substring(0, 10)}...${claudeKey.substring(claudeKey.length - 4)})` : "NOT CONFIGURED",
         apiRelatedEnvVars: apiRelatedVars,
         allEnvVarsCount: allEnvVars.length,
         timestamp: new Date().toISOString(),
