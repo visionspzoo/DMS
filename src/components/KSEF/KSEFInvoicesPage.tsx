@@ -354,7 +354,38 @@ export function KSEFInvoicesPage() {
 
       if (updateError) throw updateError;
 
-      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF.');
+      // Step 8: Run OCR on the transferred invoice
+      try {
+        console.log('=== STARTING OCR FOR KSEF INVOICE ===');
+        console.log('Invoice ID:', newInvoice.id);
+        console.log('File URL:', driveFileUrl);
+
+        const ocrResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileUrl: driveFileUrl,
+              invoiceId: newInvoice.id,
+            }),
+          }
+        );
+
+        if (ocrResponse.ok) {
+          const ocrData = await ocrResponse.json();
+          console.log('✓ OCR completed successfully:', ocrData);
+        } else {
+          console.error('OCR failed:', await ocrResponse.text());
+        }
+      } catch (ocrError) {
+        console.error('OCR error (non-blocking):', ocrError);
+      }
+
+      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF i przetworzona przez OCR.');
       setSelectedInvoice(null);
       await loadInvoices();
     } catch (err: any) {

@@ -25,7 +25,7 @@ async function extractTextFromPDF(fileBlob: Blob): Promise<string> {
   }
 }
 
-async function interpretWithOpenAI(fileUrl: string, apiKey: string, fileBlob: Blob, extractedText?: string) {
+async function interpretWithClaude(fileUrl: string, apiKey: string, fileBlob: Blob, extractedText?: string) {
   const systemPrompt = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
 Przeanalizuj dokument i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
 
@@ -55,79 +55,88 @@ UWAGI:
   const isPDF = mimeType === 'application/pdf';
 
   if (isPDF && extractedText) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // For PDF with extracted text, use text-only analysis
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2000,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Przeanalizuj poniższy tekst wyekstraktowany z faktury PDF i wyciągnij wszystkie dane zgodnie z instrukcjami.\n\nTekst faktury:\n${extractedText}`
+            content: `Przeanalizuj poniższy tekst wyekstraktowany z faktury PDF i wyciągnij wszystkie dane zgodnie z instrukcjami. Odpowiedz TYLKO z JSON.\n\nTekst faktury:\n${extractedText}`
           }
         ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-        max_tokens: 1000,
+        temperature: 0,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+      throw new Error(`Claude API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    return data.content[0].text;
   } else if (!isPDF) {
+    // For images, use vision capabilities
     const arrayBuffer = await fileBlob.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Determine media type
+    let mediaType = 'image/jpeg';
+    if (mimeType === 'image/png') mediaType = 'image/png';
+    else if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') mediaType = 'image/jpeg';
+    else if (mimeType === 'image/webp') mediaType = 'image/webp';
+    else if (mimeType === 'image/gif') mediaType = 'image/gif';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2000,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           {
             role: 'user',
             content: [
               {
-                type: 'text',
-                text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane zgodnie z instrukcjami.'
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64,
+                }
               },
               {
-                type: 'image_url',
-                image_url: {
-                  url: dataUrl,
-                  detail: 'high'
-                }
+                type: 'text',
+                text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane zgodnie z instrukcjami. Odpowiedz TYLKO z JSON.'
               }
             ]
           }
         ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-        max_tokens: 1000,
+        temperature: 0,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+      throw new Error(`Claude API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    return data.content[0].text;
   } else {
     throw new Error('PDF file provided but no extracted text available');
   }
@@ -228,11 +237,11 @@ Deno.serve(async (req: Request) => {
   try {
     console.log("=== OCR PROCESSING STARTED ===");
 
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    const claudeApiKey = Deno.env.get("ANTHROPIC_API_KEY");
     const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
 
     console.log("API Keys configured:", {
-      openai: !!openaiApiKey,
+      claude: !!claudeApiKey,
       mistral: !!mistralApiKey,
     });
 
@@ -252,7 +261,7 @@ Deno.serve(async (req: Request) => {
     let usedApi: string;
     let errorDetails: any = null;
 
-    if (!openaiApiKey && !mistralApiKey) {
+    if (!claudeApiKey && !mistralApiKey) {
       console.log("No API keys configured - using fallback");
       const fallback = createFallbackInterpretation();
       content = JSON.stringify(fallback);
@@ -275,30 +284,30 @@ Deno.serve(async (req: Request) => {
           const extractedText = await extractTextFromPDF(fileBlob);
           console.log(`✓ Extracted ${extractedText.length} characters from PDF`);
 
-          if (openaiApiKey) {
+          if (claudeApiKey) {
             try {
-              console.log("Sending extracted text to OpenAI GPT-4o...");
-              content = await interpretWithOpenAI(fileUrl, openaiApiKey, fileBlob, extractedText);
-              usedApi = "OpenAI GPT-4o (PDF text extraction)";
-              console.log("✓ OpenAI interpretation successful");
+              console.log("Sending extracted text to Claude...");
+              content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob, extractedText);
+              usedApi = "Claude 3.5 Sonnet (PDF text extraction)";
+              console.log("✓ Claude interpretation successful");
             } catch (error) {
-              console.error("OpenAI failed:", error);
+              console.error("Claude failed:", error);
               errorDetails = {
-                api: 'OpenAI',
+                api: 'Claude',
                 message: error.message || error.toString(),
                 stack: error.stack,
               };
               const fallback = createFallbackInterpretation();
               content = JSON.stringify(fallback);
-              usedApi = "Fallback (OpenAI failed on PDF text)";
+              usedApi = "Fallback (Claude failed on PDF text)";
             }
           } else {
-            console.log("No OpenAI key - PDF text extraction requires OpenAI");
+            console.log("No Claude key - PDF text extraction requires Claude");
             const fallback = createFallbackInterpretation();
             content = JSON.stringify(fallback);
-            usedApi = "Fallback (no OpenAI for PDF)";
+            usedApi = "Fallback (no Claude for PDF)";
             errorDetails = {
-              message: "PDF processing requires OPENAI_API_KEY",
+              message: "PDF processing requires ANTHROPIC_API_KEY",
             };
           }
         } catch (pdfError) {
@@ -310,6 +319,38 @@ Deno.serve(async (req: Request) => {
           const fallback = createFallbackInterpretation();
           content = JSON.stringify(fallback);
           usedApi = "Fallback (PDF extraction failed)";
+        }
+      } else if (claudeApiKey) {
+        try {
+          console.log("Using Claude Vision for image...");
+          content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob);
+          usedApi = "Claude 3.5 Sonnet Vision";
+          console.log("✓ Claude interpretation successful");
+        } catch (error) {
+          console.error("Claude failed:", error);
+          errorDetails = {
+            api: 'Claude',
+            message: error.message || error.toString(),
+            stack: error.stack,
+          };
+          if (mistralApiKey) {
+            console.log("Falling back to Mistral...");
+            try {
+              content = await interpretWithMistral(fileUrl, fileBlob, mistralApiKey);
+              usedApi = "Mistral Pixtral (fallback)";
+              errorDetails = null;
+            } catch (mistralError) {
+              console.error("Mistral also failed:", mistralError);
+              errorDetails.mistralError = mistralError.message || mistralError.toString();
+              const fallback = createFallbackInterpretation();
+              content = JSON.stringify(fallback);
+              usedApi = "Fallback (both APIs failed)";
+            }
+          } else {
+            const fallback = createFallbackInterpretation();
+            content = JSON.stringify(fallback);
+            usedApi = "Fallback (Claude failed, no Mistral)";
+          }
         }
       } else if (mistralApiKey) {
         try {
@@ -324,41 +365,9 @@ Deno.serve(async (req: Request) => {
             message: error.message || error.toString(),
             stack: error.stack,
           };
-          if (openaiApiKey) {
-            console.log("Falling back to OpenAI...");
-            try {
-              content = await interpretWithOpenAI(fileUrl, openaiApiKey, fileBlob);
-              usedApi = "OpenAI GPT-4o Vision (fallback)";
-              errorDetails = null;
-            } catch (openaiError) {
-              console.error("OpenAI also failed:", openaiError);
-              errorDetails.openaiError = openaiError.message || openaiError.toString();
-              const fallback = createFallbackInterpretation();
-              content = JSON.stringify(fallback);
-              usedApi = "Fallback (both APIs failed)";
-            }
-          } else {
-            const fallback = createFallbackInterpretation();
-            content = JSON.stringify(fallback);
-            usedApi = "Fallback (Mistral failed, no OpenAI)";
-          }
-        }
-      } else if (openaiApiKey) {
-        try {
-          console.log("Using OpenAI GPT-4o Vision for image...");
-          content = await interpretWithOpenAI(fileUrl, openaiApiKey, fileBlob);
-          usedApi = "OpenAI GPT-4o Vision";
-          console.log("✓ OpenAI interpretation successful");
-        } catch (error) {
-          console.error("OpenAI failed:", error);
-          errorDetails = {
-            api: 'OpenAI',
-            message: error.message || error.toString(),
-            stack: error.stack,
-          };
           const fallback = createFallbackInterpretation();
           content = JSON.stringify(fallback);
-          usedApi = "Fallback (OpenAI failed, no Mistral)";
+          usedApi = "Fallback (Mistral failed, no Claude)";
         }
       } else {
         const fallback = createFallbackInterpretation();
