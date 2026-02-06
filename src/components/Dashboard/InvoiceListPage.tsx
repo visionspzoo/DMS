@@ -52,8 +52,8 @@ export function InvoiceList() {
         .from('invoices')
         .select(`
           *,
-          uploader:uploaded_by(full_name, role),
-          department:department_id(id, name, parent_department_id),
+          uploader:profiles!uploaded_by(full_name, role),
+          department:departments!department_id(id, name, parent_department_id),
           invoice_tags(
             id,
             tags(id, name, color)
@@ -61,7 +61,10 @@ export function InvoiceList() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase request failed', error);
+        throw error;
+      }
 
       let allInvoices = data || [];
 
