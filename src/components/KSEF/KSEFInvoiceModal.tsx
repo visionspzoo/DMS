@@ -13,6 +13,7 @@ interface KSEFInvoice {
   buyer_nip: string | null;
   issue_date: string | null;
   net_amount: number;
+  tax_amount: number | null;
   gross_amount: number;
   currency: string;
   invoice_xml: string | null;
@@ -251,13 +252,21 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, tr
                   <DollarSign className="w-4 h-4" />
                   Kwoty
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className="text-center p-3 bg-light-surface dark:bg-dark-surface rounded-lg">
                     <label className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
                       Netto
                     </label>
                     <p className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mt-1 font-mono">
                       {invoice.net_amount.toFixed(2)} {invoice.currency}
+                    </p>
+                  </div>
+                  <div className="text-center p-3 bg-light-surface dark:bg-dark-surface rounded-lg">
+                    <label className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
+                      VAT
+                    </label>
+                    <p className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mt-1 font-mono">
+                      {invoice.tax_amount ? invoice.tax_amount.toFixed(2) : (invoice.gross_amount - invoice.net_amount).toFixed(2)} {invoice.currency}
                     </p>
                   </div>
                   <div className="text-center p-3 bg-brand-primary/10 rounded-lg">

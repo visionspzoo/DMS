@@ -15,6 +15,7 @@ interface KSEFInvoice {
   buyer_nip: string | null;
   issue_date: string | null;
   net_amount: number;
+  tax_amount: number | null;
   gross_amount: number;
   currency: string;
   invoice_xml: string | null;
@@ -168,6 +169,10 @@ export function KSEFInvoicesPage() {
           .maybeSingle();
 
         if (!existing) {
+          const netAmount = invoice.netAmount || 0;
+          const grossAmount = invoice.grossAmount || 0;
+          const taxAmount = grossAmount - netAmount;
+
           const { error: insertError } = await supabase
             .from('ksef_invoices')
             .insert({
@@ -178,8 +183,9 @@ export function KSEFInvoicesPage() {
               buyer_name: invoice.buyer?.name || '',
               buyer_nip: invoice.buyer?.identifier?.value || '',
               issue_date: invoice.issueDate || null,
-              gross_amount: invoice.grossAmount || 0,
-              net_amount: invoice.netAmount || 0,
+              gross_amount: grossAmount,
+              net_amount: netAmount,
+              tax_amount: taxAmount,
               currency: invoice.currency || 'PLN',
               fetched_by: profile?.id,
             });
@@ -318,6 +324,8 @@ export function KSEFInvoicesPage() {
       }
 
       // Step 6: Create invoice record with file URL and base64
+      const taxAmount = selectedInvoice.tax_amount || (selectedInvoice.gross_amount - selectedInvoice.net_amount);
+
       const { data: newInvoice, error: insertError } = await supabase
         .from('invoices')
         .insert({
@@ -326,6 +334,7 @@ export function KSEFInvoicesPage() {
           supplier_nip: selectedInvoice.supplier_nip,
           gross_amount: selectedInvoice.gross_amount,
           net_amount: selectedInvoice.net_amount,
+          tax_amount: taxAmount,
           currency: selectedInvoice.currency,
           issue_date: selectedInvoice.issue_date,
           status: 'draft',
