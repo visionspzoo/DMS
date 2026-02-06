@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox, Send, FileSignature } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox, Send, FileSignature, ThumbsUp, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UploadContract } from './UploadContract';
@@ -219,6 +219,122 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
     }
   };
 
+  const approveContract = async (e: React.MouseEvent, contractId: string, currentStatus: string) => {
+    e.stopPropagation();
+    if (!user || !userRole || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const statusMapping: Record<string, { nextStatus: string; nextRole: string }> = {
+        'pending_manager': { nextStatus: 'pending_director', nextRole: 'Dyrektor' },
+        'pending_director': { nextStatus: 'pending_ceo', nextRole: 'CEO' },
+        'pending_ceo': { nextStatus: 'approved', nextRole: '' },
+      };
+
+      const mapping = statusMapping[currentStatus];
+      if (!mapping) {
+        alert('Nie mozna zatwierdzic tej umowy');
+        return;
+      }
+
+      if (mapping.nextRole) {
+        const { data: nextApprover } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', mapping.nextRole)
+          .limit(1)
+          .single();
+
+        if (!nextApprover) {
+          alert('Nie znaleziono nastepnej osoby do akceptacji');
+          return;
+        }
+
+        await supabase
+          .from('contracts')
+          .update({
+            status: mapping.nextStatus,
+            current_approver: nextApprover.id,
+          })
+          .eq('id', contractId);
+
+        await supabase
+          .from('contract_approvals')
+          .insert({
+            contract_id: contractId,
+            approver_id: nextApprover.id,
+            approver_role: mapping.nextRole.toLowerCase(),
+            status: 'pending',
+          });
+      } else {
+        await supabase
+          .from('contracts')
+          .update({
+            status: mapping.nextStatus,
+            current_approver: null,
+          })
+          .eq('id', contractId);
+      }
+
+      await supabase
+        .from('contract_approvals')
+        .update({ status: 'approved' })
+        .eq('contract_id', contractId)
+        .eq('approver_id', user.id);
+
+      loadContracts();
+      loadCounts();
+    } catch (error) {
+      console.error('Error approving contract:', error);
+      alert('Blad podczas zatwierdzania umowy');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const rejectContract = async (e: React.MouseEvent, contractId: string) => {
+    e.stopPropagation();
+    if (!user || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const { data: contract } = await supabase
+        .from('contracts')
+        .select('uploaded_by')
+        .eq('id', contractId)
+        .single();
+
+      if (!contract) {
+        alert('Nie znaleziono umowy');
+        return;
+      }
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'draft',
+          current_approver: contract.uploaded_by,
+        })
+        .eq('id', contractId);
+
+      await supabase
+        .from('contract_approvals')
+        .update({ status: 'rejected' })
+        .eq('contract_id', contractId)
+        .eq('approver_id', user.id);
+
+      loadContracts();
+      loadCounts();
+    } catch (error) {
+      console.error('Error rejecting contract:', error);
+      alert('Blad podczas odrzucania umowy');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const badge = STATUS_LABELS[status] || STATUS_LABELS.draft;
     return (
@@ -368,6 +484,39 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
                         <span className="hidden sm:inline">Do podpisu</span>
                       </button>
                     </>
+                  )}
+                  {activeTab === 'oczekujace' && contract.current_approver === user?.id && (
+                    <>
+                      <button
+                        onClick={(e) => approveContract(e, contract.id, contract.status)}
+                        disabled={sendingId === contract.id}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-medium"
+                        title="Zatwierdz"
+                      >
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Zatwierdz</span>
+                      </button>
+                      <button
+                        onClick={(e) => rejectContract(e, contract.id)}
+                        disabled={sendingId === contract.id}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-medium"
+                        title="Odrzuc"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Odrzuc</span>
+                      </button>
+                    </>
+                  )}
+                  {activeTab === 'do_podpisu' && userRole === 'CEO' && (
+                    <button
+                      onClick={(e) => rejectContract(e, contract.id)}
+                      disabled={sendingId === contract.id}
+                      className="flex items-center gap-1 px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-medium"
+                      title="Odrzuc"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Odrzuc</span>
+                    </button>
                   )}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Eye className="w-4 h-4 text-brand-primary" />
