@@ -53,6 +53,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             pdf_base64: base64,
@@ -94,6 +95,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             pdf_base64: base64,
@@ -188,6 +190,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify(requestBody),
         }
@@ -269,6 +272,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
             action: 'chat',
