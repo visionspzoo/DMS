@@ -53,7 +53,7 @@ export function InvoiceList() {
         .select(`
           *,
           uploader:uploaded_by(full_name, role),
-          department:department_id(id, name, parent_department_id, parent:parent_department_id(id, name)),
+          department:department_id(id, name, parent_department_id),
           invoice_tags(
             id,
             tags(id, name, color)
