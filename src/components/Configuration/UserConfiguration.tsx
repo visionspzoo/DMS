@@ -110,23 +110,22 @@ export default function UserConfiguration() {
   }
 
   return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg p-6 overflow-auto">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Konfiguracja
-          </h1>
-          <p className="text-text-secondary-light dark:text-text-secondary-dark mt-2">
-            Skonfiguruj automatyczny import faktur z Google Drive
-          </p>
-        </div>
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+          Konfiguracja
+        </h1>
+        <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
+          Skonfiguruj automatyczny import faktur z Google Drive
+        </p>
+      </div>
 
-        <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-6">
-          <div className="flex items-start gap-3 mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800 dark:text-blue-300">
-              <p className="font-semibold mb-2">Jak to działa?</p>
-              <ul className="list-disc list-inside space-y-1">
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-4 mb-4">
+          <div className="flex items-start gap-2 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 dark:text-blue-300">
+              <p className="font-semibold mb-1">Jak to działa?</p>
+              <ul className="list-disc list-inside space-y-0.5">
                 <li>Podaj link do folderu na swoim Google Drive</li>
                 <li>System będzie automatycznie pobierał nowe faktury z tego folderu</li>
                 <li>Faktury zostaną przypisane do Twojego konta i działu</li>
@@ -135,9 +134,9 @@ export default function UserConfiguration() {
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+              <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
                 Link do folderu Google Drive
               </label>
               <div className="relative">
@@ -146,25 +145,25 @@ export default function UserConfiguration() {
                   value={folderUrl}
                   onChange={(e) => setFolderUrl(e.target.value)}
                   placeholder="https://drive.google.com/drive/folders/ID_FOLDERU"
-                  className="w-full px-4 py-3 pl-10 bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-300 dark:border-slate-600 rounded-lg text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  className="w-full px-3 py-2 pl-9 bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
-                <LinkIcon className="absolute left-3 top-3.5 w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
+                <LinkIcon className="absolute left-2.5 top-2.5 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
               </div>
-              <p className="mt-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+              <p className="mt-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                 Skopiuj i wklej link do folderu z Twojego Google Drive
               </p>
             </div>
 
             {config?.google_drive_folder_id && (
-              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                <div className="flex items-start gap-3">
-                  <HardDrive className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="flex items-start gap-2">
+                  <HardDrive className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                    <p className="text-xs font-medium text-green-800 dark:text-green-300">
                       Folder ID: {config.google_drive_folder_id}
                     </p>
                     {config.last_sync_at && (
-                      <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                      <p className="text-[10px] text-green-700 dark:text-green-400 mt-0.5">
                         Ostatnia synchronizacja: {new Date(config.last_sync_at).toLocaleString('pl-PL')}
                       </p>
                     )}
@@ -173,34 +172,34 @@ export default function UserConfiguration() {
               </div>
             )}
 
-            <div className="flex items-center gap-3 p-4 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
+            <div className="flex items-center gap-2 p-3 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
               <input
                 type="checkbox"
                 id="is-active"
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
-                className="w-5 h-5 text-brand-primary bg-light-surface dark:bg-dark-surface border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
+                className="w-4 h-4 text-brand-primary bg-light-surface dark:bg-dark-surface border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
               />
-              <label htmlFor="is-active" className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer">
+              <label htmlFor="is-active" className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer">
                 Włącz automatyczny import faktur
               </label>
             </div>
 
             {message && (
               <div
-                className={`p-4 rounded-lg border flex items-start gap-3 ${
+                className={`p-3 rounded-lg border flex items-start gap-2 ${
                   message.type === 'success'
                     ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                     : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                 }`}
               >
                 {message.type === 'success' ? (
-                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
                 ) : (
-                  <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <XCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                 )}
                 <p
-                  className={`text-sm ${
+                  className={`text-xs ${
                     message.type === 'success'
                       ? 'text-green-800 dark:text-green-300'
                       : 'text-red-800 dark:text-red-300'
@@ -211,20 +210,20 @@ export default function UserConfiguration() {
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-3 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
               >
                 {saving ? (
                   <>
-                    <Loader className="w-5 h-5 animate-spin" />
+                    <Loader className="w-4 h-4 animate-spin" />
                     Zapisywanie...
                   </>
                 ) : (
                   <>
-                    <Save className="w-5 h-5" />
+                    <Save className="w-4 h-4" />
                     Zapisz konfigurację
                   </>
                 )}
@@ -232,25 +231,25 @@ export default function UserConfiguration() {
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-            <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">
+          <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
               Informacje o Twoim koncie
             </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between p-3 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
-                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            <div className="space-y-2">
+              <div className="flex justify-between p-2 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
+                <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
                   Email:
                 </span>
-                <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                <span className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark">
                   {profile?.email}
                 </span>
               </div>
               {profile?.department_id && (
-                <div className="flex justify-between p-3 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
-                  <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                <div className="flex justify-between p-2 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
+                  <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
                     Status:
                   </span>
-                  <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                  <span className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark">
                     Przypisany do działu
                   </span>
                 </div>
@@ -259,16 +258,15 @@ export default function UserConfiguration() {
           </div>
         </div>
 
-        <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-yellow-800 dark:text-yellow-300">
-              <p className="font-semibold mb-1">Ważne!</p>
-              <p>
-                Upewnij się, że folder na Google Drive jest udostępniony systemowi.
-                Faktury będą pobierane automatycznie w ustalonych interwałach czasowych.
-              </p>
-            </div>
+      <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+        <div className="flex items-start gap-2">
+          <Info className="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-yellow-800 dark:text-yellow-300">
+            <p className="font-semibold mb-1">Ważne!</p>
+            <p>
+              Upewnij się, że folder na Google Drive jest udostępniony systemowi.
+              Faktury będą pobierane automatycznie w ustalonych interwałach czasowych.
+            </p>
           </div>
         </div>
       </div>
