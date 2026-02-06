@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Send, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Send, Trash2, Highlighter } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -318,6 +318,9 @@ export function ContractCommentsPanel({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-1">
+                            {c.comment_type === 'contextual' && (
+                              <Highlighter className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            )}
                             <span className="font-medium text-text-primary-light dark:text-text-primary-dark text-xs">
                               {c.profiles?.full_name || 'Uzytkownik'}
                             </span>
@@ -325,6 +328,11 @@ export function ContractCommentsPanel({
                               {new Date(c.created_at).toLocaleString('pl-PL')}
                             </span>
                           </div>
+                          {c.highlighted_text && (
+                            <div className="mb-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/20 border-l-2 border-amber-400 rounded text-xs italic text-text-secondary-light dark:text-text-secondary-dark line-clamp-2">
+                              &ldquo;{c.highlighted_text}&rdquo;
+                            </div>
+                          )}
                           <p className="text-sm text-text-primary-light dark:text-text-primary-dark leading-relaxed">{c.comment}</p>
                         </div>
                         {user?.id === c.user_id && (
