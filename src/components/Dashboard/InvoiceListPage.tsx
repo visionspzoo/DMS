@@ -53,11 +53,7 @@ export function InvoiceList() {
         .select(`
           *,
           uploader:profiles!uploaded_by(full_name, role),
-          department:departments!department_id(id, name, parent_department_id),
-          invoice_tags(
-            id,
-            tags(id, name, color)
-          )
+          department:departments!department_id(id, name, parent_department_id)
         `)
         .order('created_at', { ascending: false });
 
