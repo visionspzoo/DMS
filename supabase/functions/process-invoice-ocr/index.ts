@@ -391,39 +391,91 @@ Deno.serve(async (req: Request) => {
 
     console.log("Parsed data:", parsedData);
 
+    // First, get the existing invoice to preserve values
+    const { data: existingInvoice } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("id", invoiceId)
+      .maybeSingle();
+
+    console.log("Existing invoice data:", existingInvoice);
+
+    // Only update fields if OCR found a value OR the field is currently empty
     const updateData: any = {
-      invoice_number: parsedData.invoice_number || null,
-      supplier_name: parsedData.supplier_name || null,
-      supplier_nip: parsedData.supplier_nip || null,
-      issue_date: parsedData.issue_date || null,
-      due_date: parsedData.due_date || null,
-      currency: parsedData.currency || "PLN",
       status: "draft",
     };
+
+    // Update invoice_number only if OCR found it OR it's currently empty
+    if (parsedData.invoice_number) {
+      updateData.invoice_number = parsedData.invoice_number;
+    } else if (!existingInvoice?.invoice_number) {
+      updateData.invoice_number = null;
+    }
+
+    // Update supplier_name only if OCR found it OR it's currently empty
+    if (parsedData.supplier_name) {
+      updateData.supplier_name = parsedData.supplier_name;
+    } else if (!existingInvoice?.supplier_name) {
+      updateData.supplier_name = null;
+    }
+
+    // Update supplier_nip only if OCR found it OR it's currently empty
+    if (parsedData.supplier_nip) {
+      updateData.supplier_nip = parsedData.supplier_nip;
+    } else if (!existingInvoice?.supplier_nip) {
+      updateData.supplier_nip = null;
+    }
+
+    // Update issue_date only if OCR found it OR it's currently empty
+    if (parsedData.issue_date) {
+      updateData.issue_date = parsedData.issue_date;
+    } else if (!existingInvoice?.issue_date) {
+      updateData.issue_date = null;
+    }
+
+    // Update due_date only if OCR found it OR it's currently empty
+    if (parsedData.due_date) {
+      updateData.due_date = parsedData.due_date;
+    } else if (!existingInvoice?.due_date) {
+      updateData.due_date = null;
+    }
+
+    // Update currency only if OCR found it OR it's currently empty
+    if (parsedData.currency) {
+      updateData.currency = parsedData.currency;
+    } else if (!existingInvoice?.currency) {
+      updateData.currency = "PLN";
+    }
 
     if (parsedData.net_amount) {
       const netAmount = typeof parsedData.net_amount === 'string'
         ? parseFloat(parsedData.net_amount)
         : parsedData.net_amount;
-      if (!isNaN(netAmount)) updateData.net_amount = netAmount;
+      if (!isNaN(netAmount) && netAmount > 0) {
+        updateData.net_amount = netAmount;
+      }
     }
 
     if (parsedData.tax_amount) {
       const taxAmount = typeof parsedData.tax_amount === 'string'
         ? parseFloat(parsedData.tax_amount)
         : parsedData.tax_amount;
-      if (!isNaN(taxAmount)) updateData.tax_amount = taxAmount;
+      if (!isNaN(taxAmount) && taxAmount > 0) {
+        updateData.tax_amount = taxAmount;
+      }
     }
 
     if (parsedData.gross_amount) {
       const grossAmount = typeof parsedData.gross_amount === 'string'
         ? parseFloat(parsedData.gross_amount)
         : parsedData.gross_amount;
-      if (!isNaN(grossAmount)) updateData.gross_amount = grossAmount;
+      if (!isNaN(grossAmount) && grossAmount > 0) {
+        updateData.gross_amount = grossAmount;
+      }
     }
 
-    const currency = parsedData.currency || "PLN";
-    const issueDate = parsedData.issue_date || new Date().toISOString().split('T')[0];
+    const currency = updateData.currency || existingInvoice?.currency || parsedData.currency || "PLN";
+    const issueDate = updateData.issue_date || existingInvoice?.issue_date || parsedData.issue_date || new Date().toISOString().split('T')[0];
 
     if (currency !== 'PLN') {
       console.log(`Fetching exchange rate for ${currency} on ${issueDate}...`);
