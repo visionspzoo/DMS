@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox, Send, FileSignature } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UploadContract } from './UploadContract';
@@ -45,13 +45,30 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
   const [showUpload, setShowUpload] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('robocze');
   const [counts, setCounts] = useState<Record<TabKey, number>>({ robocze: 0, oczekujace: 0, do_podpisu: 0, podpisane: 0 });
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
+      loadUserRole();
       loadContracts();
       loadCounts();
     }
   }, [user, activeTab]);
+
+  const loadUserRole = async () => {
+    if (!user) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (data) setUserRole(data.role);
+    } catch (error) {
+      console.error('Error loading user role:', error);
+    }
+  };
 
   const loadCounts = async () => {
     if (!user) return;
@@ -104,6 +121,101 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
       console.error('Error loading contracts:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendToApproval = async (e: React.MouseEvent, contractId: string) => {
+    e.stopPropagation();
+    if (!user || !userRole || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const roleMapping: Record<string, { status: string; approverRole: string }> = {
+        'Specjalista': { status: 'pending_manager', approverRole: 'manager' },
+        'Kierownik': { status: 'pending_director', approverRole: 'director' },
+        'Dyrektor': { status: 'pending_ceo', approverRole: 'ceo' },
+      };
+
+      const mapping = roleMapping[userRole];
+      if (!mapping) {
+        alert('Nie mozesz wyslac tej umowy do akceptacji');
+        return;
+      }
+
+      const { data: approverData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', mapping.approverRole === 'manager' ? 'Kierownik' : mapping.approverRole === 'director' ? 'Dyrektor' : 'CEO')
+        .limit(1)
+        .single();
+
+      if (!approverData) {
+        alert('Nie znaleziono osoby do akceptacji');
+        return;
+      }
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: mapping.status,
+          current_approver: approverData.id,
+        })
+        .eq('id', contractId);
+
+      await supabase
+        .from('contract_approvals')
+        .insert({
+          contract_id: contractId,
+          approver_id: approverData.id,
+          approver_role: mapping.approverRole,
+          status: 'pending',
+        });
+
+      loadContracts();
+      loadCounts();
+    } catch (error) {
+      console.error('Error sending to approval:', error);
+      alert('Blad podczas wysylania do akceptacji');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const sendToSignature = async (e: React.MouseEvent, contractId: string) => {
+    e.stopPropagation();
+    if (!user || sendingId) return;
+
+    try {
+      setSendingId(contractId);
+
+      const { data: ceoData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'CEO')
+        .limit(1)
+        .single();
+
+      if (!ceoData) {
+        alert('Nie znaleziono CEO');
+        return;
+      }
+
+      await supabase
+        .from('contracts')
+        .update({
+          status: 'pending_signature',
+          current_approver: ceoData.id,
+        })
+        .eq('id', contractId);
+
+      loadContracts();
+      loadCounts();
+    } catch (error) {
+      console.error('Error sending to signature:', error);
+      alert('Blad podczas wysylania do podpisu');
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -234,8 +346,32 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
                     )}
                   </div>
                 </div>
-                <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Eye className="w-4 h-4 text-brand-primary" />
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {activeTab === 'robocze' && contract.status === 'draft' && (
+                    <>
+                      <button
+                        onClick={(e) => sendToApproval(e, contract.id)}
+                        disabled={sendingId === contract.id}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-medium"
+                        title="Wyslij do akceptacji"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Do akceptacji</span>
+                      </button>
+                      <button
+                        onClick={(e) => sendToSignature(e, contract.id)}
+                        disabled={sendingId === contract.id}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-medium"
+                        title="Wyslij do podpisu"
+                      >
+                        <FileSignature className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Do podpisu</span>
+                      </button>
+                    </>
+                  )}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Eye className="w-4 h-4 text-brand-primary" />
+                  </div>
                 </div>
               </div>
             </div>
