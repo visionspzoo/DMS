@@ -5,7 +5,11 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply font-sans;
+  html, body {
+    @apply font-sans bg-light-bg dark:bg-dark-bg;
+  }
+
+  #root {
+    @apply min-h-screen bg-light-bg dark:bg-dark-bg;
   }
 }
