@@ -142,6 +142,64 @@ export async function uploadInvoiceFile(
             .then(() => {});
         }
       }
+
+      onProgress('ML tagi...');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && ocrData?.data) {
+          const mlResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ml-predict-tags`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({
+                invoice_id: invoiceData.id,
+                supplier_name: ocrData.data.supplier_name,
+                supplier_nip: ocrData.data.supplier_nip,
+                description: ocrData.data.description,
+                gross_amount: ocrData.data.gross_amount
+                  ? parseFloat(ocrData.data.gross_amount)
+                  : undefined,
+                currency: ocrData.data.currency,
+                force_refresh: true,
+              }),
+            }
+          );
+
+          if (mlResponse.ok) {
+            const mlData = await mlResponse.json();
+            const autoApply = (mlData.predictions || []).filter(
+              (p: { confidence: number; tags: unknown; tag_id: string }) =>
+                p.confidence >= 0.7 && p.tags
+            );
+
+            for (const pred of autoApply) {
+              await supabase
+                .from('invoice_tags')
+                .upsert(
+                  {
+                    invoice_id: invoiceData.id,
+                    tag_id: pred.tag_id,
+                    created_by: userId,
+                  },
+                  { onConflict: 'invoice_id,tag_id' }
+                )
+                .then(() => {});
+
+              await supabase
+                .from('ml_tag_predictions')
+                .update({ applied: true })
+                .eq('id', pred.id);
+            }
+          }
+        }
+      } catch {
+        // ML tagging is optional
+      }
     }
   } catch {
     // OCR is optional

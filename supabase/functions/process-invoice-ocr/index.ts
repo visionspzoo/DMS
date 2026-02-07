@@ -548,7 +548,7 @@ Deno.serve(async (req: Request) => {
               color
             )
           `)
-          .eq('vendor_name', vendorName);
+          .ilike('vendor_name', vendorName);
 
         if (!vendorError && vendorTags && vendorTags.length > 0) {
           console.log(`✓ Found ${vendorTags.length} tags for this vendor`);

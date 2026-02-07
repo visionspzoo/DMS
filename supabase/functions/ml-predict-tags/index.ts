@@ -238,7 +238,7 @@ Deno.serve(async (req: Request) => {
         .select(
           "vendor_name, supplier_nip, tag_id, frequency, tags:tag_id(id, name, color)"
         )
-        .eq("vendor_name", supplier_name.trim())
+        .ilike("vendor_name", supplier_name.trim())
         .order("frequency", { ascending: false });
 
       if (vendorLearning) {
