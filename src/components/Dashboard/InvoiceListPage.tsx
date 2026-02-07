@@ -98,10 +98,17 @@ export function InvoiceList() {
       let totalSynced = 0;
       let hasError = false;
 
+      const errorMessages: string[] = [];
       for (const r of results) {
-        if (r.status === 'fulfilled' && r.value.ok) {
+        if (r.status === 'fulfilled') {
           const body = await r.value.json();
-          totalSynced += body.total_synced || body.synced || 0;
+          if (r.value.ok) {
+            totalSynced += body.total_synced || body.synced || 0;
+            if (body.errors) errorMessages.push(...body.errors);
+          } else {
+            hasError = true;
+            if (body.error) errorMessages.push(body.error);
+          }
         } else {
           hasError = true;
         }
@@ -111,10 +118,13 @@ export function InvoiceList() {
       if (totalSynced > 0) loadInvoices();
 
       if (manual) {
+        const hasErrors = hasError || errorMessages.length > 0;
         setSyncMessage({
-          type: hasError ? 'error' : 'success',
-          text: hasError
-            ? 'Synchronizacja zakonczona z bledami'
+          type: hasErrors ? 'error' : 'success',
+          text: hasErrors
+            ? errorMessages.length > 0
+              ? errorMessages.join('. ')
+              : 'Synchronizacja zakonczona z bledami'
             : totalSynced > 0
             ? `Zsynchronizowano ${totalSynced} nowych faktur`
             : 'Brak nowych faktur do pobrania',
