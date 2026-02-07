@@ -42,25 +42,45 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "currency": "kod waluty: PLN, EUR, USD, GBP itp."
 }
 
-KRYTYCZNE ZASADY IDENTYFIKACJI STRON NA FAKTURZE:
-Na fakturze są ZAWSZE dwie strony. Musisz je PRAWIDŁOWO rozróżnić:
+NAJWAŻNIEJSZA ZASADA - IDENTYFIKACJA SPRZEDAWCY:
 
-1. SPRZEDAWCA (= dostawca = wystawca faktury = seller = vendor):
-   - To firma, która WYSTAWIŁA fakturę i SPRZEDAJE towary/usługi
-   - Na polskich fakturach oznaczony jako: "Sprzedawca", "Wystawca", "Dostawca", "Seller", "Vendor", "From"
-   - Jego dane (nazwa + NIP) MUSZĄ trafić do pól supplier_name i supplier_nip
+KROK 1: Znajdź obie strony transakcji na fakturze
+Na każdej fakturze są DOKŁADNIE dwie strony:
+A) SPRZEDAWCA/WYSTAWCA - firma, która WYSTAWIA fakturę i sprzedaje
+B) NABYWCA/KUPUJĄCY - firma, która kupuje i otrzymuje fakturę
 
-2. NABYWCA (= kupujący = odbiorca = buyer = purchaser):
-   - To firma, która KUPUJE towary/usługi i OTRZYMUJE fakturę
-   - Na polskich fakturach oznaczony jako: "Nabywca", "Kupujący", "Odbiorca", "Buyer", "Bill to", "Customer"
-   - Jego danych NIE WOLNO wpisywać w pola supplier_name/supplier_nip!
+KROK 2: Szukaj etykiet identyfikujących strony
+Polskie faktury używają etykiet:
+- "Sprzedawca:", "Wystawca:", "Dostawca:", "Seller:", "Vendor:"  → to jest SPRZEDAWCA
+- "Nabywca:", "Nabywca/Odbiorca:", "Kupujący:", "Odbiorca:", "Buyer:", "Bill to:", "Customer:"  → to jest NABYWCA
 
-TYPOWY UKŁAD POLSKIEJ FAKTURY:
-- Lewa strona lub góra: dane SPRZEDAWCY
-- Prawa strona lub dół nagłówka: dane NABYWCY
-- Jeśli tekst zawiera etykiety "Sprzedawca:" i "Nabywca:" - dane PO "Sprzedawca:" to dostawca
+KROK 3: Typowy układ przestrzenny polskiej faktury
+Jeśli nie ma wyraźnych etykiet, użyj układu przestrzennego:
+- LEWA STRONA nagłówka lub GÓRNA część = SPRZEDAWCA
+- PRAWA STRONA nagłówka lub DOLNA część = NABYWCA
 
-CZĘSTY BŁĄD: Nie mylić nabywcy ze sprzedawcą! Sprzedawca to ten, kto WYSTAWIA fakturę.
+KROK 4: Weryfikacja - zadaj sobie pytanie
+"Która firma WYSTAWIA tę fakturę i SPRZEDAJE towary/usługi?"
+Ta firma to SPRZEDAWCA → jej dane (nazwa + NIP) idą do supplier_name i supplier_nip
+
+PRZYKŁAD PRAWIDŁOWEJ IDENTYFIKACJI:
+Tekst z faktury:
+"Sprzedawca:
+ABC Company Sp. z o.o.
+NIP: 1234567890
+ul. Warszawska 1
+
+Nabywca:
+XYZ Firma Sp. z o.o.
+NIP: 9876543210
+ul. Krakowska 2"
+
+POPRAWNA ODPOWIEDŹ:
+supplier_name: "ABC Company Sp. z o.o."
+supplier_nip: "1234567890"
+
+BŁĄD DO UNIKNIĘCIA - NIE rób tego:
+supplier_name: "XYZ Firma Sp. z o.o."  ← TO JEST NABYWCA, NIE SPRZEDAWCA!
 
 DODATKOWE UWAGI:
 - Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
@@ -68,7 +88,8 @@ DODATKOWE UWAGI:
 - Daty w formacie YYYY-MM-DD
 - Kwoty jako stringi z kropką (nie przecinkiem)
 - Walutę zapisz jako 3-literowy kod ISO (np. EUR, USD, PLN)
-- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
+- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń
+- W razie wątpliwości ZAWSZE wybierz firmę oznaczoną jako "Sprzedawca" lub po lewej stronie nagłówka`;
 
   const mimeType = fileBlob.type;
   const isPDF = mimeType === 'application/pdf';
