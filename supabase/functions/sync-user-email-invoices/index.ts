@@ -118,7 +118,7 @@ Deno.serve(async (req: Request) => {
 
     for (const config of emailConfigs as EmailConfig[]) {
       try {
-        const synced = await syncEmailAccount(supabase, config, user.id);
+        const synced = await syncEmailAccount(supabase, config, user.id, warnings);
         totalSynced += synced;
 
         await supabase
@@ -231,7 +231,8 @@ async function getValidAccessToken(
 async function syncEmailAccount(
   supabase: any,
   config: EmailConfig,
-  userId: string
+  userId: string,
+  warnings: string[]
 ): Promise<number> {
   console.log(`Connecting to Gmail for ${config.email_address}...`);
 
@@ -416,7 +417,12 @@ async function syncEmailAccount(
             );
 
             if (ocrResponse.ok) {
+              const ocrData = await ocrResponse.json();
               console.log(`OCR processed for invoice ${invoiceData.id}`);
+
+              if (ocrData.validationError) {
+                warnings.push(`${part.filename}: ${ocrData.validationError}`);
+              }
             }
           } catch (ocrError) {
             console.error("OCR error:", ocrError);

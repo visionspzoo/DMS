@@ -71,7 +71,9 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
     <div className="grid gap-2">
       {invoices.map((invoice) => {
         const displayStatus = getUserSpecificStatus(invoice, user?.id || '');
-        const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP;
+        const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
+          (invoice.supplier_nip?.includes('[BŁĄD]')) ||
+          (invoice.supplier_name?.includes('[BŁĄD'));
         return (
           <button
             key={invoice.id}
@@ -128,7 +130,7 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                 <div className="flex items-center gap-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                   <Building2 className={`w-3 h-3 ${isInvalidBuyer ? 'text-red-600 dark:text-red-500' : ''}`} />
                   <span className={`truncate ${isInvalidBuyer ? 'text-red-600 dark:text-red-500 font-semibold' : ''}`}>
-                    {invoice.supplier_name || 'Przetwarzanie...'}
+                    {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                   </span>
                 </div>
                 {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (

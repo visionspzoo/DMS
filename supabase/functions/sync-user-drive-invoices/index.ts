@@ -349,6 +349,11 @@ Deno.serve(async (req: Request) => {
               if (ocrResponse.ok) {
                 const ocrData = await ocrResponse.json();
                 console.log(`✓ OCR completed for ${file.name}`);
+
+                if (ocrData.validationError) {
+                  warnings.push(`${file.name}: ${ocrData.validationError}`);
+                }
+
                 if (ocrData.suggestedTags?.length > 0) {
                   for (const tag of ocrData.suggestedTags) {
                     await supabase

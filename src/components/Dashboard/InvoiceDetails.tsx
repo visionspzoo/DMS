@@ -40,7 +40,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedInvoice, setEditedInvoice] = useState<Partial<Invoice>>(invoice);
+  const [editedInvoice, setEditedInvoice] = useState<Partial<Invoice>>({
+    ...invoice,
+    supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+    supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+  });
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
@@ -49,7 +53,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
 
-  const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP;
+  const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
+    (invoice.supplier_nip?.includes('[BŁĄD]')) ||
+    (invoice.supplier_name?.includes('[BŁĄD'));
 
   useEffect(() => {
     loadApprovals();
@@ -601,7 +607,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         }
       }
 
-      alert('Faktura została ponownie przetworzona przez AI');
+      if (result.validationError) {
+        alert(`UWAGA: ${result.validationError}\n\nFaktura została przetworzona, ale wymaga ręcznej korekty danych.`);
+      } else {
+        alert('Faktura została ponownie przetworzona przez AI');
+      }
       onUpdate();
     } catch (error) {
       console.error('Error reprocessing invoice:', error);
@@ -679,7 +689,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 )}
                 {canEdit() && (
                   <button
-                    onClick={() => setIsEditing(true)}
+                    onClick={() => {
+                      setEditedInvoice({
+                        ...invoice,
+                        supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                        supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                      });
+                      setIsEditing(true);
+                    }}
                     className="flex items-center gap-2 px-3 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -692,7 +709,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 <button
                   onClick={() => {
                     setIsEditing(false);
-                    setEditedInvoice(invoice);
+                    setEditedInvoice({
+                      ...invoice,
+                      supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                      supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                    });
                   }}
                   className="px-3 py-2 bg-slate-200 dark:bg-slate-700 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition font-medium"
                 >
@@ -876,7 +897,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
-                          {invoice.supplier_name || 'Przetwarzanie...'}
+                          {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                         </p>
                       )}
                     </div>
@@ -899,7 +920,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
-                          {invoice.supplier_nip || '—'}
+                          {(invoice.supplier_nip || '—').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                         </p>
                       )}
                     </div>

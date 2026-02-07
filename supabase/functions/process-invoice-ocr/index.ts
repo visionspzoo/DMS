@@ -463,6 +463,25 @@ Deno.serve(async (req: Request) => {
 
     console.log("Existing invoice data:", existingInvoice);
 
+    // Validate supplier NIP - check if it's a company NIP (buyer should be our company, not supplier)
+    const COMPANY_NIPS = ['5851490834', '8222407812']; // Aura Herbals and other company NIPs
+    let hasSupplierError = false;
+    let supplierErrorMessage = null;
+
+    if (parsedData.supplier_nip) {
+      const cleanSupplierNip = parsedData.supplier_nip.replace(/[^0-9]/g, '');
+      if (COMPANY_NIPS.some(nip => cleanSupplierNip === nip)) {
+        hasSupplierError = true;
+        const companyName = cleanSupplierNip === '5851490834' ? 'Aura Herbals' : 'firma';
+        supplierErrorMessage = `BŁĄD: AI pomyliło strony faktury - ${companyName} (NIP: ${cleanSupplierNip}) to NABYWCA (kupujący), nie SPRZEDAWCA (dostawca). Dane zostały oznaczone jako wymagające korekty.`;
+        console.error(supplierErrorMessage);
+
+        // Mark the invalid data with a special prefix so it's easy to spot
+        parsedData.supplier_name = `[BŁĄD: TO NABYWCA] ${parsedData.supplier_name || ''}`;
+        parsedData.supplier_nip = `[BŁĄD] ${parsedData.supplier_nip}`;
+      }
+    }
+
     // Only update fields if OCR found a value OR the field is currently empty
     const updateData: any = {
       status: "draft",
@@ -782,6 +801,7 @@ Deno.serve(async (req: Request) => {
         error: errorDetails,
         suggestedTags,
         suggestedDescription,
+        validationError: hasSupplierError ? supplierErrorMessage : null,
       }),
       {
         headers: {
