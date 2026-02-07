@@ -104,12 +104,13 @@ export function KSEFInvoicesPage() {
       const { count: unassigned } = await supabase
         .from('ksef_invoices')
         .select('*', { count: 'exact', head: true })
-        .is('transferred_to_invoice_id', null);
+        .is('transferred_to_invoice_id', null)
+        .is('transferred_to_department_id', null);
 
       const { count: assigned } = await supabase
         .from('ksef_invoices')
         .select('*', { count: 'exact', head: true })
-        .not('transferred_to_invoice_id', 'is', null);
+        .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null');
 
       setUnassignedCount(unassigned || 0);
       setAssignedCount(assigned || 0);
@@ -119,9 +120,9 @@ export function KSEFInvoicesPage() {
         .select('*');
 
       if (invoiceTab === 'unassigned') {
-        query = query.is('transferred_to_invoice_id', null);
+        query = query.is('transferred_to_invoice_id', null).is('transferred_to_department_id', null);
       } else {
-        query = query.not('transferred_to_invoice_id', 'is', null);
+        query = query.or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null');
       }
 
       query = query.order('created_at', { ascending: false });
