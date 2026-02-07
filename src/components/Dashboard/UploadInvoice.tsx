@@ -8,70 +8,66 @@ interface UploadInvoiceProps {
   onSuccess: () => void;
 }
 
-interface SuggestedTag {
-  id: string;
-  name: string;
-  color: string;
-  confidence: number;
+interface FileUploadProgress {
+  file: File;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  progress: string;
+  error?: string;
 }
 
 export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const { user } = useAuth();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState('');
-  const [ocrDetails, setOcrDetails] = useState<{status?: string, error?: string}>({});
-  const [suggestedTags, setSuggestedTags] = useState<SuggestedTag[]>([]);
-  const [currentInvoiceId, setCurrentInvoiceId] = useState<string | null>(null);
-
+  const [filesProgress, setFilesProgress] = useState<FileUploadProgress[]>([]);
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setError('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.');
-        return;
+    const selectedFiles = Array.from(e.target.files || []);
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    for (const file of selectedFiles) {
+      if (file.size > 10 * 1024 * 1024) {
+        errors.push(`${file.name} jest zbyt duży (maks. 10MB)`);
+      } else {
+        validFiles.push(file);
       }
-      setFile(selectedFile);
+    }
+
+    if (errors.length > 0) {
+      setError(errors.join(', '));
+    } else {
       setError('');
     }
+
+    setFiles(validFiles);
+    setFilesProgress(validFiles.map(file => ({
+      file,
+      status: 'pending',
+      progress: 'Oczekuje...',
+    })));
   };
 
-  const applySuggestedTag = async (tag: SuggestedTag) => {
-    if (!currentInvoiceId) return;
-
-    try {
-      const { error } = await supabase
-        .from('invoice_tags')
-        .insert({
-          invoice_id: currentInvoiceId,
-          tag_id: tag.id,
-          created_by: user?.id,
-        });
-
-      if (error) throw error;
-
-      setSuggestedTags(prev => prev.filter(t => t.id !== tag.id));
-      setProgress(`Tag "${tag.name}" został dodany!`);
-    } catch (err: any) {
-      console.error('Error applying tag:', err);
-      setError(`Nie udało się dodać tagu: ${err.message}`);
-    }
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFilesProgress(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleUpload = async () => {
-    if (!file || !user) return;
-
-    setUploading(true);
-    setError('');
-    setProgress('Przesyłanie pliku...');
+  const uploadSingleFile = async (file: File, index: number) => {
+    const updateProgress = (status: FileUploadProgress['status'], progress: string, error?: string) => {
+      setFilesProgress(prev => prev.map((fp, i) =>
+        i === index ? { ...fp, status, progress, error } : fp
+      ));
+    };
 
     try {
+      updateProgress('uploading', 'Przesyłanie pliku...');
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `invoices/${fileName}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(filePath, file);
 
@@ -81,7 +77,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
         .from('documents')
         .getPublicUrl(filePath);
 
-      setProgress('Konwertowanie do base64...');
+      updateProgress('uploading', 'Konwertowanie do base64...');
 
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
@@ -95,23 +91,22 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
 
       const pdfBase64 = await base64Promise;
 
-      setProgress('Zapisywanie w bazie danych...');
+      updateProgress('uploading', 'Zapisywanie w bazie danych...');
 
       const { data: invoiceData, error: insertError } = await supabase
         .from('invoices')
         .insert({
           file_url: publicUrl,
           pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
-          uploaded_by: user.id,
+          uploaded_by: user!.id,
         })
         .select()
         .single();
 
       if (insertError) throw insertError;
 
-      setProgress('Wysyłanie do Google Drive...');
+      updateProgress('uploading', 'Wysyłanie do Google Drive...');
 
-      let driveSuccess = false;
       try {
         const driveResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
@@ -131,132 +126,77 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
         );
 
         if (!driveResponse.ok) {
-          const errorData = await driveResponse.json();
-          console.error('Google Drive upload failed:', errorData);
-          console.log('Faktura została zapisana, ale nie w Google Drive');
-        } else {
-          const driveData = await driveResponse.json();
-          console.log('Google Drive upload successful:', driveData);
-          driveSuccess = true;
+          console.log('Google Drive upload failed for:', file.name);
         }
       } catch (driveError: any) {
-        console.error('Google Drive error:', driveError);
-        console.log('Faktura została zapisana, ale nie w Google Drive');
+        console.log('Google Drive error for:', file.name);
       }
 
-      setProgress('Przetwarzanie OCR...');
-
-      let ocrSuccess = false;
-      let ocrError = '';
-
-      console.log('=== STARTING OCR PROCESS ===');
-      console.log('Invoice ID:', invoiceData.id);
-      console.log('File URL:', publicUrl);
-      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+      updateProgress('uploading', 'Przetwarzanie OCR...');
 
       try {
-        const ocrUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`;
-        console.log('OCR Endpoint:', ocrUrl);
-
-        const ocrResponse = await fetch(ocrUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: publicUrl,
-            invoiceId: invoiceData.id,
-          }),
-        });
-
-        console.log('OCR Response Status:', ocrResponse.status);
-        console.log('OCR Response Headers:', Object.fromEntries(ocrResponse.headers.entries()));
-
-        if (!ocrResponse.ok) {
-          const errorText = await ocrResponse.text();
-          console.error('OCR Error Response (raw):', errorText);
-
-          let errorData;
-          try {
-            errorData = JSON.parse(errorText);
-          } catch {
-            errorData = { error: errorText };
+        const ocrResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileUrl: publicUrl,
+              invoiceId: invoiceData.id,
+            }),
           }
+        );
 
-          console.error('OCR Error Data:', errorData);
-          ocrError = errorData.error || errorData.details || 'Processing failed';
-          setOcrDetails({ status: `${ocrResponse.status}`, error: ocrError });
-          setError(`OCR nie powiódł się: ${ocrError}`);
-        } else {
+        if (ocrResponse.ok) {
           const ocrData = await ocrResponse.json();
-          console.log('OCR SUCCESS! Response:', ocrData);
-          console.log('Extracted data:', ocrData.data);
-          console.log('Used API:', ocrData.usedApi);
-          console.log('Suggested tags:', ocrData.suggestedTags);
-          ocrSuccess = true;
 
           if (ocrData.suggestedTags && ocrData.suggestedTags.length > 0) {
-            console.log('Auto-applying suggested tags...');
-            setCurrentInvoiceId(invoiceData.id);
-
-            const autoAppliedTags: string[] = [];
             for (const tag of ocrData.suggestedTags) {
               try {
-                const { error: tagError } = await supabase
+                await supabase
                   .from('invoice_tags')
                   .insert({
                     invoice_id: invoiceData.id,
                     tag_id: tag.id,
                     created_by: user?.id,
                   });
-
-                if (!tagError) {
-                  autoAppliedTags.push(tag.name);
-                  console.log(`✓ Auto-applied tag: ${tag.name} (confidence: ${tag.confidence})`);
-                } else {
-                  console.error(`Failed to auto-apply tag ${tag.name}:`, tagError);
-                }
               } catch (tagErr) {
                 console.error(`Error auto-applying tag ${tag.name}:`, tagErr);
               }
             }
-
-            if (autoAppliedTags.length > 0) {
-              setSuggestedTags(ocrData.suggestedTags);
-              setProgress(`Gotowe! Automatycznie dodano tagi: ${autoAppliedTags.join(', ')}`);
-            }
+            updateProgress('success', 'Gotowe! OCR przetworzony, tagi dodane.');
+          } else {
+            updateProgress('success', 'Gotowe! OCR przetworzony.');
           }
+        } else {
+          updateProgress('success', 'Przesłano! OCR nie powiódł się.');
         }
       } catch (ocrErr: any) {
-        console.error('OCR Exception:', ocrErr);
-        console.error('Error stack:', ocrErr.stack);
-        ocrError = ocrErr.message;
-        setOcrDetails({ status: 'exception', error: ocrError });
-        setError(`OCR nie powiódł się: ${ocrError}`);
+        updateProgress('success', 'Przesłano! OCR nie powiódł się.');
       }
-
-      console.log('=== OCR PROCESS COMPLETED ===');
-      console.log('Success:', ocrSuccess);
-      console.log('Error:', ocrError);
-
-      if (ocrSuccess) {
-        if (!progress.includes('Automatycznie dodano tagi')) {
-          setProgress('Gotowe! Faktura została przetworzona.');
-        }
-      } else {
-        setProgress('Faktura została przesłana. OCR nie powiódł się - wypełnij dane ręcznie.');
-      }
-
-      setTimeout(() => {
-        setUploading(false);
-        onSuccess();
-      }, 3000);
     } catch (err: any) {
-      console.error('Upload error:', err);
-      setError(err.message || 'Wystąpił błąd podczas przesyłania pliku');
-      setUploading(false);
+      console.error('Upload error for', file.name, ':', err);
+      updateProgress('error', 'Błąd', err.message || 'Wystąpił błąd');
     }
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0 || !user) return;
+
+    setUploading(true);
+    setError('');
+
+    for (let i = 0; i < files.length; i++) {
+      await uploadSingleFile(files[i], i);
+    }
+
+    setTimeout(() => {
+      setUploading(false);
+      onSuccess();
+    }, 2000);
   };
 
   return (
@@ -277,29 +217,20 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
               <p className="font-medium">{error}</p>
-              {ocrDetails.status && (
-                <div className="mt-2 text-sm">
-                  <p><strong>Status OCR:</strong> {ocrDetails.status}</p>
-                  {ocrDetails.error && <p><strong>Szczegóły:</strong> {ocrDetails.error}</p>}
-                  <p className="mt-2 text-xs">
-                    <strong>Co sprawdzić:</strong>
-                    <br />1. Czy klucz MISTRAL_API_KEY jest dodany w Supabase (Project Settings → Edge Functions → Secrets)
-                    <br />2. Otwórz konsolę (F12) i sprawdź szczegółowe logi
-                    <br />3. Sprawdź logi Edge Function w Supabase Dashboard
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
-          {!file ? (
+          {files.length === 0 ? (
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-12 cursor-pointer hover:border-slate-400 transition">
               <Upload className="w-12 h-12 text-slate-400 mb-4" />
               <p className="text-sm font-medium text-slate-900 mb-1">
-                Kliknij, aby wybrać plik
+                Kliknij, aby wybrać pliki
               </p>
               <p className="text-xs text-slate-600">
-                PDF, JPG, PNG (maks. 10MB)
+                PDF, JPG, PNG (maks. 10MB każdy)
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Możesz wybrać wiele plików
               </p>
               <input
                 type="file"
@@ -307,74 +238,102 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
                 accept=".pdf,.jpg,.jpeg,.png"
                 className="hidden"
                 disabled={uploading}
+                multiple
               />
             </label>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center space-x-3 p-4 bg-slate-50 rounded-lg">
-                <FileText className="w-8 h-8 text-slate-600" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-slate-600">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                </div>
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {filesProgress.map((fileProgress, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center space-x-3 p-3 rounded-lg border ${
+                      fileProgress.status === 'success'
+                        ? 'bg-green-50 border-green-200'
+                        : fileProgress.status === 'error'
+                        ? 'bg-red-50 border-red-200'
+                        : fileProgress.status === 'uploading'
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    {fileProgress.status === 'uploading' ? (
+                      <Loader className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
+                    ) : fileProgress.status === 'success' ? (
+                      <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    ) : fileProgress.status === 'error' ? (
+                      <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+                        <X className="w-3 h-3 text-white" />
+                      </div>
+                    ) : (
+                      <FileText className="w-5 h-5 text-slate-600 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {fileProgress.file.name}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {(fileProgress.file.size / 1024 / 1024).toFixed(2)} MB - {fileProgress.progress}
+                      </p>
+                      {fileProgress.error && (
+                        <p className="text-xs text-red-600 mt-1">{fileProgress.error}</p>
+                      )}
+                    </div>
+                    {!uploading && fileProgress.status === 'pending' && (
+                      <button
+                        onClick={() => removeFile(index)}
+                        className="p-1 hover:bg-slate-200 rounded transition flex-shrink-0"
+                      >
+                        <X className="w-4 h-4 text-slate-600" />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
 
-              {uploading && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-3">
-                    <Loader className="w-5 h-5 text-blue-600 animate-spin" />
-                    <p className="text-sm text-blue-900 font-medium">{progress}</p>
-                  </div>
-                </div>
-              )}
-
-              {suggestedTags.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-sm font-medium text-green-900 mb-3">
-                    Sugerowane tagi na podstawie dostawcy:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestedTags.map((tag) => (
-                      <button
-                        key={tag.id}
-                        onClick={() => applySuggestedTag(tag)}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-opacity hover:opacity-80"
-                        style={{
-                          backgroundColor: `${tag.color}20`,
-                          color: tag.color,
-                          border: `1px solid ${tag.color}40`,
-                        }}
-                        title={`Użyto ${tag.confidence} razy dla tego dostawcy`}
-                      >
-                        <span>{tag.name}</span>
-                        <span className="text-xs opacity-60">({tag.confidence}×)</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-green-700 mt-2">
-                    Kliknij tag, aby dodać go do faktury
-                  </p>
-                </div>
-              )}
-
               <div className="flex space-x-3">
-                <button
-                  onClick={() => setFile(null)}
-                  disabled={uploading}
-                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium disabled:opacity-50"
-                >
-                  Anuluj
-                </button>
+                {!uploading && (
+                  <label className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium text-center cursor-pointer">
+                    Dodaj więcej
+                    <input
+                      type="file"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files || []);
+                        const validFiles: File[] = [];
+
+                        for (const file of newFiles) {
+                          if (file.size <= 10 * 1024 * 1024) {
+                            validFiles.push(file);
+                          }
+                        }
+
+                        setFiles(prev => [...prev, ...validFiles]);
+                        setFilesProgress(prev => [
+                          ...prev,
+                          ...validFiles.map(file => ({
+                            file,
+                            status: 'pending' as const,
+                            progress: 'Oczekuje...',
+                          }))
+                        ]);
+                        e.target.value = '';
+                      }}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="hidden"
+                      multiple
+                    />
+                  </label>
+                )}
                 <button
                   onClick={handleUpload}
                   disabled={uploading}
                   className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium disabled:opacity-50"
                 >
-                  {uploading ? 'Przesyłanie...' : 'Prześlij'}
+                  {uploading ? `Przesyłanie (${filesProgress.filter(f => f.status === 'success').length}/${files.length})...` : `Prześlij (${files.length})`}
                 </button>
               </div>
             </div>
