@@ -28,14 +28,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+
+      if (code) {
+        window.history.replaceState({}, '', window.location.pathname);
+        try {
+          await supabase.auth.exchangeCodeForSession(code);
+        } catch (err) {
+          console.error('OAuth exchange failed:', err);
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       if (session?.user) {
-        loadProfile(session.user.id);
+        await loadProfile(session.user.id);
       } else {
         setLoading(false);
       }
-    });
+    };
+
+    initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
