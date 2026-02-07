@@ -175,7 +175,7 @@ export function Dashboard() {
                     {(invoice.gross_amount || 0).toLocaleString('pl-PL', {
                       minimumFractionDigits: 2,
                     })}{' '}
-                    PLN
+                    {invoice.currency || 'PLN'}
                   </p>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400">
                     Robocza
@@ -219,7 +219,7 @@ export function Dashboard() {
                     {(invoice.gross_amount || 0).toLocaleString('pl-PL', {
                       minimumFractionDigits: 2,
                     })}{' '}
-                    PLN
+                    {invoice.currency || 'PLN'}
                   </p>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20">
                     W weryfikacji
@@ -263,7 +263,7 @@ export function Dashboard() {
                     {(invoice.gross_amount || 0).toLocaleString('pl-PL', {
                       minimumFractionDigits: 2,
                     })}{' '}
-                    PLN
+                    {invoice.currency || 'PLN'}
                   </p>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-500/10 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-400">
                     Oczekuje
@@ -307,7 +307,7 @@ export function Dashboard() {
                     {(invoice.gross_amount || 0).toLocaleString('pl-PL', {
                       minimumFractionDigits: 2,
                     })}{' '}
-                    PLN
+                    {invoice.currency || 'PLN'}
                   </p>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-status-success/10 text-status-success dark:bg-status-success/20">
                     Zaakceptowano
