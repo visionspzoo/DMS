@@ -12,4 +12,44 @@
   #root {
     @apply min-h-screen bg-light-bg dark:bg-dark-bg;
   }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(220, 10%, 78%) transparent;
+  }
+
+  .dark * {
+    scrollbar-color: hsl(220, 12%, 24%) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(220, 10%, 78%);
+    border-radius: 9999px;
+    transition: background-color 0.2s;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(220, 10%, 65%);
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: hsl(220, 12%, 24%);
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(220, 12%, 32%);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }

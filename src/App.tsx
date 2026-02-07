@@ -10,7 +10,7 @@ import { ContractFullPage } from './components/Contracts/ContractFullPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
 import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog } from 'lucide-react';
 
 type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'configuration';
@@ -18,7 +18,14 @@ type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | '
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
   const [appView, setAppView] = useState<AppView>('dashboard');
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('aura-dark-mode');
+    return saved === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aura-dark-mode', String(darkMode));
+  }, [darkMode]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
 
