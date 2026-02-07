@@ -236,7 +236,7 @@ async function syncEmailAccount(
   const afterDate = Math.floor(oneDayAgo.getTime() / 1000);
 
   const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=after:${afterDate} has:attachment`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=after:${afterDate} has:attachment filename:pdf`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
