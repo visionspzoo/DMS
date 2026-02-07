@@ -231,9 +231,9 @@ async function syncEmailAccount(
 
   const accessToken = await getValidAccessToken(supabase, config);
 
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const afterDate = Math.floor(thirtyDaysAgo.getTime() / 1000);
+  const oneDayAgo = new Date();
+  oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+  const afterDate = Math.floor(oneDayAgo.getTime() / 1000);
 
   const listResponse = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=after:${afterDate} has:attachment`,
