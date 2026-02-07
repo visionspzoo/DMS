@@ -15,7 +15,7 @@ export async function computeFileHash(file: File): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function checkDuplicateInDb(hash: string, userId: string): Promise<{
+export async function checkDuplicateInDb(hash: string, _userId: string): Promise<{
   isDuplicate: boolean;
   label?: string;
 }> {
@@ -23,7 +23,7 @@ export async function checkDuplicateInDb(hash: string, userId: string): Promise<
     .from('invoices')
     .select('id, invoice_number, supplier_name')
     .eq('file_hash', hash)
-    .eq('uploaded_by', userId)
+    .limit(1)
     .maybeSingle();
 
   if (data) {
@@ -82,7 +82,12 @@ export async function uploadInvoiceFile(
     .select()
     .single();
 
-  if (insertError) throw insertError;
+  if (insertError) {
+    if (insertError.code === '23505' && insertError.message?.includes('file_hash')) {
+      throw new Error('Ten plik został już przesłany wcześniej');
+    }
+    throw insertError;
+  }
 
   onProgress('Google Drive...');
   try {
