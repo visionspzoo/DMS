@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
@@ -14,6 +14,8 @@ import {
 } from '../../lib/uploadUtils';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
+
+const SYNC_INTERVAL_MS = 10 * 60 * 1000;
 
 export function InvoiceList() {
   const { user } = useAuth();
@@ -37,9 +39,103 @@ export function InvoiceList() {
   const [uploadValidationError, setUploadValidationError] = useState('');
   const uploadQueueRef = useRef<FileUploadEntry[]>([]);
 
+  const [driveLastSync, setDriveLastSync] = useState<string | null>(null);
+  const [driveActive, setDriveActive] = useState(false);
+  const [emailLastSync, setEmailLastSync] = useState<string | null>(null);
+  const [emailActive, setEmailActive] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
+  const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadSyncConfigs = useCallback(async () => {
+    if (!user) return;
+    const [driveRes, emailRes] = await Promise.all([
+      supabase.from('user_drive_configs').select('is_active, last_sync_at').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_email_configs').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true).order('last_sync_at', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    if (driveRes.data) {
+      setDriveActive(driveRes.data.is_active);
+      setDriveLastSync(driveRes.data.last_sync_at);
+    }
+    if (emailRes.data) {
+      setEmailActive(emailRes.data.is_active);
+      setEmailLastSync(emailRes.data.last_sync_at);
+    }
+  }, [user]);
+
+  const runSync = useCallback(async (manual = false) => {
+    if (syncing || !user) return;
+    setSyncing(true);
+    if (manual) setSyncMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak sesji');
+
+      const headers = {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      };
+
+      const promises: Promise<Response>[] = [];
+
+      if (driveActive) {
+        promises.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`, { method: 'POST', headers }));
+      }
+      if (emailActive) {
+        promises.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices`, { method: 'POST', headers }));
+      }
+
+      if (promises.length === 0) {
+        if (manual) setSyncMessage({ type: 'error', text: 'Brak aktywnych zrodel synchronizacji. Skonfiguruj dysk lub email w Konfiguracji.' });
+        return;
+      }
+
+      const results = await Promise.allSettled(promises);
+      let totalSynced = 0;
+      let hasError = false;
+
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.ok) {
+          const body = await r.value.json();
+          totalSynced += body.total_synced || body.synced || 0;
+        } else {
+          hasError = true;
+        }
+      }
+
+      await loadSyncConfigs();
+      if (totalSynced > 0) loadInvoices();
+
+      if (manual) {
+        setSyncMessage({
+          type: hasError ? 'error' : 'success',
+          text: hasError
+            ? 'Synchronizacja zakonczona z bledami'
+            : totalSynced > 0
+            ? `Zsynchronizowano ${totalSynced} nowych faktur`
+            : 'Brak nowych faktur do pobrania',
+        });
+        setTimeout(() => setSyncMessage(null), 5000);
+      }
+    } catch (e: any) {
+      if (manual) {
+        setSyncMessage({ type: 'error', text: e.message || 'Blad synchronizacji' });
+        setTimeout(() => setSyncMessage(null), 5000);
+      }
+    } finally {
+      setSyncing(false);
+      setNextSyncIn(SYNC_INTERVAL_MS);
+    }
+  }, [syncing, user, driveActive, emailActive, loadSyncConfigs]);
+
   useEffect(() => {
     loadInvoices();
     loadDepartments();
+    loadSyncConfigs();
 
     const subscription = supabase
       .channel('invoices-changes')
@@ -52,6 +148,23 @@ export function InvoiceList() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!driveActive && !emailActive) return;
+
+    syncTimerRef.current = setInterval(() => {
+      runSync(false);
+    }, SYNC_INTERVAL_MS);
+
+    countdownRef.current = setInterval(() => {
+      setNextSyncIn(prev => Math.max(0, prev - 1000));
+    }, 1000);
+
+    return () => {
+      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [driveActive, emailActive, runSync]);
 
   const loadInvoices = async () => {
     try {
@@ -364,6 +477,64 @@ export function InvoiceList() {
           {filteredInvoices.length} z {invoices.length} {invoices.length === 1 ? 'faktury' : 'faktur'}
         </p>
       </div>
+
+      {(driveActive || emailActive) && (
+        <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 flex-wrap">
+              {driveActive && (
+                <div className="flex items-center gap-1.5">
+                  <HardDrive className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                    Dysk:
+                  </span>
+                  <span className="text-[11px] font-medium text-text-primary-light dark:text-text-primary-dark">
+                    {driveLastSync
+                      ? new Date(driveLastSync).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'nigdy'}
+                  </span>
+                </div>
+              )}
+              {emailActive && (
+                <div className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                  <span className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                    Email:
+                  </span>
+                  <span className="text-[11px] font-medium text-text-primary-light dark:text-text-primary-dark">
+                    {emailLastSync
+                      ? new Date(emailLastSync).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'nigdy'}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+                <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  Nastepna za {Math.floor(nextSyncIn / 60000)}:{String(Math.floor((nextSyncIn % 60000) / 1000)).padStart(2, '0')}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => runSync(true)}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Synchronizacja...' : 'Synchronizuj teraz'}
+            </button>
+          </div>
+          {syncMessage && (
+            <div className={`mt-2 px-2.5 py-1.5 rounded-md text-[11px] font-medium ${
+              syncMessage.type === 'success'
+                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+            }`}>
+              {syncMessage.text}
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border-2 transition-colors mb-4 overflow-hidden ${
