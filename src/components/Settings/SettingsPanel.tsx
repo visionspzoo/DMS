@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
+import SlackSettings from './SlackSettings';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -45,7 +46,7 @@ export default function SettingsPanel() {
   });
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'ai_prompts'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'ai_prompts' | 'slack'>('users');
 
   useEffect(() => {
     loadUsers();
@@ -326,6 +327,17 @@ export default function SettingsPanel() {
         >
           <Sparkles className="w-4 h-4" />
           AI Umowy
+        </button>
+        <button
+          onClick={() => setActiveTab('slack')}
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+            activeTab === 'slack'
+              ? 'bg-brand-primary text-white'
+              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          Slack
         </button>
       </div>
 
@@ -750,6 +762,10 @@ export default function SettingsPanel() {
 
         {activeTab === 'ai_prompts' && (
           <AIPromptsSettings />
+        )}
+
+        {activeTab === 'slack' && (
+          <SlackSettings />
         )}
     </div>
   );
