@@ -207,6 +207,14 @@ Deno.serve(async (req: Request) => {
 
     let totalSynced = 0;
     const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const claudeApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
+
+    if (!claudeApiKey && !mistralApiKey) {
+      warnings.push("UWAGA: Brak kluczy API (ANTHROPIC_API_KEY lub MISTRAL_API_KEY) w Supabase. Faktury zostana zaimportowane, ale dane nie zostana automatycznie wyekstraktowane. Skonfiguruj klucze API w Dashboard Supabase -> Project Settings -> Edge Functions -> Secrets.");
+    }
 
     for (const driveConfig of driveConfigs as DriveConfig[]) {
       try {
@@ -425,6 +433,7 @@ Deno.serve(async (req: Request) => {
         message: `Zsynchronizowano ${totalSynced} faktur z Google Drive`,
         total_synced: totalSynced,
         errors: errors.length > 0 ? errors : undefined,
+        warnings: warnings.length > 0 ? warnings : undefined,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

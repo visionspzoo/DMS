@@ -99,18 +99,29 @@ export function InvoiceList() {
       let hasError = false;
 
       const errorMessages: string[] = [];
+      const warningMessages: string[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') {
-          const body = await r.value.json();
-          if (r.value.ok) {
-            totalSynced += body.total_synced || body.synced || 0;
-            if (body.errors) errorMessages.push(...body.errors);
-          } else {
+          try {
+            const body = await r.value.json();
+            console.log('Sync response:', body);
+            if (r.value.ok) {
+              totalSynced += body.total_synced || body.synced || 0;
+              if (body.errors) errorMessages.push(...body.errors);
+              if (body.warnings) warningMessages.push(...body.warnings);
+            } else {
+              hasError = true;
+              if (body.error) errorMessages.push(body.error);
+            }
+          } catch (parseError) {
+            console.error('Failed to parse sync response:', parseError);
             hasError = true;
-            if (body.error) errorMessages.push(body.error);
+            errorMessages.push('Blad parsowania odpowiedzi z serwera');
           }
         } else {
           hasError = true;
+          console.error('Sync promise rejected:', r.reason);
+          errorMessages.push(r.reason?.message || 'Synchronizacja nieudana');
         }
       }
 
@@ -119,17 +130,17 @@ export function InvoiceList() {
 
       if (manual) {
         const hasErrors = hasError || errorMessages.length > 0;
+        const allMessages = [...errorMessages, ...warningMessages];
+
         setSyncMessage({
-          type: hasErrors ? 'error' : 'success',
-          text: hasErrors
-            ? errorMessages.length > 0
-              ? errorMessages.join('. ')
-              : 'Synchronizacja zakonczona z bledami'
+          type: hasErrors ? 'error' : warningMessages.length > 0 ? 'error' : 'success',
+          text: allMessages.length > 0
+            ? allMessages.join(' ')
             : totalSynced > 0
             ? `Zsynchronizowano ${totalSynced} nowych faktur`
             : 'Brak nowych faktur do pobrania',
         });
-        setTimeout(() => setSyncMessage(null), 5000);
+        setTimeout(() => setSyncMessage(null), 10000);
       }
     } catch (e: any) {
       if (manual) {
