@@ -149,14 +149,28 @@ export default function AliceIntegration() {
     }
   };
 
-  const endpoints = [
-    { method: 'GET', path: '/context', desc: 'Pelny kontekst systemu (faktury, ML, dzialy, umowy)' },
+  const readEndpoints = [
+    { method: 'GET', path: '/context', desc: 'Pelny kontekst systemu (faktury, ML, dzialy, umowy, powiadomienia)' },
     { method: 'GET', path: '/invoices', desc: 'Lista faktur ze szczegolami' },
+    { method: 'GET', path: '/invoices/:id', desc: 'Pojedyncza faktura z tagami i historia zmian' },
     { method: 'GET', path: '/departments', desc: 'Dzialy i limity' },
     { method: 'GET', path: '/ml', desc: 'Dane ML: wzorce tagowania, predykcje, tagi' },
     { method: 'GET', path: '/contracts', desc: 'Umowy' },
+    { method: 'GET', path: '/contracts/:id', desc: 'Szczegoly umowy' },
     { method: 'GET', path: '/ksef', desc: 'Faktury KSeF' },
     { method: 'GET', path: '/profiles', desc: 'Profile uzytkownikow' },
+    { method: 'GET', path: '/notifications', desc: 'Powiadomienia uzytkownika' },
+  ];
+
+  const writeEndpoints = [
+    { method: 'PUT', path: '/invoices/:id/status', desc: 'Zmien status faktury {status}' },
+    { method: 'PUT', path: '/invoices/:id', desc: 'Aktualizuj pola faktury {description, department_id, ...}' },
+    { method: 'POST', path: '/invoices/:id/tags', desc: 'Dodaj tag do faktury {tag} (nazwa lub id)' },
+    { method: 'DELETE', path: '/invoices/:id/tags/:tagId', desc: 'Usun tag z faktury' },
+    { method: 'PUT', path: '/contracts/:id/status', desc: 'Zmien status umowy {status}' },
+    { method: 'PUT', path: '/contracts/:id', desc: 'Aktualizuj pola umowy {title, description, ...}' },
+    { method: 'PUT', path: '/notifications/:id/read', desc: 'Oznacz powiadomienie jako przeczytane' },
+    { method: 'PUT', path: '/notifications/read-all', desc: 'Oznacz wszystkie jako przeczytane' },
   ];
 
   return (
@@ -404,7 +418,8 @@ export default function AliceIntegration() {
               </div>
             </div>
 
-            <div className="bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+            <p className="text-[10px] font-bold uppercase text-teal-700 dark:text-teal-400 mb-1.5 tracking-wide">Odczyt</p>
+            <div className="bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden mb-3">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-700/30">
@@ -414,7 +429,7 @@ export default function AliceIntegration() {
                   </tr>
                 </thead>
                 <tbody>
-                  {endpoints.map((ep, i) => (
+                  {readEndpoints.map((ep, i) => (
                     <tr key={i} className="border-b last:border-b-0 border-slate-100 dark:border-slate-700/20">
                       <td className="px-3 py-1.5">
                         <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-[9px] font-bold">
@@ -431,12 +446,64 @@ export default function AliceIntegration() {
               </table>
             </div>
 
-            <div className="mt-2 p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-              <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Przyklad uzycia:</p>
-              <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
+            <p className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400 mb-1.5 tracking-wide">Zapis / Komendy</p>
+            <div className="bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden mb-3">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700/30">
+                    <th className="text-left px-3 py-1.5 text-[10px] font-bold uppercase text-text-secondary-light dark:text-text-secondary-dark">Metoda</th>
+                    <th className="text-left px-3 py-1.5 text-[10px] font-bold uppercase text-text-secondary-light dark:text-text-secondary-dark">Sciezka</th>
+                    <th className="text-left px-3 py-1.5 text-[10px] font-bold uppercase text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {writeEndpoints.map((ep, i) => (
+                    <tr key={i} className="border-b last:border-b-0 border-slate-100 dark:border-slate-700/20">
+                      <td className="px-3 py-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                          ep.method === 'PUT' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                          : ep.method === 'POST' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                        }`}>
+                          {ep.method}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <code className="text-[10px] font-mono text-text-primary-light dark:text-text-primary-dark">{ep.path}</code>
+                      </td>
+                      <td className="px-3 py-1.5 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">{ep.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-2">
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Odczyt kontekstu:</p>
+                <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
 {`curl -H "Authorization: Bearer aurs_TWOJ_TOKEN" \\
   ${apiBaseUrl}/context`}
-              </code>
+                </code>
+              </div>
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Zmiana statusu faktury:</p>
+                <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
+{`curl -X PUT -H "Authorization: Bearer aurs_TWOJ_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status":"approved"}' \\
+  ${apiBaseUrl}/invoices/ID_FAKTURY/status`}
+                </code>
+              </div>
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Dodanie tagu do faktury:</p>
+                <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
+{`curl -X POST -H "Authorization: Bearer aurs_TWOJ_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"tag":"pilne"}' \\
+  ${apiBaseUrl}/invoices/ID_FAKTURY/tags`}
+                </code>
+              </div>
             </div>
           </div>
         )}
