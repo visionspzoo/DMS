@@ -30,6 +30,12 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function computeFileHash(data: Uint8Array): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -338,6 +344,22 @@ async function syncEmailAccount(
             continue;
           }
 
+          const fileHash = await computeFileHash(pdfData);
+
+          const { data: existingInvoice } = await supabase
+            .from("invoices")
+            .select("id, invoice_number")
+            .eq("file_hash", fileHash)
+            .eq("uploaded_by", userId)
+            .maybeSingle();
+
+          if (existingInvoice) {
+            console.log(
+              `Duplicate detected for ${part.filename} (hash: ${fileHash.substring(0, 12)}..., existing invoice: ${existingInvoice.id}), skipping`
+            );
+            continue;
+          }
+
           const fileName = `${Date.now()}_${part.filename}`;
           const filePath = `invoices/${fileName}`;
 
@@ -366,6 +388,7 @@ async function syncEmailAccount(
               uploaded_by: userId,
               description: `Faktura z email: ${config.email_address}`,
               source: 'email',
+              file_hash: fileHash,
             })
             .select()
             .single();
