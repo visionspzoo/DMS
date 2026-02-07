@@ -504,6 +504,22 @@ export default function AliceIntegration() {
   ${apiBaseUrl}/invoices/ID_FAKTURY/tags`}
                 </code>
               </div>
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Zmiana statusu umowy:</p>
+                <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
+{`curl -X PUT -H "Authorization: Bearer aurs_TWOJ_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"status":"approved"}' \\
+  ${apiBaseUrl}/contracts/ID_UMOWY/status`}
+                </code>
+              </div>
+              <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">Szczegoly umowy:</p>
+                <code className="block text-[10px] font-mono text-text-secondary-light dark:text-text-secondary-dark whitespace-pre-wrap leading-relaxed">
+{`curl -H "Authorization: Bearer aurs_TWOJ_TOKEN" \\
+  ${apiBaseUrl}/contracts/ID_UMOWY`}
+                </code>
+              </div>
             </div>
           </div>
         )}

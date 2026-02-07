@@ -9,6 +9,8 @@ const corsHeaders = {
 
 type LLMModel = 'claude-sonnet-4' | 'gpt-4o' | 'gemini-2.0-flash';
 
+const CONTRACT_STATUSES = ['draft', 'pending_specialist', 'pending_manager', 'pending_director', 'pending_ceo', 'pending_signature', 'signed', 'approved', 'rejected'];
+
 interface AIAgentRequest {
   message?: string;
   conversationHistory?: Array<{ role: string; content: string }>;
@@ -18,6 +20,8 @@ interface AIAgentRequest {
   prompt?: string;
   chat_history?: Array<{ role: string; content: string; timestamp: Date }>;
   model?: LLMModel;
+  status?: string;
+  fields?: Record<string, any>;
 }
 
 const MODEL_CONFIGS: Record<LLMModel, { label: string; envKey: string }> = {
@@ -274,10 +278,123 @@ async function queryDepartmentStats(supabase: any) {
   return departments || [];
 }
 
+async function queryContractsDatabase(supabase: any) {
+  const { data: contracts, error } = await supabase
+    .from('contracts')
+    .select(`
+      id, contract_number, title, description, status, file_url,
+      department:department_id(id, name),
+      uploader:uploaded_by(full_name, role),
+      current_approver,
+      created_at, updated_at
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching contracts:', error);
+    return { contracts: [], summaries: [], approvals: [] };
+  }
+
+  const contractIds = (contracts || []).map((c: any) => c.id);
+
+  if (contractIds.length === 0) {
+    return { contracts: [], summaries: [], approvals: [] };
+  }
+
+  const [summariesResult, approvalsResult] = await Promise.all([
+    supabase
+      .from('contract_summaries')
+      .select('contract_id, brief, key_points')
+      .in('contract_id', contractIds),
+    supabase
+      .from('contract_approvals')
+      .select('contract_id, approver_role, status, comment, approved_at')
+      .in('contract_id', contractIds)
+      .order('approved_at', { ascending: true }),
+  ]);
+
+  return {
+    contracts: contracts || [],
+    summaries: summariesResult.data || [],
+    approvals: approvalsResult.data || [],
+  };
+}
+
+async function getContractById(supabase: any, id: string) {
+  const { data } = await supabase
+    .from('contracts')
+    .select(`
+      id, contract_number, title, description, status, file_url,
+      department:department_id(id, name),
+      uploader:uploaded_by(full_name, role),
+      current_approver, created_at, updated_at
+    `)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  const [summaryResult, approvalsResult, commentsResult] = await Promise.all([
+    supabase.from('contract_summaries').select('brief, details, key_points').eq('contract_id', id).maybeSingle(),
+    supabase.from('contract_approvals').select('approver_role, status, comment, approved_at').eq('contract_id', id).order('approved_at', { ascending: true }),
+    supabase.from('contract_comments').select('comment, comment_type, highlighted_text, created_at').eq('contract_id', id).order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  return {
+    ...data,
+    summary: summaryResult.data || null,
+    approvals: approvalsResult.data || [],
+    comments: commentsResult.data || [],
+  };
+}
+
+async function updateContractStatus(supabase: any, contractId: string, newStatus: string) {
+  if (!CONTRACT_STATUSES.includes(newStatus)) {
+    return { error: `Nieprawidlowy status. Dozwolone: ${CONTRACT_STATUSES.join(', ')}` };
+  }
+
+  const { data: existing } = await supabase.from('contracts').select('id, status').eq('id', contractId).maybeSingle();
+  if (!existing) return { error: 'Umowa nie znaleziona' };
+
+  const { data, error } = await supabase
+    .from('contracts')
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', contractId)
+    .select('id, title, status')
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  return { data };
+}
+
+async function updateContractFields(supabase: any, contractId: string, fields: Record<string, any>) {
+  const allowedFields = ['title', 'description', 'department_id', 'current_approver'];
+  const updateData: Record<string, any> = {};
+  for (const key of allowedFields) {
+    if (fields[key] !== undefined) updateData[key] = fields[key];
+  }
+  if (Object.keys(updateData).length === 0) {
+    return { error: `Brak prawidlowych pol. Dozwolone: ${allowedFields.join(', ')}` };
+  }
+
+  updateData.updated_at = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('contracts')
+    .update(updateData)
+    .eq('id', contractId)
+    .select('id, title, status, description')
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!data) return { error: 'Umowa nie znaleziona' };
+  return { data };
+}
+
 function buildSystemPrompt(
   invoiceData: any[],
   mlData: any,
   departments: any[],
+  contractsData: { contracts: any[]; summaries: any[]; approvals: any[] },
   modelLabel: string,
 ): string {
   const tagLearningStats = mlData.tagLearning.reduce((acc: any, item: any) => {
@@ -307,19 +424,48 @@ function buildSystemPrompt(
     return acc;
   }, {});
 
-  return `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania fakturami i analizy danych finansowych.
+  const contractStats = {
+    total: contractsData.contracts.length,
+    byStatus: contractsData.contracts.reduce((acc: Record<string, number>, c: any) => {
+      acc[c.status] = (acc[c.status] || 0) + 1;
+      return acc;
+    }, {}),
+  };
+
+  const contractsWithSummaries = contractsData.contracts.map((c: any) => {
+    const summary = contractsData.summaries.find((s: any) => s.contract_id === c.id);
+    const approvals = contractsData.approvals.filter((a: any) => a.contract_id === c.id);
+    return {
+      ...c,
+      summary_brief: summary?.brief || null,
+      key_points: summary?.key_points || null,
+      approvals,
+    };
+  });
+
+  return `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania dokumentami: fakturami i umowami.
 Aktualnie korzystasz z modelu: ${modelLabel}.
-Masz dostęp do pełnej bazy danych faktur, danych uczenia maszynowego (ML) i statystyk systemu.
+Masz dostęp do pełnej bazy danych faktur, umów, danych uczenia maszynowego (ML) i statystyk systemu.
 
 Możesz odpowiadać na pytania dotyczące:
+FAKTURY:
 - Liczby faktur według statusu, działu, dostawcy
 - Sum wartości faktur (w PLN i innych walutach)
 - Dat wystawienia i terminów płatności
 - Statusów faktur (draft=robocza, waiting=oczekujące, accepted=zaakceptowana, rejected=odrzucona, paid=opłacona)
-- Działów, limitów miesięcznych i hierarchii
 - Dostawców i ich numerów NIP/VAT ID
 - Tagów i kategorii faktur
 - Danych ML: wzorców tagowania, predykcji, trafności sugestii
+
+UMOWY:
+- Liczby umów według statusu i działu
+- Statusów umów (draft=robocza, pending_specialist, pending_manager, pending_director, pending_ceo, pending_signature, signed=podpisana, approved=zatwierdzona, rejected=odrzucona)
+- Ścieżki zatwierdzania umów i aktualnych akceptantów
+- Streszczeń i kluczowych punktów umów (jeśli dostępne)
+- Historii zatwierdzeń i komentarzy
+
+OGÓLNE:
+- Działów, limitów miesięcznych i hierarchii
 - Analizy trendów i wzorców w danych
 
 DANE SYSTEMU ML:
@@ -338,12 +484,18 @@ ${JSON.stringify(mlData.tags.map((t: any) => t.name), null, 2)}
 DANE FAKTUR (JSON):
 ${JSON.stringify(invoiceData.slice(0, 200), null, 2)}
 
+DANE UMÓW - STATYSTYKI:
+${JSON.stringify(contractStats, null, 2)}
+
+DANE UMÓW (JSON):
+${JSON.stringify(contractsWithSummaries.slice(0, 100), null, 2)}
+
 DANE DZIAŁÓW:
 ${JSON.stringify(departments, null, 2)}
 
 Odpowiadaj w języku polskim, zwięźle i konkretnie.
 Używaj formatowania markdown gdy to pomaga czytelności.
-Zawsze podawaj źródło informacji (liczba faktur, suma wartości itp.).
+Zawsze podawaj źródło informacji (liczba faktur/umów, suma wartości itp.).
 Gdy pytanie dotyczy ML/tagów, uwzględnij dane z systemu uczenia maszynowego.
 Jeśli nie masz wystarczających danych, powiedz o tym.`;
 }
@@ -454,6 +606,72 @@ Deno.serve(async (req: Request) => {
     const selectedModel = resolveModel(requestedModel || profile?.preferred_llm_model);
     const modelLabel = MODEL_CONFIGS[selectedModel].label;
 
+    if (action === 'get_contract') {
+      if (!requestData.contract_id) {
+        return new Response(
+          JSON.stringify({ error: 'contract_id is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const contract = await getContractById(supabase, requestData.contract_id);
+      if (!contract) {
+        return new Response(
+          JSON.stringify({ error: 'Umowa nie znaleziona' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data: contract }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (action === 'update_contract_status') {
+      if (!requestData.contract_id || !requestData.status) {
+        return new Response(
+          JSON.stringify({ error: 'contract_id and status are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const result = await updateContractStatus(supabase, requestData.contract_id, requestData.status);
+      if (result.error) {
+        return new Response(
+          JSON.stringify({ success: false, error: result.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data: result.data }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (action === 'update_contract_fields') {
+      if (!requestData.contract_id || !requestData.fields) {
+        return new Response(
+          JSON.stringify({ error: 'contract_id and fields are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const result = await updateContractFields(supabase, requestData.contract_id, requestData.fields);
+      if (result.error) {
+        return new Response(
+          JSON.stringify({ success: false, error: result.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data: result.data }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (action === 'analyze_contract' || action === 'chat') {
       if (!prompt) {
         return new Response(
@@ -516,13 +734,14 @@ Aktualnie korzystasz z modelu: ${modelLabel}.`;
       );
     }
 
-    const [invoiceData, mlData, departments] = await Promise.all([
+    const [invoiceData, mlData, departments, contractsData] = await Promise.all([
       queryInvoiceDatabase(supabase, userRole, user.id),
       queryMLData(supabase),
       queryDepartmentStats(supabase),
+      queryContractsDatabase(supabase),
     ]);
 
-    const systemPrompt = buildSystemPrompt(invoiceData, mlData, departments, modelLabel);
+    const systemPrompt = buildSystemPrompt(invoiceData, mlData, departments, contractsData, modelLabel);
     const validHistory = prepareConversationHistory(conversationHistory);
     const llmMessages = [
       ...validHistory,
@@ -536,6 +755,7 @@ Aktualnie korzystasz z modelu: ${modelLabel}.`;
         success: true,
         response: aiResponse,
         invoiceCount: invoiceData.length,
+        contractCount: contractsData.contracts.length,
         model: selectedModel,
       }),
       {

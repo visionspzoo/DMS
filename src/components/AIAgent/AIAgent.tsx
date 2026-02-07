@@ -18,7 +18,7 @@ export default function AIAgent() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Witaj! Jestem AuruśAI - asystentem do zarządzania fakturami i analizy danych. Korzystam z AI i uczenia maszynowego.\n\nMogę pomóc z:\n\n• Analiza faktur - statusy, kwoty, terminy\n• Dane ML - wzorce tagowania, predykcje, trafność sugestii\n• Statystyki - trendy, działy, dostawcy\n• Raporty - podsumowania miesięczne, walutowe\n\nWybierz model AI w prawym górnym rogu. Jak mogę Ci pomóc?',
+      content: 'Witaj! Jestem AuruśAI - asystentem do zarządzania dokumentami. Korzystam z AI i uczenia maszynowego.\n\nMogę pomóc z:\n\n• Faktury - statusy, kwoty, terminy, dostawcy\n• Umowy - statusy, zatwierdzenia, streszczenia, działy\n• Dane ML - wzorce tagowania, predykcje, trafność sugestii\n• Statystyki - trendy, działy, raporty\n\nWybierz model AI w prawym górnym rogu. Jak mogę Ci pomóc?',
       timestamp: new Date(),
     },
   ]);
@@ -140,10 +140,10 @@ export default function AIAgent() {
   const quickQuestions = [
     'Ile mam faktur do akceptacji?',
     'Jaka jest suma faktur w tym miesiącu?',
+    'Ile umów oczekuje na zatwierdzenie?',
+    'Pokaż status wszystkich umów',
     'Jakie wzorce tagowania wykrył ML?',
-    'Pokaż statystyki predykcji ML',
     'Które faktury oczekują na płatność?',
-    'Pokaż popularne tagi',
   ];
 
   const handleQuickQuestion = (question: string) => {
@@ -164,7 +164,7 @@ export default function AIAgent() {
             AuruśAI
           </h1>
           <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
-            Asystent AI do zarządzania fakturami i analizy danych
+            Asystent AI do zarządzania dokumentami
           </p>
         </div>
         <ModelSelector
@@ -266,7 +266,7 @@ export default function AIAgent() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Zadaj pytanie o faktury..."
+                placeholder="Zadaj pytanie o faktury lub umowy..."
                 disabled={loading}
                 className="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
