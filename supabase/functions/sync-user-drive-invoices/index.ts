@@ -289,7 +289,7 @@ Deno.serve(async (req: Request) => {
             publicUrl = url;
           }
 
-          const { error: insertError } = await supabase
+          const { data: invoiceData, error: insertError } = await supabase
             .from("invoices")
             .insert({
               invoice_number: file.name.replace(".pdf", ""),
@@ -302,11 +302,49 @@ Deno.serve(async (req: Request) => {
               file_url: publicUrl,
               source: "google_drive",
               file_hash: fileHash,
-            });
+            })
+            .select("id")
+            .single();
 
           if (insertError) {
             console.error(`Failed to insert invoice ${file.name}:`, insertError);
             continue;
+          }
+
+          if (publicUrl && invoiceData?.id) {
+            try {
+              const ocrResponse = await fetch(
+                `${supabaseUrl}/functions/v1/process-invoice-ocr`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${supabaseServiceKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    fileUrl: publicUrl,
+                    invoiceId: invoiceData.id,
+                  }),
+                }
+              );
+
+              if (ocrResponse.ok) {
+                const ocrData = await ocrResponse.json();
+                if (ocrData.suggestedTags?.length > 0) {
+                  for (const tag of ocrData.suggestedTags) {
+                    await supabase
+                      .from("invoice_tags")
+                      .insert({
+                        invoice_id: invoiceData.id,
+                        tag_id: tag.id,
+                      })
+                      .then(() => {});
+                  }
+                }
+              }
+            } catch (ocrErr: any) {
+              console.error(`OCR failed for ${file.name}:`, ocrErr.message);
+            }
           }
 
           totalSynced++;
