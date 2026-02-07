@@ -25,8 +25,12 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID")!;
-    const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+    const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+    const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+    if (!googleClientId || !googleClientSecret) {
+      throw new Error("Brak konfiguracji Google OAuth (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) w sekretach Supabase");
+    }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -88,20 +92,23 @@ Deno.serve(async (req: Request) => {
     const expiryDate = new Date();
     expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
 
-    const { error: insertError } = await supabase
+    const { error: upsertError } = await supabase
       .from("user_email_configs")
-      .insert({
-        user_id: user.id,
-        email_address: userInfo.email,
-        provider: "google_workspace",
-        oauth_access_token: tokens.access_token,
-        oauth_refresh_token: tokens.refresh_token,
-        oauth_token_expiry: expiryDate.toISOString(),
-        is_active: true,
-      });
+      .upsert(
+        {
+          user_id: user.id,
+          email_address: userInfo.email,
+          provider: "google_workspace",
+          oauth_access_token: tokens.access_token,
+          oauth_refresh_token: tokens.refresh_token || null,
+          oauth_token_expiry: expiryDate.toISOString(),
+          is_active: true,
+        },
+        { onConflict: "user_id,email_address" }
+      );
 
-    if (insertError) {
-      throw new Error(`Failed to save config: ${insertError.message}`);
+    if (upsertError) {
+      throw new Error(`Nie udało się zapisać konfiguracji: ${upsertError.message}`);
     }
 
     return new Response(

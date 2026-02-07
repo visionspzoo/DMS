@@ -87,8 +87,14 @@ export default function UserConfiguration() {
         );
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Błąd podczas przetwarzania');
+          let errorMsg = 'Błąd podczas przetwarzania';
+          try {
+            const errorData = await response.json();
+            errorMsg = errorData.error || errorMsg;
+          } catch {
+            errorMsg = `Serwer zwrócił błąd ${response.status}`;
+          }
+          throw new Error(errorMsg);
         }
 
         const result = await response.json();
