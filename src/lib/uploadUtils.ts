@@ -137,7 +137,6 @@ export async function uploadInvoiceFile(
             .insert({
               invoice_id: invoiceData.id,
               tag_id: tag.id,
-              created_by: userId,
             })
             .then(() => {});
         }
@@ -181,7 +180,6 @@ export async function uploadInvoiceFile(
               {
                 invoice_id: invoiceData.id,
                 tag_id: pred.tag_id,
-                created_by: userId,
               },
               { onConflict: 'invoice_id,tag_id' }
             )
