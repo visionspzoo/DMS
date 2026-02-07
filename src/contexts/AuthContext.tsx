@@ -28,25 +28,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      (async () => {
-        if (session?.user) {
-          setUser(session.user);
-          await loadProfile(session.user.id, session.user.email);
-          if (window.location.hash.includes('access_token')) {
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-        } else {
-          setUser(null);
-          setProfile(null);
-          if (event !== 'INITIAL_SESSION' || !window.location.hash.includes('access_token')) {
-            setLoading(false);
-          }
-        }
-      })();
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUser(session.user);
+        loadProfile(session.user.id, session.user.email || undefined);
+      } else {
+        setLoading(false);
+      }
+      if (window.location.hash) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted || event === 'INITIAL_SESSION') return;
+
+      if (session?.user) {
+        setUser(session.user);
+        (async () => {
+          if (mounted) await loadProfile(session.user.id, session.user.email || undefined);
+        })();
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadProfile = async (userId: string, email?: string | null) => {

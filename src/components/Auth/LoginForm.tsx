@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LogIn } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -8,6 +8,18 @@ export function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showTestLogin, setShowTestLogin] = useState(false);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.substring(1));
+      const oauthError = params.get('error_description') || params.get('error');
+      if (oauthError) {
+        setError(decodeURIComponent(oauthError.replace(/\+/g, ' ')));
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, []);
 
   const handleGoogleSignIn = async () => {
     setError('');
