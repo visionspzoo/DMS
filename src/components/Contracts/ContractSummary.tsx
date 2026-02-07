@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, FileText, AlertCircle, CheckCircle, Brain } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -15,9 +15,40 @@ interface Summary {
 }
 
 export function ContractSummary({ contractId, pdfBase64, onClose }: ContractSummaryProps) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [existingSummaryId, setExistingSummaryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadExistingSummary();
+  }, [contractId]);
+
+  const loadExistingSummary = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('contract_summaries')
+        .select('id, brief, details, key_points')
+        .eq('contract_id', contractId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setExistingSummaryId(data.id);
+        setSummary({
+          brief: data.brief,
+          details: data.details,
+          keyPoints: data.key_points,
+        });
+      }
+    } catch (err: any) {
+      console.error('Error loading summary:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const generateSummary = async () => {
     setLoading(true);
@@ -80,6 +111,38 @@ Używaj formatowania markdown (nagłówki ##, wypunktowania •, pogrubienia **t
       const data = await response.json();
       const sections = parseSummaryResponse(data.response);
       setSummary(sections);
+
+      if (existingSummaryId) {
+        const { error: updateError } = await supabase
+          .from('contract_summaries')
+          .update({
+            brief: sections.brief,
+            details: sections.details,
+            key_points: sections.keyPoints,
+          })
+          .eq('id', existingSummaryId);
+
+        if (updateError) {
+          console.error('Error updating summary:', updateError);
+        }
+      } else {
+        const { data: newSummary, error: insertError } = await supabase
+          .from('contract_summaries')
+          .insert({
+            contract_id: contractId,
+            brief: sections.brief,
+            details: sections.details,
+            key_points: sections.keyPoints,
+          })
+          .select('id')
+          .single();
+
+        if (insertError) {
+          console.error('Error saving summary:', insertError);
+        } else if (newSummary) {
+          setExistingSummaryId(newSummary.id);
+        }
+      }
     } catch (err: any) {
       console.error('Error generating summary:', err);
       setError(err.message || 'Wystąpił błąd podczas generowania podsumowania');
@@ -180,10 +243,10 @@ Używaj formatowania markdown (nagłówki ##, wypunktowania •, pogrubienia **t
                 <FileText className="w-8 h-8 text-teal-600 dark:text-teal-400" />
               </div>
               <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-                Wygeneruj podsumowanie
+                Brak podsumowania
               </h3>
               <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-6 max-w-md">
-                Kliknij przycisk poniżej, aby Claude AI przeanalizował umowę i przygotował szczegółowe podsumowanie z kluczowymi punktami.
+                Nie znaleziono zapisanego podsumowania. Kliknij przycisk poniżej, aby Claude AI przeanalizował umowę i przygotował szczegółowe podsumowanie z kluczowymi punktami.
               </p>
               <button
                 onClick={generateSummary}
@@ -266,7 +329,10 @@ Używaj formatowania markdown (nagłówki ##, wypunktowania •, pogrubienia **t
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center">
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                  {existingSummaryId ? 'Podsumowanie zapisane w bazie danych' : 'Nowe podsumowanie'}
+                </p>
                 <button
                   onClick={generateSummary}
                   className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-text-primary-light dark:text-text-primary-dark rounded-lg text-sm font-medium transition-colors"
