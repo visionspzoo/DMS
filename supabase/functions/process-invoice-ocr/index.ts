@@ -9,8 +9,9 @@ const corsHeaders = {
 };
 
 interface OCRRequest {
-  fileUrl: string;
+  fileUrl?: string;
   invoiceId: string;
+  pdfBase64?: string;
 }
 
 async function extractTextFromPDF(fileBlob: Blob): Promise<string> {
@@ -300,9 +301,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { fileUrl, invoiceId }: OCRRequest = await req.json();
+    const { fileUrl, invoiceId, pdfBase64 }: OCRRequest = await req.json();
 
-    console.log("Processing invoice:", { fileUrl, invoiceId });
+    console.log("Processing invoice:", { fileUrl: fileUrl ? 'provided' : 'none', invoiceId, pdfBase64: pdfBase64 ? 'provided' : 'none' });
 
     let content: string;
     let usedApi: string;
@@ -314,13 +315,28 @@ Deno.serve(async (req: Request) => {
       content = JSON.stringify(fallback);
       usedApi = "Fallback (no AI keys)";
     } else {
-      console.log("Fetching file from URL...");
-      const fileResponse = await fetch(fileUrl);
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to fetch file: ${fileResponse.status}`);
-      }
+      let fileBlob: Blob;
 
-      const fileBlob = await fileResponse.blob();
+      // If pdfBase64 is provided, use it directly
+      if (pdfBase64) {
+        console.log("Using provided PDF base64 data...");
+        const binaryString = atob(pdfBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        fileBlob = new Blob([bytes], { type: 'application/pdf' });
+        console.log(`✓ Converted base64 to blob, size: ${fileBlob.size} bytes`);
+      } else if (fileUrl) {
+        console.log("Fetching file from URL...");
+        const fileResponse = await fetch(fileUrl);
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to fetch file: ${fileResponse.status}`);
+        }
+        fileBlob = await fileResponse.blob();
+      } else {
+        throw new Error("Either fileUrl or pdfBase64 must be provided");
+      }
       const fileType = fileBlob.type;
       const isPDF = fileType === 'application/pdf';
       console.log(`File type: ${fileType}, size: ${fileBlob.size} bytes, isPDF: ${isPDF}`);

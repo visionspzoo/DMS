@@ -293,7 +293,7 @@ Deno.serve(async (req: Request) => {
             .from("invoices")
             .insert({
               invoice_number: file.name.replace(".pdf", ""),
-              supplier_name: "Importowano z Drive",
+              supplier_name: "Przetwarzanie...",
               gross_amount: 0,
               uploaded_by: user.id,
               department_id: profile?.department_id || null,
@@ -311,8 +311,21 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
-          if (publicUrl && invoiceData?.id) {
+          if (invoiceData?.id) {
             try {
+              console.log(`Processing OCR for invoice ${invoiceData.id} from ${file.name}`);
+
+              const ocrPayload: any = {
+                invoiceId: invoiceData.id,
+              };
+
+              // If publicUrl is available, use it; otherwise use base64
+              if (publicUrl) {
+                ocrPayload.fileUrl = publicUrl;
+              } else {
+                ocrPayload.pdfBase64 = base64;
+              }
+
               const ocrResponse = await fetch(
                 `${supabaseUrl}/functions/v1/process-invoice-ocr`,
                 {
@@ -321,15 +334,13 @@ Deno.serve(async (req: Request) => {
                     Authorization: `Bearer ${supabaseServiceKey}`,
                     "Content-Type": "application/json",
                   },
-                  body: JSON.stringify({
-                    fileUrl: publicUrl,
-                    invoiceId: invoiceData.id,
-                  }),
+                  body: JSON.stringify(ocrPayload),
                 }
               );
 
               if (ocrResponse.ok) {
                 const ocrData = await ocrResponse.json();
+                console.log(`✓ OCR completed for ${file.name}`);
                 if (ocrData.suggestedTags?.length > 0) {
                   for (const tag of ocrData.suggestedTags) {
                     await supabase
@@ -341,6 +352,9 @@ Deno.serve(async (req: Request) => {
                       .then(() => {});
                   }
                 }
+              } else {
+                const errorText = await ocrResponse.text();
+                console.error(`OCR request failed for ${file.name}:`, errorText);
               }
             } catch (ocrErr: any) {
               console.error(`OCR failed for ${file.name}:`, ocrErr.message);
