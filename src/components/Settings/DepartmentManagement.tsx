@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Building2, Plus, Edit2, Trash2, Users, ChevronRight, ChevronDown, X, Save, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import DepartmentFlowChart from './DepartmentFlowChart';
 
 interface Department {
   id: string;
@@ -649,6 +650,10 @@ export default function DepartmentManagement() {
           </div>
         </div>
       )}
+
+      <div className="lg:col-span-3">
+        <DepartmentFlowChart departments={departments} />
+      </div>
 
       {showEditDept && editingDept && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
