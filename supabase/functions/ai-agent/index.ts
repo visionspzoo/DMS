@@ -22,6 +22,7 @@ interface AIAgentRequest {
   model?: LLMModel;
   status?: string;
   fields?: Record<string, any>;
+  customSystemPrompt?: string;
 }
 
 const MODEL_CONFIGS: Record<LLMModel, { label: string; envKey: string }> = {
@@ -741,7 +742,10 @@ Aktualnie korzystasz z modelu: ${modelLabel}.`;
       queryContractsDatabase(supabase),
     ]);
 
-    const systemPrompt = buildSystemPrompt(invoiceData, mlData, departments, contractsData, modelLabel);
+    const baseSystemPrompt = buildSystemPrompt(invoiceData, mlData, departments, contractsData, modelLabel);
+    const systemPrompt = requestData.customSystemPrompt
+      ? `${requestData.customSystemPrompt}\n\n--- DANE SYSTEMOWE ---\n\n${baseSystemPrompt}`
+      : baseSystemPrompt;
     const validHistory = prepareConversationHistory(conversationHistory);
     const llmMessages = [
       ...validHistory,
