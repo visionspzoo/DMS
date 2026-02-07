@@ -6,6 +6,8 @@ import { KSEFInvoiceModal } from './KSEFInvoiceModal';
 import { KSEFConfiguration } from './KSEFConfiguration';
 import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
 
+const AURA_HERBALS_NIP = '5851490834';
+
 interface KSEFInvoice {
   id: string;
   ksef_reference_number: string;
@@ -651,11 +653,27 @@ export function KSEFInvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {invoices.map((invoice) => (
+                {invoices.map((invoice) => {
+                  const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
+                  const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
+                  const hasError = isSupplierInvalid || isBuyerInvalid;
+
+                  return (
                   <tr
                     key={invoice.id}
                     onClick={() => setSelectedInvoice(invoice)}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition cursor-pointer"
+                    className={`transition cursor-pointer ${
+                      hasError
+                        ? 'border-l-4 border-l-red-600 bg-red-50/50 dark:bg-red-900/10 hover:bg-red-100/50 dark:hover:bg-red-900/20'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                    }`}
+                    title={
+                      isSupplierInvalid
+                        ? '⚠️ Błąd: Aura Herbals to kupujący, nie sprzedawca!'
+                        : isBuyerInvalid
+                        ? '⚠️ Uwaga: To faktura dla innej firmy'
+                        : undefined
+                    }
                   >
                     <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -667,11 +685,19 @@ export function KSEFInvoicesPage() {
                     </td>
                     <td className="px-3 py-2">
                       <div>
-                        <p className="text-text-primary-light dark:text-text-primary-dark text-sm">
+                        <p className={`text-sm ${
+                          isSupplierInvalid
+                            ? 'text-red-600 dark:text-red-500 font-semibold'
+                            : 'text-text-primary-light dark:text-text-primary-dark'
+                        }`}>
                           {invoice.supplier_name || 'Brak nazwy'}
                         </p>
                         {invoice.supplier_nip && (
-                          <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                          <p className={`text-xs ${
+                            isSupplierInvalid
+                              ? 'text-red-600 dark:text-red-500 font-medium'
+                              : 'text-text-secondary-light dark:text-text-secondary-dark'
+                          }`}>
                             NIP: {invoice.supplier_nip}
                           </p>
                         )}
@@ -712,7 +738,8 @@ export function KSEFInvoicesPage() {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 import { InvoiceTags } from './InvoiceTags';
+
+const AURA_HERBALS_NIP = '5851490834';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 type Approval = Database['public']['Tables']['approvals']['Row'];
@@ -46,6 +48,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [ksefInvoiceId, setKsefInvoiceId] = useState<string | null>(null);
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
+
+  const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP;
 
   useEffect(() => {
     loadApprovals();
@@ -839,6 +843,19 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   </div>
 
+                  {isInvalidBuyer && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">Błędny nabywca!</p>
+                        <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
+                          Aura Herbals (NIP: 5851490834) to kupujący (nabywca), nie sprzedawca (dostawca).
+                          AI prawdopodobnie pomyliło strony na fakturze. Użyj przycisku "Przetwórz ponownie przez AI" lub popraw dane ręcznie.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Dostawca</label>
@@ -847,10 +864,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           type="text"
                           value={editedInvoice.supplier_name || ''}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, supplier_name: e.target.value })}
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                          className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
+                            isInvalidBuyer
+                              ? 'border-2 border-red-600 dark:border-red-500'
+                              : 'border border-slate-300 dark:border-slate-600'
+                          }`}
                         />
                       ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                        <p className={`text-base font-semibold mt-1 ${
+                          isInvalidBuyer
+                            ? 'text-red-600 dark:text-red-500'
+                            : 'text-text-primary-light dark:text-text-primary-dark'
+                        }`}>
                           {invoice.supplier_name || 'Przetwarzanie...'}
                         </p>
                       )}
@@ -862,10 +887,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           type="text"
                           value={editedInvoice.supplier_nip || ''}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, supplier_nip: e.target.value })}
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                          className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
+                            isInvalidBuyer
+                              ? 'border-2 border-red-600 dark:border-red-500'
+                              : 'border border-slate-300 dark:border-slate-600'
+                          }`}
                         />
                       ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                        <p className={`text-base font-semibold mt-1 ${
+                          isInvalidBuyer
+                            ? 'text-red-600 dark:text-red-500'
+                            : 'text-text-primary-light dark:text-text-primary-dark'
+                        }`}>
                           {invoice.supplier_nip || '—'}
                         </p>
                       )}

@@ -48,6 +48,8 @@ function getUserSpecificStatus(invoice: Invoice, currentUserId: string): keyof t
   return 'waiting';
 }
 
+const AURA_HERBALS_NIP = '5851490834';
+
 export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
   const { user } = useAuth();
 
@@ -69,11 +71,17 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
     <div className="grid gap-2">
       {invoices.map((invoice) => {
         const displayStatus = getUserSpecificStatus(invoice, user?.id || '');
+        const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP;
         return (
           <button
             key={invoice.id}
             onClick={() => onSelectInvoice(invoice)}
-            className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40"
+            className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full ${
+              isInvalidBuyer
+                ? 'border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'
+                : 'border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40'
+            }`}
+            title={isInvalidBuyer ? '⚠️ Błędny nabywca - Aura Herbals to kupujący, nie sprzedawca!' : undefined}
           >
             <div className="flex items-center justify-between gap-3">
               {/* Left section - Dates */}
@@ -118,8 +126,10 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                   })()}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-                  <Building2 className="w-3 h-3" />
-                  <span className="truncate">{invoice.supplier_name || 'Przetwarzanie...'}</span>
+                  <Building2 className={`w-3 h-3 ${isInvalidBuyer ? 'text-red-600 dark:text-red-500' : ''}`} />
+                  <span className={`truncate ${isInvalidBuyer ? 'text-red-600 dark:text-red-500 font-semibold' : ''}`}>
+                    {invoice.supplier_name || 'Przetwarzanie...'}
+                  </span>
                 </div>
                 {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (
                   <div className="flex items-center gap-1 flex-wrap">

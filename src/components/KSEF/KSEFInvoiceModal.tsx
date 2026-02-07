@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2 } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+
+const AURA_HERBALS_NIP = '5851490834';
 
 interface KSEFInvoice {
   id: string;
@@ -44,6 +46,10 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
+
+  const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
+  const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
+  const hasError = isSupplierInvalid || isBuyerInvalid;
 
   useEffect(() => {
     loadPdfContent();
@@ -182,6 +188,22 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                   Informacje podstawowe
                 </h3>
                 <div className="space-y-3">
+                  {hasError && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-2.5 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-red-900 dark:text-red-300 text-xs">
+                          {isSupplierInvalid && 'Błąd: Pomylono strony faktury!'}
+                          {!isSupplierInvalid && isBuyerInvalid && 'Uwaga: Faktura dla innej firmy!'}
+                        </p>
+                        <p className="text-red-800 dark:text-red-400 text-[10px] mt-0.5">
+                          {isSupplierInvalid && 'Aura Herbals (NIP: 5851490834) to nabywca, nie sprzedawca. Dane zostały błędnie pobrane z KSEF.'}
+                          {!isSupplierInvalid && isBuyerInvalid && 'Ta faktura nie jest wystawiona na Aura Herbals.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
@@ -206,11 +228,19 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       <label className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
                         Dostawca
                       </label>
-                      <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                      <p className={`text-sm font-semibold mt-1 ${
+                        isSupplierInvalid
+                          ? 'text-red-600 dark:text-red-500'
+                          : 'text-text-primary-light dark:text-text-primary-dark'
+                      }`}>
                         {invoice.supplier_name || 'Brak nazwy'}
                       </p>
                       {invoice.supplier_nip && (
-                        <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                        <p className={`text-xs mt-0.5 ${
+                          isSupplierInvalid
+                            ? 'text-red-600 dark:text-red-500 font-medium'
+                            : 'text-text-secondary-light dark:text-text-secondary-dark'
+                        }`}>
                           NIP: {invoice.supplier_nip}
                         </p>
                       )}
@@ -219,11 +249,19 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       <label className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
                         Nabywca
                       </label>
-                      <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                      <p className={`text-sm font-semibold mt-1 ${
+                        isBuyerInvalid
+                          ? 'text-orange-600 dark:text-orange-500'
+                          : 'text-text-primary-light dark:text-text-primary-dark'
+                      }`}>
                         {invoice.buyer_name || 'Brak nazwy'}
                       </p>
                       {invoice.buyer_nip && (
-                        <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                        <p className={`text-xs mt-0.5 ${
+                          isBuyerInvalid
+                            ? 'text-orange-600 dark:text-orange-500 font-medium'
+                            : 'text-text-secondary-light dark:text-text-secondary-dark'
+                        }`}>
                           NIP: {invoice.buyer_nip}
                         </p>
                       )}
