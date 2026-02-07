@@ -28,38 +28,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-
-      if (code) {
-        window.history.replaceState({}, '', window.location.pathname);
-        try {
-          await supabase.auth.exchangeCodeForSession(code);
-        } catch (err) {
-          console.error('OAuth exchange failed:', err);
-        }
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await loadProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
-        setUser(session?.user ?? null);
         if (session?.user) {
-          await loadProfile(session.user.id);
+          setUser(session.user);
+          await loadProfile(session.user.id, session.user.email);
+          if (window.location.hash.includes('access_token')) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
         } else {
+          setUser(null);
           setProfile(null);
-          setLoading(false);
+          if (event !== 'INITIAL_SESSION' || !window.location.hash.includes('access_token')) {
+            setLoading(false);
+          }
         }
       })();
     });
@@ -67,9 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, email?: string | null) => {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -77,11 +59,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
 
-      if (!data) {
+      if (!data && email) {
+        const { data: emailProfile, error: emailError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle();
+
+        if (!emailError && emailProfile) {
+          data = emailProfile;
+        }
+      }
+
+      if (data) {
+        setProfile(data);
+      } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.email) {
           const isAdmin = user.email === 's.hoffman@auraherbals.pl';
-
           const { data: newProfile, error: insertError } = await supabase
             .from('profiles')
             .insert({
@@ -97,8 +92,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (insertError) throw insertError;
           setProfile(newProfile);
         }
-      } else {
-        setProfile(data);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
