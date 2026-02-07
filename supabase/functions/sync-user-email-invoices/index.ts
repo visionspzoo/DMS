@@ -1,23 +1,10 @@
-/*
-  # Sync User Email Invoices Edge Function
-
-  This function connects to user's email accounts via Gmail API (OAuth),
-  downloads PDF attachments, and imports them as invoices.
-
-  Features:
-  - Gmail API connection with OAuth tokens
-  - PDF attachment extraction
-  - Automatic invoice creation
-  - OCR processing integration
-  - Smart duplicate detection
-*/
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
 interface EmailConfig {
@@ -29,6 +16,18 @@ interface EmailConfig {
   oauth_refresh_token: string;
   oauth_token_expiry: string;
   is_active: boolean;
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    for (let j = 0; j < chunk.length; j++) {
+      binary += String.fromCharCode(chunk[j]);
+    }
+  }
+  return btoa(binary);
 }
 
 Deno.serve(async (req: Request) => {
@@ -45,17 +44,35 @@ Deno.serve(async (req: Request) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      throw new Error("Missing authorization header");
+      return new Response(
+        JSON.stringify({ success: false, error: "Brak nagłówka autoryzacji" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
 
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Nieautoryzowany: " + (userError?.message || "brak użytkownika"),
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const { data: emailConfigs, error: configError } = await supabase
@@ -65,21 +82,27 @@ Deno.serve(async (req: Request) => {
       .eq("is_active", true);
 
     if (configError) {
-      throw new Error(`Failed to load email configs: ${configError.message}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Błąd ładowania konfiguracji: ${configError.message}`,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     if (!emailConfigs || emailConfigs.length === 0) {
       return new Response(
         JSON.stringify({
           success: true,
-          message: "No active email configurations found",
+          message: "Brak aktywnych konfiguracji email",
           synced: 0,
         }),
         {
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
@@ -104,16 +127,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
-        message: `Synced ${totalSynced} invoice(s) from ${emailConfigs.length} email account(s)`,
+        success: errors.length === 0,
+        message: `Zsynchronizowano ${totalSynced} faktur z ${emailConfigs.length} kont`,
         synced: totalSynced,
         errors: errors.length > 0 ? errors : undefined,
       }),
       {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   } catch (error: any) {
@@ -121,14 +141,11 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: error.message || "Nieznany błąd serwera",
       }),
       {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
@@ -138,8 +155,20 @@ async function refreshAccessToken(
   supabase: any,
   config: EmailConfig
 ): Promise<string> {
-  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID")!;
-  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+  if (!googleClientId || !googleClientSecret) {
+    throw new Error(
+      "Brak konfiguracji GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET w sekretach Supabase"
+    );
+  }
+
+  if (!config.oauth_refresh_token) {
+    throw new Error(
+      "Brak refresh tokena. Odłącz i połącz ponownie konto Google."
+    );
+  }
 
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -155,7 +184,11 @@ async function refreshAccessToken(
   });
 
   if (!tokenResponse.ok) {
-    throw new Error("Failed to refresh access token");
+    const errorBody = await tokenResponse.text();
+    console.error("Token refresh failed:", errorBody);
+    throw new Error(
+      `Nie udało się odświeżyć tokena Google (${tokenResponse.status}). Odłącz i połącz ponownie konto.`
+    );
   }
 
   const tokens = await tokenResponse.json();
@@ -212,8 +245,11 @@ async function syncEmailAccount(
   );
 
   if (!listResponse.ok) {
-    const errorData = await listResponse.json();
-    throw new Error(`Failed to list messages: ${JSON.stringify(errorData)}`);
+    const errorText = await listResponse.text();
+    console.error("Gmail API error:", errorText);
+    throw new Error(
+      `Gmail API błąd (${listResponse.status}): ${errorText.substring(0, 200)}`
+    );
   }
 
   const { messages } = await listResponse.json();
@@ -241,7 +277,6 @@ async function syncEmailAccount(
       const messageId = msg.id;
 
       if (processedUids.has(messageId)) {
-        console.log(`Message ${messageId} already processed, skipping`);
         continue;
       }
 
@@ -264,101 +299,108 @@ async function syncEmailAccount(
       let attachmentCount = 0;
       let invoiceCount = 0;
 
-      if (message.payload.parts) {
-        for (const part of message.payload.parts) {
-          if (part.filename && part.filename.toLowerCase().endsWith(".pdf") && part.body.attachmentId) {
-            attachmentCount++;
-            console.log(`Processing attachment: ${part.filename}`);
+      const parts = message.payload?.parts || [];
+      for (const part of parts) {
+        if (
+          part.filename &&
+          part.filename.toLowerCase().endsWith(".pdf") &&
+          part.body?.attachmentId
+        ) {
+          attachmentCount++;
 
-            const attachmentResponse = await fetch(
-              `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${part.body.attachmentId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              }
-            );
-
-            if (!attachmentResponse.ok) {
-              console.error(`Failed to fetch attachment ${part.filename}`);
-              continue;
+          const attachmentResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${part.body.attachmentId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
             }
+          );
 
-            const attachmentData = await attachmentResponse.json();
-            const pdfData = Uint8Array.from(atob(attachmentData.data.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-
-            const isInvoice = await verifyIsInvoice(pdfData);
-            if (!isInvoice) {
-              console.log(`Attachment ${part.filename} is not an invoice, skipping`);
-              continue;
-            }
-
-            const fileName = `${Date.now()}_${part.filename}`;
-            const filePath = `invoices/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-              .from("documents")
-              .upload(filePath, pdfData, {
-                contentType: "application/pdf",
-              });
-
-            if (uploadError) {
-              console.error("Upload error:", uploadError);
-              continue;
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-              .from("documents")
-              .getPublicUrl(filePath);
-
-            const base64Content = btoa(
-              String.fromCharCode(...new Uint8Array(pdfData))
-            );
-
-            const { data: invoiceData, error: insertError } = await supabase
-              .from("invoices")
-              .insert({
-                file_url: publicUrl,
-                pdf_base64: base64Content,
-                uploaded_by: userId,
-                description: `Faktura z email: ${config.email_address}`,
-              })
-              .select()
-              .single();
-
-            if (insertError) {
-              console.error("Insert error:", insertError);
-              continue;
-            }
-
-            console.log(`Created invoice: ${invoiceData.id}`);
-
-            try {
-              const ocrResponse = await fetch(
-                `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`,
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    fileUrl: publicUrl,
-                    invoiceId: invoiceData.id,
-                  }),
-                }
-              );
-
-              if (ocrResponse.ok) {
-                console.log(`OCR processed for invoice ${invoiceData.id}`);
-              }
-            } catch (ocrError) {
-              console.error("OCR error:", ocrError);
-            }
-
-            invoiceCount++;
-            syncedCount++;
+          if (!attachmentResponse.ok) {
+            console.error(`Failed to fetch attachment ${part.filename}`);
+            continue;
           }
+
+          const attachmentData = await attachmentResponse.json();
+          const rawData = attachmentData.data
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          const pdfData = Uint8Array.from(atob(rawData), (c) =>
+            c.charCodeAt(0)
+          );
+
+          const isInvoice = await verifyIsInvoice(pdfData);
+          if (!isInvoice) {
+            console.log(
+              `Attachment ${part.filename} is not an invoice, skipping`
+            );
+            continue;
+          }
+
+          const fileName = `${Date.now()}_${part.filename}`;
+          const filePath = `invoices/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("documents")
+            .upload(filePath, pdfData, {
+              contentType: "application/pdf",
+            });
+
+          if (uploadError) {
+            console.error("Upload error:", uploadError);
+            continue;
+          }
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("documents").getPublicUrl(filePath);
+
+          const base64Content = uint8ToBase64(pdfData);
+
+          const { data: invoiceData, error: insertError } = await supabase
+            .from("invoices")
+            .insert({
+              file_url: publicUrl,
+              pdf_base64: base64Content,
+              uploaded_by: userId,
+              description: `Faktura z email: ${config.email_address}`,
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error("Insert error:", insertError);
+            continue;
+          }
+
+          console.log(`Created invoice: ${invoiceData.id}`);
+
+          try {
+            const ocrResponse = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  fileUrl: publicUrl,
+                  invoiceId: invoiceData.id,
+                }),
+              }
+            );
+
+            if (ocrResponse.ok) {
+              console.log(`OCR processed for invoice ${invoiceData.id}`);
+            }
+          } catch (ocrError) {
+            console.error("OCR error:", ocrError);
+          }
+
+          invoiceCount++;
+          syncedCount++;
         }
       }
 
@@ -383,9 +425,7 @@ async function syncEmailAccount(
 
 async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
   try {
-    const base64Content = btoa(
-      String.fromCharCode(...new Uint8Array(pdfContent))
-    );
+    const base64Content = uint8ToBase64(pdfContent);
 
     const extractResponse = await fetch(
       `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
@@ -410,19 +450,33 @@ async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
     const lowerText = text.toLowerCase();
 
     const invoiceKeywords = [
-      "faktura", "invoice", "faktura vat", "faktura proforma",
-      "nr faktury", "invoice number", "invoice no",
-      "nip", "tax id", "vat", "kwota", "amount",
-      "sprzedawca", "seller", "nabywca", "buyer"
+      "faktura",
+      "invoice",
+      "faktura vat",
+      "faktura proforma",
+      "nr faktury",
+      "invoice number",
+      "invoice no",
+      "nip",
+      "tax id",
+      "vat",
+      "kwota",
+      "amount",
+      "sprzedawca",
+      "seller",
+      "nabywca",
+      "buyer",
     ];
 
-    const foundKeywords = invoiceKeywords.filter(keyword =>
+    const foundKeywords = invoiceKeywords.filter((keyword) =>
       lowerText.includes(keyword)
     );
 
     const isInvoice = foundKeywords.length >= 3;
 
-    console.log(`PDF verification: ${isInvoice ? "IS" : "NOT"} an invoice (found ${foundKeywords.length} keywords)`);
+    console.log(
+      `PDF verification: ${isInvoice ? "IS" : "NOT"} an invoice (found ${foundKeywords.length} keywords)`
+    );
 
     return isInvoice;
   } catch (error) {

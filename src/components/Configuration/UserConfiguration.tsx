@@ -243,22 +243,23 @@ export default function UserConfiguration() {
         }
       );
 
+      const result = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Błąd podczas synchronizacji');
+        const msg = result?.error || result?.message || result?.msg || `Serwer zwrócił błąd ${response.status}`;
+        throw new Error(msg);
       }
 
-      const result = await response.json();
-
-      if (result.success) {
-        setEmailMessage({
-          type: 'success',
-          text: `Zsynchronizowano ${result.synced} faktur(y)${result.errors ? '. Wystąpiły błędy dla niektórych kont.' : ''}`
-        });
-        await loadEmailConfigs();
-      } else {
-        throw new Error(result.error || 'Nieznany błąd');
+      if (result?.success === false) {
+        throw new Error(result.error || result.errors?.join(', ') || 'Nieznany błąd');
       }
+
+      const errorsText = result?.errors?.length ? `. Błędy: ${result.errors.join('; ')}` : '';
+      setEmailMessage({
+        type: result?.errors?.length ? 'error' : 'success',
+        text: `Zsynchronizowano ${result?.synced || 0} faktur(y)${errorsText}`
+      });
+      await loadEmailConfigs();
     } catch (error: any) {
       console.error('Error syncing emails:', error);
       setEmailMessage({ type: 'error', text: 'Błąd: ' + error.message });
