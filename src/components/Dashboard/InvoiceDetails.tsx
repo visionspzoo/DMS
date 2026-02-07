@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2 } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -883,6 +883,27 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           {invoice.currency || '—'}
                         </p>
                       )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Zrodlo</label>
+                      <div className="mt-1">
+                        {(() => {
+                          const sourceConfig = {
+                            manual: { label: 'Dodana recznie', icon: Upload, color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' },
+                            email: { label: 'Email', icon: Mail, color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' },
+                            google_drive: { label: 'Google Drive', icon: HardDrive, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+                            ksef: { label: 'KSeF', icon: FileCheck, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+                          };
+                          const src = sourceConfig[(invoice as any).source as keyof typeof sourceConfig] || sourceConfig.manual;
+                          const Icon = src.icon;
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium ${src.color}`}>
+                              <Icon className="w-3.5 h-3.5" />
+                              {src.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
 

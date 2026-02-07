@@ -1,4 +1,4 @@
-import { Calendar, User, Building2, CreditCard, TrendingUp, Tag } from 'lucide-react';
+import { Calendar, User, Building2, CreditCard, TrendingUp, Tag, Upload, Mail, HardDrive, FileCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 
@@ -97,6 +97,22 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                   <span className={`px-1.5 py-0 rounded-md text-[10px] font-medium border ${statusColors[displayStatus]}`}>
                     {statusLabels[displayStatus]}
                   </span>
+                  {(() => {
+                    const sourceConfig = {
+                      manual: { label: 'Reczna', icon: Upload, color: 'text-slate-500' },
+                      email: { label: 'Email', icon: Mail, color: 'text-sky-500' },
+                      google_drive: { label: 'Drive', icon: HardDrive, color: 'text-emerald-500' },
+                      ksef: { label: 'KSeF', icon: FileCheck, color: 'text-amber-500' },
+                    };
+                    const src = sourceConfig[(invoice as any).source as keyof typeof sourceConfig];
+                    if (!src) return null;
+                    const Icon = src.icon;
+                    return (
+                      <span className={`inline-flex items-center gap-0.5 text-[10px] ${src.color}`} title={`Zrodlo: ${src.label}`}>
+                        <Icon className="w-3 h-3" />
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                   <Building2 className="w-3 h-3" />

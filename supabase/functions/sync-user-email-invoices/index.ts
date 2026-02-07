@@ -365,6 +365,7 @@ async function syncEmailAccount(
               pdf_base64: base64Content,
               uploaded_by: userId,
               description: `Faktura z email: ${config.email_address}`,
+              source: 'email',
             })
             .select()
             .single();

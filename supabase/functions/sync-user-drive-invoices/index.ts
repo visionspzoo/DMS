@@ -117,6 +117,7 @@ Deno.serve(async (req: Request) => {
             status: 'draft',
             description: `Automatycznie zaimportowano z Google Drive`,
             pdf_base64: base64,
+            source: 'google_drive',
           };
 
           const { error: insertError } = await supabase

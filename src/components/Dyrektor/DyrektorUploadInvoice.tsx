@@ -52,7 +52,8 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
           uploaded_by: userId,
           status: 'accepted',
           department: department.trim(),
-          currency: 'PLN'
+          currency: 'PLN',
+          source: 'manual',
         })
         .select()
         .single();

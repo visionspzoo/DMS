@@ -78,6 +78,7 @@ export async function uploadInvoiceFile(
       pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
       uploaded_by: userId,
       file_hash: hash,
+      source: 'manual',
     })
     .select()
     .single();

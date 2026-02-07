@@ -8,6 +8,7 @@ export type Json =
 
 export type UserRole = 'Administrator' | 'CEO' | 'Dyrektor' | 'Kierownik' | 'Specjalista';
 export type InvoiceStatus = 'draft' | 'waiting' | 'pending' | 'in_review' | 'approved' | 'accepted' | 'rejected' | 'paid';
+export type InvoiceSource = 'manual' | 'email' | 'google_drive' | 'ksef';
 export type ApprovalAction = 'approved' | 'rejected';
 
 export interface Database {
@@ -83,6 +84,7 @@ export interface Database {
           paid_at: string | null;
           paid_by: string | null;
           description: string | null;
+          source: InvoiceSource;
         };
         Insert: {
           id?: string;
@@ -110,6 +112,7 @@ export interface Database {
           paid_at?: string | null;
           paid_by?: string | null;
           description?: string | null;
+          source?: InvoiceSource;
         };
         Update: {
           id?: string;
@@ -137,6 +140,7 @@ export interface Database {
           paid_at?: string | null;
           paid_by?: string | null;
           description?: string | null;
+          source?: InvoiceSource;
         };
       };
       approvals: {

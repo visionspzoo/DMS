@@ -52,7 +52,8 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
           uploaded_by: userId,
           status: 'accepted',
           department: department.trim(),
-          currency: 'PLN'
+          currency: 'PLN',
+          source: 'manual',
         })
         .select()
         .single();

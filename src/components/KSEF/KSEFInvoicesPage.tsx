@@ -429,6 +429,7 @@ export function KSEFInvoicesPage() {
           description: `Faktura z KSEF - dodana jako wersja robocza`,
           pln_gross_amount: plnGrossAmount,
           exchange_rate: exchangeRate,
+          source: 'ksef',
         })
         .select()
         .single();
