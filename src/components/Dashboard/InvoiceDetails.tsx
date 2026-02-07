@@ -894,13 +894,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                             google_drive: { label: 'Google Drive', icon: HardDrive, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
                             ksef: { label: 'KSeF', icon: FileCheck, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
                           };
-                          const src = sourceConfig[(invoice as any).source as keyof typeof sourceConfig] || sourceConfig.manual;
+                          const rawSource = (invoice as any).source || 'manual';
+                          const sourceKey = rawSource.startsWith('email:') ? 'email' : rawSource;
+                          const emailAddress = rawSource.startsWith('email:') ? rawSource.substring(6) : null;
+                          const src = sourceConfig[sourceKey as keyof typeof sourceConfig] || sourceConfig.manual;
                           const Icon = src.icon;
                           return (
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium ${src.color}`}>
-                              <Icon className="w-3.5 h-3.5" />
-                              {src.label}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium ${src.color}`}>
+                                <Icon className="w-3.5 h-3.5" />
+                                {src.label}
+                              </span>
+                              {emailAddress && (
+                                <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark ml-0.5">
+                                  {emailAddress}
+                                </span>
+                              )}
+                            </div>
                           );
                         })()}
                       </div>

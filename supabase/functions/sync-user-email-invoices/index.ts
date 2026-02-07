@@ -386,8 +386,7 @@ async function syncEmailAccount(
               file_url: publicUrl,
               pdf_base64: base64Content,
               uploaded_by: userId,
-              description: `Faktura z email: ${config.email_address}`,
-              source: 'email',
+              source: `email:${config.email_address}`,
               file_hash: fileHash,
             })
             .select()

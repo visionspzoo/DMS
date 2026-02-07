@@ -104,11 +104,14 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                       google_drive: { label: 'Drive', icon: HardDrive, color: 'text-emerald-500' },
                       ksef: { label: 'KSeF', icon: FileCheck, color: 'text-amber-500' },
                     };
-                    const src = sourceConfig[(invoice as any).source as keyof typeof sourceConfig];
+                    const rawSource = (invoice as any).source || '';
+                    const sourceKey = rawSource.startsWith('email:') ? 'email' : rawSource;
+                    const emailAddress = rawSource.startsWith('email:') ? rawSource.substring(6) : null;
+                    const src = sourceConfig[sourceKey as keyof typeof sourceConfig];
                     if (!src) return null;
                     const Icon = src.icon;
                     return (
-                      <span className={`inline-flex items-center gap-0.5 text-[10px] ${src.color}`} title={`Zrodlo: ${src.label}`}>
+                      <span className={`inline-flex items-center gap-0.5 text-[10px] ${src.color}`} title={`Zrodlo: ${emailAddress ? `Email: ${emailAddress}` : src.label}`}>
                         <Icon className="w-3 h-3" />
                       </span>
                     );
