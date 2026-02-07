@@ -1,0 +1,164 @@
+import { supabase } from './supabase';
+
+export interface FileUploadEntry {
+  file: File;
+  hash: string;
+  status: 'pending' | 'hashing' | 'uploading' | 'success' | 'error' | 'duplicate';
+  progress: string;
+  error?: string;
+}
+
+export async function computeFileHash(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function checkDuplicateInDb(hash: string, userId: string): Promise<{
+  isDuplicate: boolean;
+  label?: string;
+}> {
+  const { data } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, supplier_name')
+    .eq('file_hash', hash)
+    .eq('uploaded_by', userId)
+    .maybeSingle();
+
+  if (data) {
+    const label = data.invoice_number || data.supplier_name || data.id;
+    return { isDuplicate: true, label };
+  }
+  return { isDuplicate: false };
+}
+
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function uploadInvoiceFile(
+  file: File,
+  hash: string,
+  userId: string,
+  onProgress: (msg: string) => void,
+): Promise<{ invoiceId: string }> {
+  onProgress('Przesyłanie pliku...');
+
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+  const filePath = `invoices/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('documents')
+    .upload(filePath, file);
+
+  if (uploadError) throw uploadError;
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('documents')
+    .getPublicUrl(filePath);
+
+  onProgress('Konwertowanie...');
+  const pdfBase64 = await fileToBase64(file);
+
+  onProgress('Zapisywanie...');
+  const { data: invoiceData, error: insertError } = await supabase
+    .from('invoices')
+    .insert({
+      file_url: publicUrl,
+      pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
+      uploaded_by: userId,
+      file_hash: hash,
+    })
+    .select()
+    .single();
+
+  if (insertError) throw insertError;
+
+  onProgress('Google Drive...');
+  try {
+    await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileUrl: publicUrl,
+          fileName: file.name,
+          invoiceId: invoiceData.id,
+          department_id: invoiceData.department_id || null,
+        }),
+      }
+    );
+  } catch {
+    // optional
+  }
+
+  onProgress('OCR...');
+  try {
+    const ocrResponse = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileUrl: publicUrl,
+          invoiceId: invoiceData.id,
+        }),
+      }
+    );
+
+    if (ocrResponse.ok) {
+      const ocrData = await ocrResponse.json();
+      if (ocrData.suggestedTags?.length > 0) {
+        for (const tag of ocrData.suggestedTags) {
+          await supabase
+            .from('invoice_tags')
+            .insert({
+              invoice_id: invoiceData.id,
+              tag_id: tag.id,
+              created_by: userId,
+            })
+            .then(() => {});
+        }
+      }
+    }
+  } catch {
+    // OCR is optional
+  }
+
+  return { invoiceId: invoiceData.id };
+}
+
+export function validateFiles(files: File[]): { valid: File[]; errors: string[] } {
+  const valid: File[] = [];
+  const errors: string[] = [];
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      errors.push(`${file.name}: za duży (maks. 10MB)`);
+    } else if (!allowedTypes.includes(file.type)) {
+      errors.push(`${file.name}: nieobsługiwany format`);
+    } else {
+      valid.push(file);
+    }
+  }
+
+  return { valid, errors };
+}

@@ -1,11 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Calendar, Upload, FileText, Loader, TrendingUp, Search } from 'lucide-react';
+import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
 import { InvoiceDetails } from './InvoiceDetails';
-import { UploadInvoice } from './UploadInvoice';
 import type { Database } from '../../lib/database.types';
+import {
+  computeFileHash,
+  checkDuplicateInDb,
+  uploadInvoiceFile,
+  validateFiles,
+  type FileUploadEntry,
+} from '../../lib/uploadUtils';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 
@@ -23,12 +29,13 @@ export function InvoiceList() {
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
-  const [showUpload, setShowUpload] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState('');
-  const [uploadError, setUploadError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [uploadQueue, setUploadQueue] = useState<FileUploadEntry[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadValidationError, setUploadValidationError] = useState('');
+  const uploadQueueRef = useRef<FileUploadEntry[]>([]);
 
   useEffect(() => {
     loadInvoices();
@@ -57,10 +64,7 @@ export function InvoiceList() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Supabase request failed', error);
-        throw error;
-      }
+      if (error) throw error;
 
       let allInvoices = data || [];
 
@@ -169,6 +173,122 @@ export function InvoiceList() {
       .reduce((sum, inv) => sum + (Number(inv.pln_gross_amount || inv.gross_amount) || 0), 0);
   }, [filteredInvoices]);
 
+  const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
+    setUploadQueue(prev => {
+      const next = prev.map((e, i) => i === index ? { ...e, ...update } : e);
+      uploadQueueRef.current = next;
+      return next;
+    });
+  };
+
+  const addFilesToQueue = async (rawFiles: File[]) => {
+    if (!user) return;
+
+    const { valid, errors } = validateFiles(rawFiles);
+    if (errors.length > 0) {
+      setUploadValidationError(errors.join('; '));
+      setTimeout(() => setUploadValidationError(''), 6000);
+    }
+    if (valid.length === 0) return;
+
+    const newEntries: FileUploadEntry[] = [];
+    for (const file of valid) {
+      const hash = await computeFileHash(file);
+
+      const alreadyInQueue = uploadQueueRef.current.some(e => e.hash === hash);
+      if (alreadyInQueue) {
+        newEntries.push({
+          file, hash,
+          status: 'duplicate',
+          progress: 'Duplikat w tej partii',
+        });
+        continue;
+      }
+
+      const dbCheck = await checkDuplicateInDb(hash, user.id);
+      if (dbCheck.isDuplicate) {
+        newEntries.push({
+          file, hash,
+          status: 'duplicate',
+          progress: `Duplikat: ${dbCheck.label}`,
+        });
+        continue;
+      }
+
+      newEntries.push({
+        file, hash,
+        status: 'pending',
+        progress: 'Oczekuje...',
+      });
+    }
+
+    setUploadQueue(prev => {
+      const next = [...prev, ...newEntries];
+      uploadQueueRef.current = next;
+      return next;
+    });
+
+    const hasPending = newEntries.some(e => e.status === 'pending');
+    if (hasPending && !isUploading) {
+      startUpload([...uploadQueueRef.current]);
+    }
+  };
+
+  const startUpload = async (snapshot: FileUploadEntry[]) => {
+    if (!user) return;
+    setIsUploading(true);
+
+    const pendingIndices: number[] = [];
+    snapshot.forEach((e, i) => {
+      if (e.status === 'pending') pendingIndices.push(i);
+    });
+
+    for (const idx of pendingIndices) {
+      const entry = uploadQueueRef.current[idx];
+      if (!entry || entry.status !== 'pending') continue;
+
+      updateEntry(idx, { status: 'uploading', progress: 'Sprawdzanie...' });
+
+      try {
+        const dbCheck = await checkDuplicateInDb(entry.hash, user.id);
+        if (dbCheck.isDuplicate) {
+          updateEntry(idx, { status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
+          continue;
+        }
+
+        await uploadInvoiceFile(
+          entry.file,
+          entry.hash,
+          user.id,
+          (msg) => updateEntry(idx, { progress: msg }),
+        );
+        updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
+      } catch (err: any) {
+        updateEntry(idx, {
+          status: 'error',
+          progress: 'Błąd',
+          error: err.message || 'Nieznany błąd',
+        });
+      }
+    }
+
+    setIsUploading(false);
+    loadInvoices();
+  };
+
+  const clearQueue = () => {
+    setUploadQueue([]);
+    uploadQueueRef.current = [];
+  };
+
+  const removeFromQueue = (index: number) => {
+    setUploadQueue(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      uploadQueueRef.current = next;
+      return next;
+    });
+  };
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -183,180 +303,18 @@ export function InvoiceList() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      await handleFileUpload(files[0]);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      await addFilesToQueue(files);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      handleFileUpload(files[0]);
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      await addFilesToQueue(files);
     }
-  };
-
-  const handleFileUpload = async (file: File) => {
-    if (!user) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.');
-      setTimeout(() => setUploadError(''), 5000);
-      return;
-    }
-
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (!allowedTypes.includes(file.type)) {
-      setUploadError('Nieprawidłowy format pliku. Dozwolone: PDF, JPG, PNG');
-      setTimeout(() => setUploadError(''), 5000);
-      return;
-    }
-
-    setUploading(true);
-    setUploadError('');
-    setUploadProgress('Przesyłanie pliku...');
-
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `invoices/${fileName}`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
-
-      setUploadProgress('Konwertowanie do base64...');
-
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const pdfBase64 = await base64Promise;
-
-      setUploadProgress('Zapisywanie w bazie danych...');
-
-      const { data: invoiceData, error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          file_url: publicUrl,
-          pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
-          uploaded_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      setUploadProgress('Wysyłanie do Google Drive...');
-
-      const driveResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: publicUrl,
-            fileName: file.name,
-            invoiceId: invoiceData.id,
-          }),
-        }
-      );
-
-      if (!driveResponse.ok) {
-        console.error('Google Drive upload failed:', await driveResponse.text());
-      }
-
-      setUploadProgress('Przetwarzanie OCR...');
-
-      const ocrResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: publicUrl,
-            invoiceId: invoiceData.id,
-          }),
-        }
-      );
-
-      if (!ocrResponse.ok) {
-        const errorText = await ocrResponse.text();
-        console.error('OCR processing failed:', errorText);
-      } else {
-        const ocrResult = await ocrResponse.json();
-        console.log('OCR result:', ocrResult);
-        if (ocrResult.usedApi) {
-          console.log(`✓ Użyto ${ocrResult.usedApi}`);
-        }
-        if (ocrResult.error) {
-          console.warn('OCR warning:', ocrResult.error);
-        }
-
-        if (ocrResult.suggestedTags && ocrResult.suggestedTags.length > 0) {
-          console.log('Auto-applying suggested tags...');
-          setUploadProgress('Przypisywanie tagów...');
-
-          const autoAppliedTags: string[] = [];
-          for (const tag of ocrResult.suggestedTags) {
-            try {
-              const { error: tagError } = await supabase
-                .from('invoice_tags')
-                .insert({
-                  invoice_id: invoiceData.id,
-                  tag_id: tag.id,
-                  created_by: user?.id,
-                });
-
-              if (!tagError) {
-                autoAppliedTags.push(tag.name);
-                console.log(`✓ Auto-applied tag: ${tag.name}`);
-              }
-            } catch (tagErr) {
-              console.error(`Error auto-applying tag ${tag.name}:`, tagErr);
-            }
-          }
-
-          if (autoAppliedTags.length > 0) {
-            setUploadProgress(`Gotowe! Dodano tagi: ${autoAppliedTags.join(', ')}`);
-          }
-        }
-      }
-
-      if (!uploadProgress.includes('Dodano tagi:')) {
-        setUploadProgress('Gotowe!');
-      }
-
-      setTimeout(() => {
-        setUploadProgress('');
-        setUploading(false);
-        loadInvoices();
-      }, 2500);
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      setUploadError(err.message || 'Wystąpił błąd podczas przesyłania pliku');
-      setUploading(false);
-      setTimeout(() => setUploadError(''), 5000);
-    }
+    e.target.value = '';
   };
 
   const loadDepartments = async () => {
@@ -373,26 +331,22 @@ export function InvoiceList() {
     }
   };
 
-  const handleUploadSuccess = () => {
-    setShowUpload(false);
-    loadInvoices();
-  };
-
   const toggleDepartment = (dept: string) => {
     setSelectedDepartments(prev =>
-      prev.includes(dept)
-        ? prev.filter(d => d !== dept)
-        : [...prev, dept]
+      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
     );
   };
 
   const toggleStatus = (status: string) => {
     setSelectedStatuses(prev =>
-      prev.includes(status)
-        ? prev.filter(s => s !== status)
-        : [...prev, status]
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     );
   };
+
+  const successCount = uploadQueue.filter(e => e.status === 'success').length;
+  const duplicateCount = uploadQueue.filter(e => e.status === 'duplicate').length;
+  const errorCount = uploadQueue.filter(e => e.status === 'error').length;
+  const queueDone = uploadQueue.length > 0 && !isUploading && uploadQueue.every(e => e.status !== 'pending');
 
   if (loading) {
     return (
@@ -415,7 +369,7 @@ export function InvoiceList() {
         className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border-2 transition-colors mb-4 overflow-hidden ${
           dragActive
             ? 'border-brand-primary dark:border-brand-primary bg-brand-primary/5 dark:bg-brand-primary/10'
-            : uploading
+            : isUploading
             ? 'border-brand-primary dark:border-brand-primary'
             : 'border-dashed border-slate-300 dark:border-slate-600/50 hover:border-brand-primary/30 dark:hover:border-brand-primary/30'
         }`}
@@ -424,131 +378,189 @@ export function InvoiceList() {
         onDragOver={handleDrag}
         onDrop={handleDrop}
       >
-        <div className="p-6 text-center cursor-pointer" onClick={() => !uploading && fileInputRef.current?.click()}>
-          <div className="flex flex-col items-center gap-2">
-            <div className={`p-3 rounded-full transition-colors ${
-              dragActive || uploading
-                ? 'bg-brand-primary/20 dark:bg-brand-primary/30'
-                : 'bg-light-surface-variant dark:bg-dark-surface-variant'
-            }`}>
-              {uploading ? (
-                <Loader className="w-6 h-6 text-brand-primary animate-spin" />
-              ) : (
+        {uploadQueue.length === 0 ? (
+          <div
+            className="p-6 text-center cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <div className={`p-3 rounded-full transition-colors ${
+                dragActive
+                  ? 'bg-brand-primary/20 dark:bg-brand-primary/30'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant'
+              }`}>
                 <FileText className={`w-6 h-6 transition-colors ${
                   dragActive
                     ? 'text-brand-primary'
                     : 'text-text-secondary-light dark:text-text-secondary-dark'
                 }`} />
+              </div>
+              <div>
+                {uploadValidationError ? (
+                  <>
+                    <p className="text-sm font-semibold text-status-error mb-0.5">Błąd!</p>
+                    <p className="text-xs text-status-error">{uploadValidationError}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-0.5">
+                      {dragActive ? 'Upuść pliki tutaj' : 'Kliknij lub przeciągnij pliki'}
+                    </p>
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      PDF, JPG, PNG (max 10MB) -- możesz wybrać wiele plików naraz
+                    </p>
+                  </>
+                )}
+              </div>
+              {!uploadValidationError && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  Dodaj faktury
+                </button>
               )}
             </div>
-            <div>
-              {uploading ? (
-                <>
-                  <p className="text-sm font-semibold text-brand-primary mb-0.5">
-                    {uploadProgress}
-                  </p>
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                    Proszę czekać...
-                  </p>
-                </>
-              ) : uploadError ? (
-                <>
-                  <p className="text-sm font-semibold text-status-error mb-0.5">
-                    Błąd!
-                  </p>
-                  <p className="text-xs text-status-error">
-                    {uploadError}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-0.5">
-                    {dragActive ? 'Upuść plik tutaj' : 'Kliknij, aby wybrać plik'}
-                  </p>
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                    lub przeciągnij i upuść • PDF, JPG, PNG (max 10MB)
-                  </p>
-                </>
-              )}
+          </div>
+        ) : (
+          <div className="p-4">
+            {queueDone && (
+              <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <span className="text-sm font-semibold text-green-900 dark:text-green-300">
+                    Zakończono
+                    {successCount > 0 && ` -- przesłano: ${successCount}`}
+                    {duplicateCount > 0 && ` -- duplikaty: ${duplicateCount}`}
+                    {errorCount > 0 && ` -- błędy: ${errorCount}`}
+                  </span>
+                </div>
+                <button
+                  onClick={clearQueue}
+                  className="text-xs font-medium text-green-700 dark:text-green-400 hover:underline"
+                >
+                  Zamknij
+                </button>
+              </div>
+            )}
+
+            <div className="max-h-48 overflow-y-auto space-y-1.5 mb-3">
+              {uploadQueue.map((entry, idx) => (
+                <div
+                  key={`${entry.hash}-${idx}`}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                    entry.status === 'success'
+                      ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
+                      : entry.status === 'error'
+                      ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                      : entry.status === 'duplicate'
+                      ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800'
+                      : entry.status === 'uploading'
+                      ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <div className="flex-shrink-0">
+                    {entry.status === 'uploading' ? (
+                      <Loader className="w-4 h-4 text-blue-600 animate-spin" />
+                    ) : entry.status === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    ) : entry.status === 'error' ? (
+                      <X className="w-4 h-4 text-red-500" />
+                    ) : entry.status === 'duplicate' ? (
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium text-text-primary-light dark:text-text-primary-dark truncate block text-xs">
+                      {entry.file.name}
+                    </span>
+                    <span className={`text-[11px] ${
+                      entry.status === 'duplicate' ? 'text-amber-600 dark:text-amber-400'
+                        : entry.status === 'error' ? 'text-red-600 dark:text-red-400'
+                        : 'text-text-secondary-light dark:text-text-secondary-dark'
+                    }`}>
+                      {entry.progress}
+                      {entry.error && ` - ${entry.error}`}
+                    </span>
+                  </div>
+                  {!isUploading && entry.status !== 'uploading' && !queueDone && (
+                    <button
+                      onClick={() => removeFromQueue(idx)}
+                      className="p-0.5 hover:bg-white/60 dark:hover:bg-white/10 rounded flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-            {!uploading && !uploadError && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm"
-              >
-                <Upload className="w-4 h-4" />
-                Dodaj fakturę
-              </button>
+
+            {!queueDone && (
+              <div className="flex gap-2">
+                <label className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition font-medium text-center cursor-pointer text-xs">
+                  Dodaj więcej
+                  <input
+                    type="file"
+                    onChange={handleFileSelect}
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    className="hidden"
+                    multiple
+                    disabled={isUploading}
+                  />
+                </label>
+                {!isUploading && (
+                  <button
+                    onClick={clearQueue}
+                    className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  >
+                    Anuluj
+                  </button>
+                )}
+              </div>
             )}
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileSelect}
-            accept=".pdf,.jpg,.jpeg,.png"
-            className="hidden"
-            disabled={uploading}
-          />
-        </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileSelect}
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="hidden"
+          multiple
+        />
       </div>
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Status:</label>
-            <button
-              onClick={() => toggleStatus('draft')}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedStatuses.includes('draft')
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-              }`}
-            >
-              Robocze
-            </button>
-            <button
-              onClick={() => toggleStatus('waiting')}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedStatuses.includes('waiting')
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-              }`}
-            >
-              Oczekujące
-            </button>
-            <button
-              onClick={() => toggleStatus('pending')}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedStatuses.includes('pending')
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-              }`}
-            >
-              W weryfikacji
-            </button>
-            <button
-              onClick={() => toggleStatus('accepted')}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedStatuses.includes('accepted')
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-              }`}
-            >
-              Zaakceptowana
-            </button>
-            <button
-              onClick={() => toggleStatus('rejected')}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedStatuses.includes('rejected')
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
-              }`}
-            >
-              Odrzucona
-            </button>
+            {[
+              { key: 'draft', label: 'Robocze' },
+              { key: 'waiting', label: 'Oczekujące' },
+              { key: 'pending', label: 'W weryfikacji' },
+              { key: 'accepted', label: 'Zaakceptowana' },
+              { key: 'rejected', label: 'Odrzucona' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => toggleStatus(key)}
+                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                  selectedStatuses.includes(key)
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
             {availableDepartments.length > 0 && (
               <>
                 <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
@@ -657,13 +669,6 @@ export function InvoiceList() {
           invoice={selectedInvoice}
           onClose={() => setSelectedInvoice(null)}
           onUpdate={loadInvoices}
-        />
-      )}
-
-      {showUpload && (
-        <UploadInvoice
-          onClose={() => setShowUpload(false)}
-          onSuccess={handleUploadSuccess}
         />
       )}
     </div>
