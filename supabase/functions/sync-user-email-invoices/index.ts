@@ -137,6 +137,7 @@ Deno.serve(async (req: Request) => {
         message: `Zsynchronizowano ${totalSynced} faktur z ${emailConfigs.length} kont`,
         synced: totalSynced,
         errors: errors.length > 0 ? errors : undefined,
+        warnings: warnings.length > 0 ? warnings : undefined,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

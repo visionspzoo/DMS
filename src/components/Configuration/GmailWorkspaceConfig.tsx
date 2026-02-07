@@ -38,7 +38,8 @@ export default function GmailWorkspaceConfig() {
   const [driveSaving, setDriveSaving] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [driveIsActive, setDriveIsActive] = useState(true);
-  const [driveMessage, setDriveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [driveMessage, setDriveMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const [driveSyncing, setDriveSyncing] = useState(false);
 
   useEffect(() => {
     loadEmailConfigs();
@@ -249,6 +250,55 @@ export default function GmailWorkspaceConfig() {
       setEmailMessage({ type: 'error', text: 'Blad: ' + error.message });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSyncDrive = async () => {
+    setDriveSyncing(true);
+    setDriveMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak sesji uzytkownika');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Blad ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Drive sync result:', result);
+
+      if (result.warnings && result.warnings.length > 0) {
+        setDriveMessage({
+          type: 'warning',
+          text: `Zsynchronizowano ${result.total_synced || 0} faktur(y). OSTRZEŻENIA: ${result.warnings.join('; ')}`,
+        });
+      } else {
+        const errorsText = result?.errors?.length ? `. Bledy: ${result.errors.join('; ')}` : '';
+        setDriveMessage({
+          type: result?.errors?.length ? 'error' : 'success',
+          text: `Zsynchronizowano ${result?.total_synced || 0} faktur(y) z Google Drive${errorsText}`,
+        });
+      }
+      await loadDriveConfig();
+    } catch (error: any) {
+      console.error('Error syncing Drive:', error);
+      setDriveMessage({ type: 'error', text: 'Blad: ' + error.message });
+    } finally {
+      setDriveSyncing(false);
     }
   };
 
@@ -543,21 +593,41 @@ export default function GmailWorkspaceConfig() {
               className={`p-2.5 rounded-lg border flex items-start gap-2 ${
                 driveMessage.type === 'success'
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : driveMessage.type === 'warning'
+                  ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
                   : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
               }`}
             >
               {driveMessage.type === 'success' ? (
                 <CheckCircle className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              ) : driveMessage.type === 'warning' ? (
+                <Info className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
               ) : (
                 <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
               )}
-              <p className={`text-xs ${driveMessage.type === 'success' ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+              <p className={`text-xs ${
+                driveMessage.type === 'success'
+                  ? 'text-green-800 dark:text-green-300'
+                  : driveMessage.type === 'warning'
+                  ? 'text-orange-800 dark:text-orange-300'
+                  : 'text-red-800 dark:text-red-300'
+              }`}>
                 {driveMessage.text}
               </p>
             </div>
           )}
 
-          <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-slate-700">
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+            {driveConfig?.google_drive_folder_id && emailConfigs.length > 0 && (
+              <button
+                onClick={handleSyncDrive}
+                disabled={driveSyncing}
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                <RefreshCw className={`w-4 h-4 ${driveSyncing ? 'animate-spin' : ''}`} />
+                {driveSyncing ? 'Synchronizacja...' : 'Synchronizuj Drive'}
+              </button>
+            )}
             <button
               onClick={handleSaveDrive}
               disabled={driveSaving}
