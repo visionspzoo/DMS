@@ -1,19 +1,17 @@
 import { useState } from 'react';
-import { HardDrive, Mail, Key } from 'lucide-react';
-import GoogleDriveConfig from './GoogleDriveConfig';
+import { Mail, Key } from 'lucide-react';
 import GmailWorkspaceConfig from './GmailWorkspaceConfig';
 import AliceIntegration from './AliceIntegration';
 
-type ConfigTab = 'drive' | 'gmail' | 'alice';
+type ConfigTab = 'google' | 'alice';
 
-const tabs: { id: ConfigTab; label: string; icon: typeof HardDrive }[] = [
-  { id: 'gmail', label: 'Gmail Workspace', icon: Mail },
-  { id: 'drive', label: 'Google Drive', icon: HardDrive },
+const tabs: { id: ConfigTab; label: string; icon: typeof Mail }[] = [
+  { id: 'google', label: 'Google Workspace', icon: Mail },
   { id: 'alice', label: 'Alice API', icon: Key },
 ];
 
 export default function UserConfiguration() {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('gmail');
+  const [activeTab, setActiveTab] = useState<ConfigTab>('google');
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
@@ -22,7 +20,7 @@ export default function UserConfiguration() {
           Konfiguracja
         </h1>
         <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
-          Skonfiguruj integracje z Google Drive, Gmail i Alice
+          Skonfiguruj integracje z Google i Alice
         </p>
       </div>
 
@@ -40,17 +38,14 @@ export default function UserConfiguration() {
               }`}
             >
               <Icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
+              {tab.label}
             </button>
           );
         })}
       </div>
 
-      <div className="animate-in fade-in duration-200">
-        {activeTab === 'gmail' && <GmailWorkspaceConfig />}
-        {activeTab === 'drive' && <GoogleDriveConfig />}
-        {activeTab === 'alice' && <AliceIntegration />}
-      </div>
+      {activeTab === 'google' && <GmailWorkspaceConfig />}
+      {activeTab === 'alice' && <AliceIntegration />}
     </div>
   );
 }
