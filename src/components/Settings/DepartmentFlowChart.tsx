@@ -13,6 +13,11 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
+  PenTool,
+  UserCheck,
+  Briefcase,
+  Crown,
+  ScrollText,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -267,11 +272,159 @@ function EscalationDiagram() {
   );
 }
 
+const contractSteps = [
+  {
+    key: 'draft',
+    label: 'Szkic',
+    sublabel: 'Autor',
+    icon: FileText,
+    color: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-600',
+    ringColor: 'ring-slate-300 dark:ring-slate-600',
+  },
+  {
+    key: 'pending_specialist',
+    label: 'Specjalista',
+    sublabel: 'Weryfikacja',
+    icon: UserCheck,
+    color: 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-300 dark:border-sky-700',
+    ringColor: 'ring-sky-300 dark:ring-sky-600',
+  },
+  {
+    key: 'pending_manager',
+    label: 'Kierownik',
+    sublabel: 'Akceptacja',
+    icon: Briefcase,
+    color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700',
+    ringColor: 'ring-amber-300 dark:ring-amber-600',
+  },
+  {
+    key: 'pending_director',
+    label: 'Dyrektor',
+    sublabel: 'Akceptacja',
+    icon: Crown,
+    color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700',
+    ringColor: 'ring-orange-300 dark:ring-orange-600',
+  },
+  {
+    key: 'pending_ceo',
+    label: 'CEO',
+    sublabel: 'Zatwierdzenie',
+    icon: Crown,
+    color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700',
+    ringColor: 'ring-blue-300 dark:ring-blue-600',
+  },
+  {
+    key: 'pending_signature',
+    label: 'Do podpisu',
+    sublabel: 'CEO',
+    icon: PenTool,
+    color: 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 border-teal-300 dark:border-teal-700',
+    ringColor: 'ring-teal-300 dark:ring-teal-600',
+  },
+  {
+    key: 'signed',
+    label: 'Podpisana',
+    sublabel: 'Zakonczona',
+    icon: CheckCircle2,
+    color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700',
+    ringColor: 'ring-green-300 dark:ring-green-600',
+  },
+];
+
+function ContractFlowDiagram() {
+  return (
+    <div className="space-y-5">
+      <div className="relative">
+        <div className="absolute top-1/2 left-8 right-8 h-px bg-slate-200 dark:bg-slate-700 -translate-y-1/2 hidden md:block" />
+
+        <div className="flex flex-col md:flex-row items-center md:justify-between gap-3 md:gap-1 relative">
+          {contractSteps.map((step, i) => {
+            const Icon = step.icon;
+            return (
+              <div key={step.key} className="flex items-center gap-2 md:gap-0 md:flex-col">
+                <div className={`relative z-10 flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl border ${step.color} min-w-[100px] text-center shadow-sm`}>
+                  <div className={`p-1.5 rounded-full ring-2 ${step.ringColor} bg-white dark:bg-slate-900`}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-xs font-semibold whitespace-nowrap">{step.label}</span>
+                  <span className="text-[9px] opacity-70 -mt-1">{step.sublabel}</span>
+                </div>
+                {i < contractSteps.length - 1 && (
+                  <ArrowDown className="w-4 h-4 text-slate-400 dark:text-slate-500 rotate-[-90deg] md:hidden" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="h-px w-8 bg-red-300 dark:bg-red-700" />
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 shadow-sm">
+            <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+            <span className="text-xs font-semibold text-red-700 dark:text-red-400">Odrzucona</span>
+          </div>
+          <div className="h-px w-8 bg-red-300 dark:bg-red-700" />
+        </div>
+        <div className="flex items-center gap-1">
+          <ArrowUp className="w-3 h-3 text-red-400 rotate-180" />
+          <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+            Wraca do szkicu na kazdym etapie akceptacji
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContractApprovalChain() {
+  const roles = [
+    { label: 'Specjalista', desc: 'Sprawdza poprawnosc formalna', color: 'border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20', icon: UserCheck, iconColor: 'text-sky-600 dark:text-sky-400' },
+    { label: 'Kierownik', desc: 'Weryfikuje merytorycznie', color: 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20', icon: Briefcase, iconColor: 'text-amber-600 dark:text-amber-400' },
+    { label: 'Dyrektor', desc: 'Zatwierdzenie strategiczne', color: 'border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20', icon: Crown, iconColor: 'text-orange-600 dark:text-orange-400' },
+    { label: 'CEO', desc: 'Finalna akceptacja i podpis', color: 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20', icon: Crown, iconColor: 'text-blue-600 dark:text-blue-400' },
+  ];
+
+  return (
+    <div className="flex flex-col items-center gap-0">
+      {roles.map((role, i) => {
+        const Icon = role.icon;
+        return (
+          <div key={role.label} className="flex flex-col items-center">
+            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border ${role.color} min-w-[220px]`}>
+              <div className="flex-shrink-0">
+                <Icon className={`w-4 h-4 ${role.iconColor}`} />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  {role.label}
+                </div>
+                <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  {role.desc}
+                </div>
+              </div>
+            </div>
+            {i < roles.length - 1 && (
+              <div className="flex flex-col items-center">
+                <div className="w-px h-2 bg-slate-300 dark:bg-slate-600" />
+                <ArrowDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                <div className="w-px h-2 bg-slate-300 dark:bg-slate-600" />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DepartmentFlowChart({ departments }: { departments: Department[] }) {
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showFlow, setShowFlow] = useState(true);
+  const [showContractFlow, setShowContractFlow] = useState(true);
 
   useEffect(() => {
     loadMemberCounts();
@@ -428,6 +581,95 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
                   </div>
                   <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
                     Kierownik dzialu zatwierdza fakture w ramach swojego limitu kwotowego
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <button
+          onClick={() => setShowContractFlow(!showContractFlow)}
+          className="w-full px-3 py-2 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-1.5">
+            <ScrollText className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+              Model przeplywu umowy
+            </h2>
+          </div>
+          {showContractFlow ? (
+            <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+          )}
+        </button>
+
+        {showContractFlow && (
+          <div className="p-4 space-y-6">
+            <div>
+              <h3 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-4 text-center">
+                Cykl zycia umowy
+              </h3>
+              <ContractFlowDiagram />
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4">
+              <h3 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-4 text-center">
+                Lancuch akceptacji
+              </h3>
+              <ContractApprovalChain />
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-700/50 pt-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-2.5 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Send className="w-3 h-3 text-blue-500" />
+                    <span className="text-[11px] font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      Sekwencyjna akceptacja
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
+                    Umowa przechodzi kolejno przez specjaliste, kierownika, dyrektora i CEO. Kazda rola musi zatwierdzic przed przekazaniem dalej.
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <XCircle className="w-3 h-3 text-red-500" />
+                    <span className="text-[11px] font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      Odrzucenie
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
+                    Na kazdym etapie akceptacji osoba weryfikujaca moze odrzucic umowe. Odrzucona umowa wraca do statusu szkicu.
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <PenTool className="w-3 h-3 text-teal-500" />
+                    <span className="text-[11px] font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      Podpis
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
+                    Po zatwierdzeniu przez CEO umowa trafia do podpisu. Tylko CEO moze zlozyc finalny podpis zamykajacy proces.
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <FileText className="w-3 h-3 text-slate-500" />
+                    <span className="text-[11px] font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      Audyt
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
+                    Kazda akceptacja i odrzucenie jest rejestrowane z komentarzem, data i osoba podejmujaca decyzje.
                   </p>
                 </div>
               </div>
