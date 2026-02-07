@@ -584,34 +584,28 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
         </div>
 
         <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden">
-          <div className="flex border-b border-slate-200 dark:border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1 m-2 flex-shrink-0">
             <button
               onClick={() => setActiveTab('comments')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium transition-colors relative ${
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 activeTab === 'comments'
-                  ? 'text-brand-primary'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
               }`}
             >
               <MessageSquare className="w-4 h-4" />
               Komentarze
-              {activeTab === 'comments' && (
-                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-brand-primary rounded-full" />
-              )}
             </button>
             <button
               onClick={() => setActiveTab('ai')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium transition-colors relative ${
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 activeTab === 'ai'
-                  ? 'text-brand-primary'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
               }`}
             >
               <Sparkles className="w-4 h-4" />
               Asystent AI
-              {activeTab === 'ai' && (
-                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-brand-primary rounded-full" />
-              )}
             </button>
           </div>
 

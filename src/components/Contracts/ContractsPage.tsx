@@ -376,7 +376,7 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
         </button>
       </div>
 
-      <div className="mb-4 flex bg-light-surface dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-slate-700/50 p-1 gap-1">
+      <div className="mb-4 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
         {tabs.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
           const count = counts[key];
@@ -384,13 +384,13 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-medium transition-all text-sm relative ${
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 isActive
                   ? 'bg-brand-primary text-white shadow-sm'
                   : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-4 h-4" />
               <span className="hidden sm:inline">{label}</span>
               {count > 0 && (
                 <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold leading-none px-1 ${

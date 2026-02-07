@@ -539,13 +539,13 @@ export function KSEFInvoicesPage() {
           </div>
         </div>
 
-        <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700 mb-4">
+        <div className="flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1 mb-4">
           <button
             onClick={() => setMainTab('invoices')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
               mainTab === 'invoices'
-                ? 'border-brand-primary text-brand-primary'
-                : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -553,10 +553,10 @@ export function KSEFInvoicesPage() {
           </button>
           <button
             onClick={() => setMainTab('configuration')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
               mainTab === 'configuration'
-                ? 'border-brand-primary text-brand-primary'
-                : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
             }`}
           >
             <Settings className="w-4 h-4" />
@@ -565,16 +565,16 @@ export function KSEFInvoicesPage() {
         </div>
 
         {mainTab === 'invoices' && (
-          <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
             <button
               onClick={() => {
                 setLoading(true);
                 setInvoiceTab('unassigned');
               }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 invoiceTab === 'unassigned'
-                  ? 'border-brand-primary text-brand-primary'
-                  : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
               }`}
             >
               Nieprzypisane ({unassignedCount})
@@ -584,10 +584,10 @@ export function KSEFInvoicesPage() {
                 setLoading(true);
                 setInvoiceTab('assigned');
               }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 invoiceTab === 'assigned'
-                  ? 'border-brand-primary text-brand-primary'
-                  : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
               }`}
             >
               Przypisane ({assignedCount})

@@ -324,12 +324,12 @@ export default function AIPromptsSettings() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
+      <div className="flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
         <button
           onClick={() => setActiveTab('prompts')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'prompts'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >
@@ -338,9 +338,9 @@ export default function AIPromptsSettings() {
         </button>
         <button
           onClick={() => setActiveTab('pipelines')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'pipelines'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >

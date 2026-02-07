@@ -290,12 +290,12 @@ export default function SettingsPanel() {
         )}
       </div>
 
-      <div className="mb-4 flex items-center gap-2 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
+      <div className="mb-4 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'users'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >
@@ -304,9 +304,9 @@ export default function SettingsPanel() {
         </button>
         <button
           onClick={() => setActiveTab('departments')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'departments'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >
@@ -315,9 +315,9 @@ export default function SettingsPanel() {
         </button>
         <button
           onClick={() => setActiveTab('ai_prompts')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'ai_prompts'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >
@@ -326,9 +326,9 @@ export default function SettingsPanel() {
         </button>
         <button
           onClick={() => setActiveTab('slack')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'slack'
-              ? 'bg-brand-primary text-white'
+              ? 'bg-brand-primary text-white shadow-sm'
               : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
           }`}
         >
