@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, HardDrive, Mail, Plus, Trash2, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import AliceIntegration from './AliceIntegration';
 
 interface DriveConfig {
   id: string;
@@ -611,6 +612,8 @@ export default function UserConfiguration() {
           </div>
         )}
       </div>
+
+      <AliceIntegration />
 
       <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
         <div className="flex items-start gap-2">
