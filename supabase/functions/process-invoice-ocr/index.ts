@@ -43,54 +43,82 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "currency": "kod waluty: PLN, EUR, USD, GBP itp."
 }
 
-NAJWAŻNIEJSZA ZASADA - IDENTYFIKACJA SPRZEDAWCY:
+KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
 
-KROK 1: Znajdź obie strony transakcji na fakturze
-Na każdej fakturze są DOKŁADNIE dwie strony:
-A) SPRZEDAWCA/WYSTAWCA - firma, która WYSTAWIA fakturę i sprzedaje
-B) NABYWCA/KUPUJĄCY - firma, która kupuje i otrzymuje fakturę
+Na fakturze są zawsze DWA podmioty:
+1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę
+2. NABYWCA (Buyer, Customer, Bill to, Bill To, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę
 
-KROK 2: Szukaj etykiet identyfikujących strony
-Polskie faktury używają etykiet:
-- "Sprzedawca:", "Wystawca:", "Dostawca:", "Seller:", "Vendor:"  → to jest SPRZEDAWCA
-- "Nabywca:", "Nabywca/Odbiorca:", "Kupujący:", "Odbiorca:", "Buyer:", "Bill to:", "Customer:"  → to jest NABYWCA
+ETYKIETY ANGIELSKIE I POLSKIE - DOKŁADNE TŁUMACZENIE:
+- "Seller:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "Vendor:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "Supplier:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "From:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "Sprzedawca:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "Wystawca:" = SPRZEDAWCA → supplier_name, supplier_nip
+- "Dostawca:" = SPRZEDAWCA → supplier_name, supplier_nip
 
-KROK 3: Typowy układ przestrzenny polskiej faktury
-Jeśli nie ma wyraźnych etykiet, użyj układu przestrzennego:
-- LEWA STRONA nagłówka lub GÓRNA część = SPRZEDAWCA
-- PRAWA STRONA nagłówka lub DOLNA część = NABYWCA
+NIE WPISUJ DO supplier_name/supplier_nip firm oznaczonych jako:
+- "Bill to:" = NABYWCA (nie supplier!)
+- "Bill To:" = NABYWCA (nie supplier!)
+- "Buyer:" = NABYWCA (nie supplier!)
+- "Customer:" = NABYWCA (nie supplier!)
+- "Nabywca:" = NABYWCA (nie supplier!)
+- "Kupujący:" = NABYWCA (nie supplier!)
+- "Odbiorca:" = NABYWCA (nie supplier!)
 
-KROK 4: Weryfikacja - zadaj sobie pytanie
-"Która firma WYSTAWIA tę fakturę i SPRZEDAJE towary/usługi?"
-Ta firma to SPRZEDAWCA → jej dane (nazwa + NIP) idą do supplier_name i supplier_nip
+SZCZEGÓLNA UWAGA dla angielskich faktur:
+- Jeśli widzisz sekcję "Bill to:" lub "Bill To:" - to jest NABYWCA, NIE SPRZEDAWCA
+- "Bill to" NIGDY nie jest dostawcą (supplier)
+- Szukaj sekcji "Seller:", "Vendor:", "From:" lub firmę w górnym lewym rogu
 
-PRZYKŁAD PRAWIDŁOWEJ IDENTYFIKACJI:
-Tekst z faktury:
-"Sprzedawca:
-ABC Company Sp. z o.o.
-NIP: 1234567890
-ul. Warszawska 1
+UKŁAD PRZESTRZENNY:
+- Faktury polskie: LEWA strona/GÓRA = Sprzedawca, PRAWA/DÓŁ = Nabywca
+- Faktury zagraniczne: często podobnie, lub Seller na górze, Bill to niżej
 
-Nabywca:
-XYZ Firma Sp. z o.o.
-NIP: 9876543210
-ul. Krakowska 2"
+PRZYKŁAD 1 - Faktura angielska:
+"Seller:
+ABC Ltd
+VAT: GB123456789
+
+Bill to:
+Aura Herbals sp. z o.o.
+NIP: 5851490834"
 
 POPRAWNA ODPOWIEDŹ:
-supplier_name: "ABC Company Sp. z o.o."
+supplier_name: "ABC Ltd"
+supplier_nip: "GB123456789"
+
+PRZYKŁAD 2 - Faktura polska:
+"Sprzedawca:
+XYZ Sp. z o.o.
+NIP: 1234567890
+
+Nabywca:
+Aura Herbals sp. z o.o.
+NIP: 5851490834"
+
+POPRAWNA ODPOWIEDŹ:
+supplier_name: "XYZ Sp. z o.o."
 supplier_nip: "1234567890"
 
-BŁĄD DO UNIKNIĘCIA - NIE rób tego:
-supplier_name: "XYZ Firma Sp. z o.o."  ← TO JEST NABYWCA, NIE SPRZEDAWCA!
+BŁĘDY DO UNIKNIĘCIA:
+❌ NIE wpisuj firmy z sekcji "Bill to" jako supplier
+❌ NIE wpisuj firmy z sekcji "Nabywca" jako supplier
+❌ NIE wpisuj "Aura Herbals" jako supplier (to zawsze nabywca w tym systemie)
+
+WERYFIKACJA KOŃCOWA:
+Przed zwróceniem odpowiedzi, zapytaj siebie:
+"Czy firma w supplier_name jest firmą która WYSTAWIA tę fakturę i SPRZEDAJE?"
+Jeśli NIE - szukaj dalej!
 
 DODATKOWE UWAGI:
 - Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
-- Dla faktur zagranicznych: znajdź VAT ID, Tax ID, lub lokalny numer podatkowy SPRZEDAWCY
+- Dla faktur zagranicznych: VAT ID, Tax ID, Tax Number
 - Daty w formacie YYYY-MM-DD
 - Kwoty jako stringi z kropką (nie przecinkiem)
-- Walutę zapisz jako 3-literowy kod ISO (np. EUR, USD, PLN)
-- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń
-- W razie wątpliwości ZAWSZE wybierz firmę oznaczoną jako "Sprzedawca" lub po lewej stronie nagłówka`;
+- Walutę zapisz jako 3-literowy kod ISO
+- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
 
   const mimeType = fileBlob.type;
   const isPDF = mimeType === 'application/pdf';
