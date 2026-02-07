@@ -23,6 +23,7 @@ export interface Database {
           is_admin: boolean;
           created_at: string;
           updated_at: string;
+          preferred_llm_model: string;
           department?: {
             id: string;
             name: string;
@@ -35,6 +36,7 @@ export interface Database {
           role: UserRole;
           department_id?: string | null;
           is_admin?: boolean;
+          preferred_llm_model?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -45,6 +47,7 @@ export interface Database {
           role?: UserRole;
           department_id?: string | null;
           is_admin?: boolean;
+          preferred_llm_model?: string;
           created_at?: string;
           updated_at?: string;
         };

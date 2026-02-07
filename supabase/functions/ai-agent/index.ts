@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
+type LLMModel = 'claude-sonnet-4' | 'gpt-4o' | 'gemini-2.0-flash';
+
 interface AIAgentRequest {
   message?: string;
   conversationHistory?: Array<{ role: string; content: string }>;
@@ -15,6 +17,186 @@ interface AIAgentRequest {
   pdf_base64?: string;
   prompt?: string;
   chat_history?: Array<{ role: string; content: string; timestamp: Date }>;
+  model?: LLMModel;
+}
+
+const MODEL_CONFIGS: Record<LLMModel, { label: string; envKey: string }> = {
+  'claude-sonnet-4': { label: 'Claude Sonnet 4', envKey: 'ANTHROPIC_API_KEY' },
+  'gpt-4o': { label: 'GPT-4o', envKey: 'OPENAI_API_KEY' },
+  'gemini-2.0-flash': { label: 'Gemini 2.0 Flash', envKey: 'GOOGLE_AI_API_KEY' },
+};
+
+function getAvailableModels(): LLMModel[] {
+  return (Object.entries(MODEL_CONFIGS) as [LLMModel, { label: string; envKey: string }][])
+    .filter(([, cfg]) => !!Deno.env.get(cfg.envKey))
+    .map(([id]) => id);
+}
+
+function resolveModel(requested?: LLMModel): LLMModel {
+  const available = getAvailableModels();
+  if (requested && available.includes(requested)) return requested;
+  if (available.includes('claude-sonnet-4')) return 'claude-sonnet-4';
+  return available[0] || 'claude-sonnet-4';
+}
+
+async function callClaude(
+  apiKey: string,
+  systemPrompt: string,
+  messages: Array<{ role: string; content: any }>,
+  maxTokens: number,
+): Promise<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.content
+    .filter((block: any) => block.type === 'text')
+    .map((block: any) => block.text)
+    .join('\n');
+}
+
+async function callOpenAI(
+  apiKey: string,
+  systemPrompt: string,
+  messages: Array<{ role: string; content: any }>,
+  maxTokens: number,
+): Promise<string> {
+  const openaiMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(m => {
+      if (Array.isArray(m.content)) {
+        const parts: any[] = [];
+        for (const block of m.content) {
+          if (block.type === 'text') {
+            parts.push({ type: 'text', text: block.text });
+          } else if (block.type === 'document' && block.source?.type === 'base64') {
+            parts.push({
+              type: 'file',
+              file: {
+                filename: 'document.pdf',
+                file_data: `data:application/pdf;base64,${block.source.data}`,
+              },
+            });
+          }
+        }
+        return { role: m.role, content: parts };
+      }
+      return { role: m.role, content: m.content };
+    }),
+  ];
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: maxTokens,
+      messages: openaiMessages,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callGemini(
+  apiKey: string,
+  systemPrompt: string,
+  messages: Array<{ role: string; content: any }>,
+  _maxTokens: number,
+): Promise<string> {
+  const geminiContents: any[] = [];
+
+  for (const msg of messages) {
+    const role = msg.role === 'assistant' ? 'model' : 'user';
+    if (Array.isArray(msg.content)) {
+      const parts: any[] = [];
+      for (const block of msg.content) {
+        if (block.type === 'text') {
+          parts.push({ text: block.text });
+        } else if (block.type === 'document' && block.source?.type === 'base64') {
+          parts.push({
+            inline_data: {
+              mime_type: 'application/pdf',
+              data: block.source.data,
+            },
+          });
+        }
+      }
+      geminiContents.push({ role, parts });
+    } else {
+      geminiContents.push({ role, parts: [{ text: msg.content }] });
+    }
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: geminiContents,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts
+    ?.map((p: any) => p.text)
+    .join('\n') || '';
+}
+
+async function callLLM(
+  model: LLMModel,
+  systemPrompt: string,
+  messages: Array<{ role: string; content: any }>,
+  maxTokens: number,
+): Promise<string> {
+  const config = MODEL_CONFIGS[model];
+  const apiKey = Deno.env.get(config.envKey);
+  if (!apiKey) throw new Error(`Klucz API dla ${config.label} nie jest skonfigurowany`);
+
+  switch (model) {
+    case 'claude-sonnet-4':
+      return callClaude(apiKey, systemPrompt, messages, maxTokens);
+    case 'gpt-4o':
+      return callOpenAI(apiKey, systemPrompt, messages, maxTokens);
+    case 'gemini-2.0-flash':
+      return callGemini(apiKey, systemPrompt, messages, maxTokens);
+    default:
+      throw new Error(`Nieobsługiwany model: ${model}`);
+  }
 }
 
 async function queryInvoiceDatabase(supabase: any, userRole: string, userId: string) {
@@ -92,14 +274,12 @@ async function queryDepartmentStats(supabase: any) {
   return departments || [];
 }
 
-async function queryWithClaude(
-  message: string,
+function buildSystemPrompt(
   invoiceData: any[],
   mlData: any,
   departments: any[],
-  conversationHistory: Array<{ role: string; content: string }>,
-  apiKey: string
-) {
+  modelLabel: string,
+): string {
   const tagLearningStats = mlData.tagLearning.reduce((acc: any, item: any) => {
     const vendorKey = item.vendor_name || item.supplier_nip || 'unknown';
     if (!acc[vendorKey]) acc[vendorKey] = [];
@@ -127,7 +307,8 @@ async function queryWithClaude(
     return acc;
   }, {});
 
-  const systemPrompt = `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania fakturami i analizy danych finansowych.
+  return `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania fakturami i analizy danych finansowych.
+Aktualnie korzystasz z modelu: ${modelLabel}.
 Masz dostęp do pełnej bazy danych faktur, danych uczenia maszynowego (ML) i statystyk systemu.
 
 Możesz odpowiadać na pytania dotyczące:
@@ -165,86 +346,12 @@ Używaj formatowania markdown gdy to pomaga czytelności.
 Zawsze podawaj źródło informacji (liczba faktur, suma wartości itp.).
 Gdy pytanie dotyczy ML/tagów, uwzględnij dane z systemu uczenia maszynowego.
 Jeśli nie masz wystarczających danych, powiedz o tym.`;
-
-  const validHistory = conversationHistory
-    .filter(({ role }) => role === 'user' || role === 'assistant')
-    .reduce((acc: any[], msg) => {
-      const mappedRole = msg.role === 'assistant' ? 'assistant' : 'user';
-      if (acc.length > 0 && acc[acc.length - 1].role === mappedRole) {
-        acc[acc.length - 1].content += '\n' + msg.content;
-      } else {
-        acc.push({ role: mappedRole, content: msg.content });
-      }
-      return acc;
-    }, []);
-
-  while (validHistory.length > 0 && validHistory[0].role === 'assistant') {
-    validHistory.shift();
-  }
-
-  if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
-    validHistory.pop();
-  }
-
-  const messages: any[] = [
-    ...validHistory,
-    { role: 'user', content: message },
-  ];
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.content
-    .filter((block: any) => block.type === 'text')
-    .map((block: any) => block.text)
-    .join('\n');
-
-  return content;
 }
 
-async function analyzeContractWithClaude(
-  prompt: string,
-  pdfBase64: string | null,
-  chatHistory: Array<{ role: string; content: string }>,
-  apiKey: string
-) {
-  const systemPrompt = `Jesteś ekspertem prawnym analizującym umowy. Odpowiadaj w języku polskim, zwięźle i konkretnie.
-Wypunktuj najważniejsze informacje. Używaj formatowania markdown.`;
-
-  const userContent: any[] = [];
-
-  if (pdfBase64) {
-    userContent.push({
-      type: 'document',
-      source: {
-        type: 'base64',
-        media_type: 'application/pdf',
-        data: pdfBase64,
-      },
-    });
-  }
-
-  userContent.push({ type: 'text', text: prompt });
-
-  const validHistory = chatHistory
+function prepareConversationHistory(
+  history: Array<{ role: string; content: string }>,
+): Array<{ role: string; content: string }> {
+  const validHistory = history
     .filter(({ role }) => role === 'user' || role === 'assistant')
     .reduce((acc: any[], msg) => {
       const mappedRole = msg.role === 'assistant' ? 'assistant' : 'user';
@@ -264,39 +371,7 @@ Wypunktuj najważniejsze informacje. Używaj formatowania markdown.`;
     validHistory.pop();
   }
 
-  const messages: any[] = [
-    ...validHistory,
-    { role: 'user', content: userContent },
-  ];
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Claude API error:', errorText);
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const content = data.content
-    .filter((block: any) => block.type === 'text')
-    .map((block: any) => block.text)
-    .join('\n');
-
-  return { response: content };
+  return validHistory;
 }
 
 Deno.serve(async (req: Request) => {
@@ -313,6 +388,22 @@ Deno.serve(async (req: Request) => {
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Supabase configuration missing');
+    }
+
+    if (req.method === 'GET') {
+      const available = getAvailableModels();
+      const models = available.map(id => ({
+        id,
+        label: MODEL_CONFIGS[id].label,
+      }));
+
+      return new Response(
+        JSON.stringify({ models }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const authHeader = req.headers.get('Authorization');
@@ -343,28 +434,25 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, preferred_llm_model')
       .eq('id', user.id)
       .single();
 
     const userRole = profile?.role || 'kierownik';
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!anthropicApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'Anthropic API key not configured',
-          message: 'AuruśAI wymaga konfiguracji klucza Anthropic API',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
     const requestData: AIAgentRequest = await req.json();
-    const { action = 'invoice_query', message, conversationHistory = [], prompt, pdf_base64, chat_history = [] } = requestData;
+    const {
+      action = 'invoice_query',
+      message,
+      conversationHistory = [],
+      prompt,
+      pdf_base64,
+      chat_history = [],
+      model: requestedModel,
+    } = requestData;
+
+    const selectedModel = resolveModel(requestedModel || profile?.preferred_llm_model);
+    const modelLabel = MODEL_CONFIGS[selectedModel].label;
 
     if (action === 'analyze_contract' || action === 'chat') {
       if (!prompt) {
@@ -377,13 +465,39 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const historyFormatted = chat_history.map(({ role, content }: any) => ({ role, content }));
-      const result = await analyzeContractWithClaude(prompt, pdf_base64 || null, historyFormatted, anthropicApiKey);
+      const contractSystemPrompt = `Jesteś ekspertem prawnym analizującym umowy. Odpowiadaj w języku polskim, zwięźle i konkretnie.
+Wypunktuj najważniejsze informacje. Używaj formatowania markdown.
+Aktualnie korzystasz z modelu: ${modelLabel}.`;
+
+      const historyFormatted = prepareConversationHistory(
+        chat_history.map(({ role, content }: any) => ({ role, content }))
+      );
+
+      const userContent: any[] = [];
+      if (pdf_base64) {
+        userContent.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: pdf_base64,
+          },
+        });
+      }
+      userContent.push({ type: 'text', text: prompt });
+
+      const messages: any[] = [
+        ...historyFormatted,
+        { role: 'user', content: userContent },
+      ];
+
+      const content = await callLLM(selectedModel, contractSystemPrompt, messages, 4096);
 
       return new Response(
         JSON.stringify({
           success: true,
-          ...result,
+          response: content,
+          model: selectedModel,
         }),
         {
           status: 200,
@@ -408,20 +522,21 @@ Deno.serve(async (req: Request) => {
       queryDepartmentStats(supabase),
     ]);
 
-    const aiResponse = await queryWithClaude(
-      message,
-      invoiceData,
-      mlData,
-      departments,
-      conversationHistory,
-      anthropicApiKey
-    );
+    const systemPrompt = buildSystemPrompt(invoiceData, mlData, departments, modelLabel);
+    const validHistory = prepareConversationHistory(conversationHistory);
+    const llmMessages = [
+      ...validHistory,
+      { role: 'user', content: message },
+    ];
+
+    const aiResponse = await callLLM(selectedModel, systemPrompt, llmMessages, 2048);
 
     return new Response(
       JSON.stringify({
         success: true,
         response: aiResponse,
         invoiceCount: invoiceData.length,
+        model: selectedModel,
       }),
       {
         status: 200,

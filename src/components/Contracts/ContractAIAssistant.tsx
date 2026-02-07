@@ -3,6 +3,7 @@ import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search, Rotate
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import PromptPipelineCreator from './PromptPipelineCreator';
+import { ModelSelector, type LLMModel } from '../AIAgent/ModelSelector';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -66,6 +67,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
 
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
   const [creatorMode, setCreatorMode] = useState<'prompt' | 'pipeline' | null>(null);
+  const [selectedModel, setSelectedModel] = useState<LLMModel>('claude-sonnet-4');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -85,6 +87,20 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     : 'Wybierz prompt lub pipeline...';
 
   const hasSelection = !!(selectedPromptId || selectedAdminPromptId || selectedPipelineId);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('profiles')
+      .select('preferred_llm_model')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.preferred_llm_model) {
+          setSelectedModel(data.preferred_llm_model as LLMModel);
+        }
+      });
+  }, [user]);
 
   const loadChatHistory = useCallback(async () => {
     if (!user) return;
@@ -306,6 +322,7 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           pdf_base64: includePdf ? (pdfBase64 || undefined) : undefined,
           prompt,
           chat_history: chatHistory,
+          model: selectedModel,
         }),
       }
     );
@@ -494,6 +511,11 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
           <div className="flex items-center gap-2 text-white">
             <Sparkles className="w-4 h-4" />
             <h3 className="font-semibold text-sm">Asystent AI</h3>
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              compact
+            />
           </div>
           {analyzed && (
             <button

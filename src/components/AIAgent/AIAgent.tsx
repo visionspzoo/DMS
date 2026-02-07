@@ -1,26 +1,52 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, Brain } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { ModelSelector, type LLMModel } from './ModelSelector';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  model?: string;
 }
 
 export default function AIAgent() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Witaj! Jestem AuruśAI - asystentem do zarządzania fakturami i analizy danych. Korzystam z Claude AI i uczenia maszynowego.\n\nMogę pomóc z:\n\n• Analiza faktur - statusy, kwoty, terminy\n• Dane ML - wzorce tagowania, predykcje, trafność sugestii\n• Statystyki - trendy, działy, dostawcy\n• Raporty - podsumowania miesięczne, walutowe\n\nJak mogę Ci pomóc?',
+      content: 'Witaj! Jestem AuruśAI - asystentem do zarządzania fakturami i analizy danych. Korzystam z AI i uczenia maszynowego.\n\nMogę pomóc z:\n\n• Analiza faktur - statusy, kwoty, terminy\n• Dane ML - wzorce tagowania, predykcje, trafność sugestii\n• Statystyki - trendy, działy, dostawcy\n• Raporty - podsumowania miesięczne, walutowe\n\nWybierz model AI w prawym górnym rogu. Jak mogę Ci pomóc?',
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<LLMModel>('claude-sonnet-4');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    loadPreferredModel();
+  }, [user]);
+
+  const loadPreferredModel = async () => {
+    if (!user) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('preferred_llm_model')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (data?.preferred_llm_model) {
+        setSelectedModel(data.preferred_llm_model as LLMModel);
+      }
+    } catch (error) {
+      console.error('Error loading preferred model:', error);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,6 +95,7 @@ export default function AIAgent() {
           body: JSON.stringify({
             message: input,
             conversationHistory,
+            model: selectedModel,
           }),
         }
       );
@@ -85,6 +112,7 @@ export default function AIAgent() {
         role: 'assistant',
         content: data.response,
         timestamp: new Date(),
+        model: data.model,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -122,15 +150,27 @@ export default function AIAgent() {
     setInput(question);
   };
 
+  const MODEL_LABELS: Record<string, string> = {
+    'claude-sonnet-4': 'Claude Sonnet 4',
+    'gpt-4o': 'GPT-4o',
+    'gemini-2.0-flash': 'Gemini 2.0 Flash',
+  };
+
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
-          AuruśAI
-        </h1>
-        <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
-          Asystent AI do zarządzania fakturami i analizy danych
-        </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            AuruśAI
+          </h1>
+          <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
+            Asystent AI do zarządzania fakturami i analizy danych
+          </p>
+        </div>
+        <ModelSelector
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+        />
       </div>
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 flex flex-col" style={{ height: 'calc(100vh - 180px)' }}>
@@ -169,12 +209,19 @@ export default function AIAgent() {
                   >
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   </div>
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 px-2">
-                    {message.timestamp.toLocaleTimeString('pl-PL', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
+                  <div className={`flex items-center gap-2 mt-1 px-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {message.timestamp.toLocaleTimeString('pl-PL', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                    {message.model && message.role === 'assistant' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-text-secondary-light dark:text-text-secondary-dark">
+                        {MODEL_LABELS[message.model] || message.model}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
