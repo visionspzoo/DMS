@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -45,6 +45,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [isFromKSEF, setIsFromKSEF] = useState(false);
   const [ksefInvoiceId, setKsefInvoiceId] = useState<string | null>(null);
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
 
   useEffect(() => {
     loadApprovals();
@@ -545,6 +546,67 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleReprocessOCR = async () => {
+    if (!invoice.file_url) {
+      alert('Brak pliku do przetworzenia');
+      return;
+    }
+
+    setIsReprocessing(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileUrl: invoice.file_url,
+            invoiceId: invoice.id,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Błąd przetwarzania: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('OCR reprocessing result:', result);
+
+      if (result.suggestedTags && result.suggestedTags.length > 0) {
+        for (const tag of result.suggestedTags) {
+          if (tag.confidence >= 0.7) {
+            const { error: tagError } = await supabase
+              .from('invoice_tags')
+              .upsert({
+                invoice_id: invoice.id,
+                tag_id: tag.id,
+              }, {
+                onConflict: 'invoice_id,tag_id',
+                ignoreDuplicates: true,
+              });
+
+            if (tagError) {
+              console.error('Error auto-applying tag:', tagError);
+            }
+          }
+        }
+      }
+
+      alert('Faktura została ponownie przetworzona przez AI');
+      onUpdate();
+    } catch (error) {
+      console.error('Error reprocessing invoice:', error);
+      alert('Nie udało się ponownie przetworzyć faktury');
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
@@ -563,14 +625,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   </button>
                 )}
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
-                  <button
-                    onClick={handleForwardToCirculation}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ArrowRight className="w-4 h-4" />
-                    <span>Prześlij do akceptacji</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleReprocessOCR}
+                      disabled={isReprocessing || loading}
+                      className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Ponownie przetworz fakturę przez AI aby poprawić rozpoznanie danych"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
+                      <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz ponownie przez AI'}</span>
+                    </button>
+                    <button
+                      onClick={handleForwardToCirculation}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                      <span>Prześlij do akceptacji</span>
+                    </button>
+                  </>
                 )}
                 {(invoice.status === 'waiting' || invoice.status === 'pending') && invoice.uploaded_by !== profile?.id && profile?.role !== 'Dyrektor' && (
                   <button
