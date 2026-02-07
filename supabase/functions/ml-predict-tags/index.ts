@@ -229,6 +229,31 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ predictions: [], message: "No tags available" });
     }
 
+    if (!body.supplier_name && !body.supplier_nip) {
+      const { data: invoiceRow } = await supabase
+        .from("invoices")
+        .select(
+          "supplier_name, supplier_nip, description, gross_amount, currency, department_id"
+        )
+        .eq("id", invoice_id)
+        .maybeSingle();
+
+      if (invoiceRow) {
+        if (!body.supplier_name)
+          body.supplier_name = invoiceRow.supplier_name || undefined;
+        if (!body.supplier_nip)
+          body.supplier_nip = invoiceRow.supplier_nip || undefined;
+        if (!body.description)
+          body.description = invoiceRow.description || undefined;
+        if (!body.gross_amount && invoiceRow.gross_amount)
+          body.gross_amount = parseFloat(String(invoiceRow.gross_amount));
+        if (!body.currency)
+          body.currency = invoiceRow.currency || undefined;
+        if (!body.department_id)
+          body.department_id = invoiceRow.department_id || undefined;
+      }
+    }
+
     let predictions: Prediction[] = [];
     const { supplier_name, supplier_nip } = body;
 

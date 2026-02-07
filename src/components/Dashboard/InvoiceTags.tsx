@@ -128,9 +128,27 @@ export function InvoiceTags({ invoiceId, isEditing, supplierName, supplierNip, d
 
       if (response.ok) {
         const data = await response.json();
-        setMlPredictions(
-          (data.predictions || []).filter((p: MLPrediction) => p.tags)
-        );
+        const allPreds = (data.predictions || []).filter((p: MLPrediction) => p.tags);
+        const highConf = allPreds.filter((p: MLPrediction) => p.confidence >= 0.8);
+        const remaining = allPreds.filter((p: MLPrediction) => p.confidence < 0.8);
+
+        if (highConf.length > 0 && isEditing) {
+          for (const pred of highConf) {
+            await supabase
+              .from('invoice_tags')
+              .upsert(
+                { invoice_id: invoiceId, tag_id: pred.tags.id },
+                { onConflict: 'invoice_id,tag_id' }
+              );
+            await supabase
+              .from('ml_tag_predictions')
+              .update({ applied: true })
+              .eq('id', pred.id);
+          }
+          await loadInvoiceTags();
+        }
+
+        setMlPredictions(highConf.length > 0 && isEditing ? remaining : allPreds);
       } else {
         setMlError(true);
       }
