@@ -638,11 +638,9 @@ export function KSEFInvoicesPage() {
                   <th className="px-3 py-2 text-right text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                     Kwota brutto
                   </th>
-                  {invoiceTab === 'assigned' && (
-                    <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                      Dział
-                    </th>
-                  )}
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
+                    Dział
+                  </th>
                   {invoiceTab === 'assigned' && (
                     <th className="px-3 py-2 text-center text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                       Status
@@ -690,19 +688,26 @@ export function KSEFInvoicesPage() {
                         {invoice.currency}
                       </span>
                     </td>
+                    <td className="px-3 py-2 text-sm">
+                      {invoice.transferred_to_department_id ? (
+                        <span className="inline-flex items-center gap-1 text-text-primary-light dark:text-text-primary-dark">
+                          {departments.find(d => d.id === invoice.transferred_to_department_id)?.name || 'Nieznany'}
+                          {!invoice.transferred_to_invoice_id && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap">
+                              auto
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-text-secondary-light dark:text-text-secondary-dark">-</span>
+                      )}
+                    </td>
                     {invoiceTab === 'assigned' && (
-                      <>
-                        <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark text-sm">
-                          {invoice.transferred_to_department_id
-                            ? departments.find(d => d.id === invoice.transferred_to_department_id)?.name || 'Nieznany'
-                            : '-'}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                            Przeniesiono
-                          </span>
-                        </td>
-                      </>
+                      <td className="px-3 py-2 text-center">
+                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          Przeniesiono
+                        </span>
+                      </td>
                     )}
                   </tr>
                 ))}

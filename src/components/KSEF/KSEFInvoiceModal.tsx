@@ -40,7 +40,7 @@ interface KSEFInvoiceModalProps {
 
 export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
-  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState(invoice.transferred_to_department_id || '');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
@@ -298,6 +298,11 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                         Wybierz dział
                       </label>
+                      {invoice.transferred_to_department_id && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mb-1.5">
+                          Automatycznie przypisano na podstawie NIP dostawcy
+                        </p>
+                      )}
                       <select
                         value={selectedDepartment}
                         onChange={(e) => setSelectedDepartment(e.target.value)}
