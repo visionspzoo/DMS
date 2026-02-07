@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, FileText, MessageSquare, Sparkles, MapPin, Trash2, X, Send, FileSignature, ThumbsUp } from 'lucide-react';
+import { ArrowLeft, FileText, MessageSquare, Sparkles, MapPin, Trash2, X, Send, FileSignature, ThumbsUp, Brain } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { ContractAIAssistant } from './ContractAIAssistant';
 import { ContractCommentsPanel } from './ContractCommentsPanel';
+import { ContractSummary } from './ContractSummary';
 import { PdfAnnotationLayer, PIN_COLORS } from './PdfAnnotationLayer';
 import type { PdfAnnotation, PendingPin } from './PdfAnnotationLayer';
 
@@ -51,6 +52,7 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
   const [commentInput, setCommentInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
 
   useEffect(() => {
     loadContract();
@@ -475,6 +477,15 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {hasPdf && (
+            <button
+              onClick={() => setShowSummary(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap shadow-md hover:shadow-lg"
+            >
+              <Brain className="w-4 h-4" />
+              Podsumowanie
+            </button>
+          )}
           {(contract.status === 'draft' && isMyContract || canForward) && (
             <>
               <button
@@ -711,6 +722,14 @@ export function ContractFullPage({ contractId, onBack }: ContractFullPageProps) 
           </div>
         </div>
       </div>
+
+      {showSummary && (
+        <ContractSummary
+          contractId={contract.id}
+          pdfBase64={pdfBase64}
+          onClose={() => setShowSummary(false)}
+        />
+      )}
     </div>
   );
 }
