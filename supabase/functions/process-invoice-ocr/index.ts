@@ -622,6 +622,93 @@ Deno.serve(async (req: Request) => {
       console.error("Error fetching suggested tags:", tagError);
     }
 
+    let suggestedDescription: string | null = null;
+    try {
+      const vendorName = updateData.supplier_name?.trim() || '';
+      const supplierNip = updateData.supplier_nip?.trim() || '';
+
+      if (vendorName || supplierNip) {
+        console.log("Looking up historical descriptions...");
+
+        let query = supabase
+          .from('invoices')
+          .select('description')
+          .not('description', 'is', null)
+          .neq('description', '')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (supplierNip) {
+          query = query.eq('supplier_nip', supplierNip);
+        } else {
+          query = query.ilike('supplier_name', vendorName);
+        }
+
+        const { data: historicalInvoices, error: histError } = await query;
+
+        if (!histError && historicalInvoices && historicalInvoices.length > 0) {
+          const descCounts: Record<string, number> = {};
+          for (const inv of historicalInvoices) {
+            const desc = inv.description.trim();
+            descCounts[desc] = (descCounts[desc] || 0) + 1;
+          }
+
+          const sorted = Object.entries(descCounts).sort((a, b) => b[1] - a[1]);
+          suggestedDescription = sorted[0][0];
+          console.log(`Suggested description from history (${sorted[0][1]}x): "${suggestedDescription}"`);
+        } else {
+          console.log("No historical descriptions found for this vendor");
+
+          if (vendorName) {
+            const { data: tagLearningData } = await supabase
+              .from('tag_learning')
+              .select('description_keywords')
+              .ilike('vendor_name', vendorName)
+              .not('description_keywords', 'is', null)
+              .order('frequency', { ascending: false })
+              .limit(5);
+
+            if (tagLearningData && tagLearningData.length > 0) {
+              const allKeywords: string[] = [];
+              for (const row of tagLearningData) {
+                if (row.description_keywords) {
+                  allKeywords.push(...row.description_keywords);
+                }
+              }
+              const unique = [...new Set(allKeywords)].slice(0, 6);
+              if (unique.length > 0) {
+                suggestedDescription = unique.join(', ');
+                console.log(`Suggested description from keywords: "${suggestedDescription}"`);
+              }
+            }
+          }
+        }
+      }
+    } catch (descError) {
+      console.error("Error looking up historical descriptions:", descError);
+    }
+
+    if (suggestedDescription && invoiceId) {
+      const { data: currentInv } = await supabase
+        .from('invoices')
+        .select('description')
+        .eq('id', invoiceId)
+        .maybeSingle();
+
+      if (currentInv && (!currentInv.description || currentInv.description.trim() === '')) {
+        const { error: descUpdateError } = await supabase
+          .from('invoices')
+          .update({ description: suggestedDescription })
+          .eq('id', invoiceId);
+
+        if (descUpdateError) {
+          console.error("Failed to update description:", descUpdateError);
+        } else {
+          console.log("Auto-applied description to invoice");
+        }
+      }
+    }
+
     console.log("=== OCR PROCESSING COMPLETED ===");
 
     return new Response(
@@ -631,6 +718,7 @@ Deno.serve(async (req: Request) => {
         usedApi,
         error: errorDetails,
         suggestedTags,
+        suggestedDescription,
       }),
       {
         headers: {
