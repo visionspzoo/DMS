@@ -131,10 +131,6 @@ export default function SettingsPanel() {
     }
   }
 
-  function handleNameChange(userId: string, newName: string) {
-    setUsers(users.map(u => u.id === userId ? { ...u, full_name: newName } : u));
-  }
-
   function handleRoleChange(userId: string, newRole: string) {
     setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
   }
@@ -536,23 +532,10 @@ export default function SettingsPanel() {
               {users.map((user) => (
                 <tr key={user.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors">
                   <td className="px-3 py-2">
-                      {editingUser === user.id ? (
-                        <div>
-                          <input
-                            type="text"
-                            value={user.full_name}
-                            onChange={(e) => handleNameChange(user.id, e.target.value)}
-                            placeholder="Imię i nazwisko"
-                            className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark mb-1"
-                          />
-                          <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{user.email}</div>
-                        </div>
-                      ) : (
                         <div>
                           <div className="font-medium text-text-primary-light dark:text-text-primary-dark text-sm">{user.full_name}</div>
                           <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{user.email}</div>
                         </div>
-                      )}
                     </td>
                     <td className="px-3 py-2">
                       {editingUser === user.id ? (
@@ -624,7 +607,6 @@ export default function SettingsPanel() {
                           <>
                             <button
                               onClick={() => updateUser(user.id, {
-                                full_name: user.full_name,
                                 role: user.role,
                                 department_id: user.department_id,
                                 is_admin: user.is_admin

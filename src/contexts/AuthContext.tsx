@@ -87,6 +87,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const googleName = authUser?.user_metadata?.full_name || authUser?.user_metadata?.name;
+        if (googleName && googleName !== data.full_name) {
+          await supabase
+            .from('profiles')
+            .update({ full_name: googleName })
+            .eq('id', data.id);
+          data = { ...data, full_name: googleName };
+        }
         setProfile(data);
       } else {
         const { data: { user } } = await supabase.auth.getUser();
