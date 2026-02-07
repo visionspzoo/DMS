@@ -345,6 +345,52 @@ Deno.serve(async (req: Request) => {
             } catch (ocrErr: any) {
               console.error(`OCR failed for ${file.name}:`, ocrErr.message);
             }
+
+            try {
+              const { data: updatedInvoice } = await supabase
+                .from("invoices")
+                .select("department_id, invoice_number")
+                .eq("id", invoiceData.id)
+                .maybeSingle();
+
+              const deptId = updatedInvoice?.department_id || profile?.department_id;
+
+              if (deptId) {
+                const { data: dept } = await supabase
+                  .from("departments")
+                  .select("google_drive_draft_folder_id, name")
+                  .eq("id", deptId)
+                  .maybeSingle();
+
+                const targetFolder = dept?.google_drive_draft_folder_id;
+
+                if (targetFolder) {
+                  const driveFileName = updatedInvoice?.invoice_number
+                    ? `${updatedInvoice.invoice_number}.pdf`
+                    : file.name;
+
+                  await fetch(
+                    `${supabaseUrl}/functions/v1/upload-to-google-drive`,
+                    {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${supabaseServiceKey}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        fileBase64: base64,
+                        fileName: driveFileName,
+                        invoiceId: invoiceData.id,
+                        folderId: targetFolder,
+                        originalMimeType: "application/pdf",
+                      }),
+                    }
+                  );
+                }
+              }
+            } catch (driveErr: any) {
+              console.error(`Drive upload failed for ${file.name}:`, driveErr.message);
+            }
           }
 
           totalSynced++;
