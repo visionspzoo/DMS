@@ -32,8 +32,8 @@ Przeanalizuj dokument i zwróć TYLKO czysty JSON bez komentarzy, markdown czy d
 Format odpowiedzi (DOKŁADNIE te pola):
 {
   "invoice_number": "numer faktury lub null",
-  "supplier_name": "nazwa SPRZEDAWCY/dostawcy lub null",
-  "supplier_nip": "numer identyfikacji podatkowej SPRZEDAWCY (NIP/VAT ID/Tax ID) lub null",
+  "supplier_name": "nazwa SPRZEDAWCY (wystawcy faktury) lub null",
+  "supplier_nip": "NIP/VAT ID/Tax ID SPRZEDAWCY (wystawcy faktury) lub null",
   "issue_date": "YYYY-MM-DD lub null",
   "due_date": "YYYY-MM-DD lub null",
   "net_amount": "kwota netto jako string z kropką np. 1234.56",
@@ -42,10 +42,29 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "currency": "kod waluty: PLN, EUR, USD, GBP itp."
 }
 
-UWAGI:
-- supplier to SPRZEDAWCA (nie nabywca!)
+KRYTYCZNE ZASADY IDENTYFIKACJI STRON NA FAKTURZE:
+Na fakturze są ZAWSZE dwie strony. Musisz je PRAWIDŁOWO rozróżnić:
+
+1. SPRZEDAWCA (= dostawca = wystawca faktury = seller = vendor):
+   - To firma, która WYSTAWIŁA fakturę i SPRZEDAJE towary/usługi
+   - Na polskich fakturach oznaczony jako: "Sprzedawca", "Wystawca", "Dostawca", "Seller", "Vendor", "From"
+   - Jego dane (nazwa + NIP) MUSZĄ trafić do pól supplier_name i supplier_nip
+
+2. NABYWCA (= kupujący = odbiorca = buyer = purchaser):
+   - To firma, która KUPUJE towary/usługi i OTRZYMUJE fakturę
+   - Na polskich fakturach oznaczony jako: "Nabywca", "Kupujący", "Odbiorca", "Buyer", "Bill to", "Customer"
+   - Jego danych NIE WOLNO wpisywać w pola supplier_name/supplier_nip!
+
+TYPOWY UKŁAD POLSKIEJ FAKTURY:
+- Lewa strona lub góra: dane SPRZEDAWCY
+- Prawa strona lub dół nagłówka: dane NABYWCY
+- Jeśli tekst zawiera etykiety "Sprzedawca:" i "Nabywca:" - dane PO "Sprzedawca:" to dostawca
+
+CZĘSTY BŁĄD: Nie mylić nabywcy ze sprzedawcą! Sprzedawca to ten, kto WYSTAWIA fakturę.
+
+DODATKOWE UWAGI:
 - Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
-- Dla faktur zagranicznych: znajdź VAT ID, Tax ID, lub lokalny numer podatkowy
+- Dla faktur zagranicznych: znajdź VAT ID, Tax ID, lub lokalny numer podatkowy SPRZEDAWCY
 - Daty w formacie YYYY-MM-DD
 - Kwoty jako stringi z kropką (nie przecinkiem)
 - Walutę zapisz jako 3-literowy kod ISO (np. EUR, USD, PLN)
@@ -159,8 +178,8 @@ Przeanalizuj obraz faktury i zwróć TYLKO czysty JSON bez komentarzy.
 Format odpowiedzi:
 {
   "invoice_number": "numer faktury lub null",
-  "supplier_name": "nazwa SPRZEDAWCY lub null",
-  "supplier_nip": "numer identyfikacji podatkowej SPRZEDAWCY (NIP/VAT ID/Tax ID) lub null",
+  "supplier_name": "nazwa SPRZEDAWCY (wystawcy faktury) lub null",
+  "supplier_nip": "NIP/VAT ID/Tax ID SPRZEDAWCY (wystawcy faktury) lub null",
   "issue_date": "YYYY-MM-DD lub null",
   "due_date": "YYYY-MM-DD lub null",
   "net_amount": "string z kropką",
@@ -169,9 +188,16 @@ Format odpowiedzi:
   "currency": "kod waluty (PLN/EUR/USD/GBP itp.)"
 }
 
-UWAGI:
+KRYTYCZNE ZASADY IDENTYFIKACJI STRON:
+1. SPRZEDAWCA (dostawca/wystawca/seller/vendor) = ten kto WYSTAWIŁ fakturę i SPRZEDAJE → jego dane do supplier_name/supplier_nip
+2. NABYWCA (kupujący/odbiorca/buyer) = ten kto KUPUJE i OTRZYMUJE fakturę → NIE wpisywać w supplier!
+- Na polskich fakturach: lewa strona/góra = Sprzedawca, prawa/dół = Nabywca
+- Szukaj etykiet: "Sprzedawca:", "Nabywca:", "Seller:", "Buyer:"
+- NIE MYL nabywcy ze sprzedawcą!
+
+DODATKOWE UWAGI:
 - Akceptuj faktury w dowolnej walucie
-- Dla faktur zagranicznych: znajdź VAT ID, Tax ID, lub lokalny numer podatkowy
+- Dla faktur zagranicznych: znajdź VAT ID, Tax ID SPRZEDAWCY
 - Walutę zapisz jako 3-literowy kod ISO`;
 
   const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
