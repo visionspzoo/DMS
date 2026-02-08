@@ -115,6 +115,7 @@ Deno.serve(async (req: Request) => {
 
     let totalSynced = 0;
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     for (const config of emailConfigs as EmailConfig[]) {
       try {
