@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("*, department:departments(name)")
+      .select("*, department:departments!department_id(name)")
       .eq("id", user.id)
       .maybeSingle();
 
