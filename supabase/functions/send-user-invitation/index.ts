@@ -26,8 +26,16 @@ Deno.serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    console.log("=== EDGE FUNCTION START ===");
+    console.log("Request method:", req.method);
+    console.log("Request URL:", req.url);
+
     const authHeader = req.headers.get("Authorization");
+    console.log("Auth header present:", !!authHeader);
+    console.log("Auth header value (first 50 chars):", authHeader?.substring(0, 50));
+
     if (!authHeader) {
+      console.log("ERROR: No authorization header");
       return new Response(
         JSON.stringify({ success: false, error: "Brak autoryzacji" }),
         {
