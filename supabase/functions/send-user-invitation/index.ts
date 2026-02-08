@@ -59,9 +59,21 @@ Deno.serve(async (req: Request) => {
       .eq("id", user.id)
       .single();
 
-    if (!profile || (!profile.is_admin && profile.role !== "director")) {
+    console.log("User profile:", JSON.stringify(profile));
+
+    const allowedRoles = ["CEO", "Dyrektor"];
+    const hasPermission = profile && (profile.is_admin || allowedRoles.includes(profile.role));
+
+    if (!hasPermission) {
       return new Response(
-        JSON.stringify({ success: false, error: "Brak uprawnień" }),
+        JSON.stringify({
+          success: false,
+          error: "Brak uprawnień",
+          debug: {
+            role: profile?.role,
+            is_admin: profile?.is_admin
+          }
+        }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
