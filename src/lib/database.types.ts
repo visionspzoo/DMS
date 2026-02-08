@@ -201,6 +201,7 @@ export interface Database {
           name: string;
           parent_department_id: string | null;
           manager_id: string | null;
+          director_id: string | null;
           max_invoice_amount: number | null;
           max_monthly_amount: number | null;
           created_by: string | null;
@@ -211,6 +212,7 @@ export interface Database {
           name: string;
           parent_department_id?: string | null;
           manager_id?: string | null;
+          director_id?: string | null;
           max_invoice_amount?: number | null;
           max_monthly_amount?: number | null;
           created_by?: string | null;
@@ -221,6 +223,7 @@ export interface Database {
           name?: string;
           parent_department_id?: string | null;
           manager_id?: string | null;
+          director_id?: string | null;
           max_invoice_amount?: number | null;
           max_monthly_amount?: number | null;
           created_by?: string | null;

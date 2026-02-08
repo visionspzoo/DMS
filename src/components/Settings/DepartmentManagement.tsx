@@ -9,6 +9,7 @@ interface Department {
   name: string;
   parent_department_id: string | null;
   manager_id: string | null;
+  director_id: string | null;
   max_invoice_amount: number | null;
   max_monthly_amount: number | null;
   google_drive_draft_folder_id: string | null;
@@ -16,6 +17,10 @@ interface Department {
   google_drive_paid_folder_id: string | null;
   created_at: string;
   manager?: {
+    full_name: string;
+    email: string;
+  } | null;
+  director?: {
     full_name: string;
     email: string;
   } | null;
@@ -50,6 +55,7 @@ export default function DepartmentManagement() {
     name: '',
     parent_department_id: '',
     manager_id: '',
+    director_id: '',
     max_invoice_amount: '',
     max_monthly_amount: '',
     google_drive_draft_folder_id: '',
@@ -76,7 +82,8 @@ export default function DepartmentManagement() {
         .from('departments')
         .select(`
           *,
-          manager:manager_id(full_name, email)
+          manager:manager_id(full_name, email),
+          director:director_id(full_name, email)
         `)
         .order('name');
 
@@ -128,6 +135,7 @@ export default function DepartmentManagement() {
         name: newDept.name,
         parent_department_id: newDept.parent_department_id || null,
         manager_id: newDept.manager_id || null,
+        director_id: newDept.director_id || null,
         max_invoice_amount: newDept.max_invoice_amount ? parseFloat(newDept.max_invoice_amount) : null,
         max_monthly_amount: newDept.max_monthly_amount ? parseFloat(newDept.max_monthly_amount) : null,
         google_drive_draft_folder_id: newDept.google_drive_draft_folder_id || null,
@@ -138,7 +146,7 @@ export default function DepartmentManagement() {
 
       if (error) throw error;
 
-      setNewDept({ name: '', parent_department_id: '', manager_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '' });
+      setNewDept({ name: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '' });
       setShowAddDept(false);
       loadDepartments();
     } catch (err) {
@@ -157,6 +165,7 @@ export default function DepartmentManagement() {
           name: editingDept.name,
           parent_department_id: editingDept.parent_department_id || null,
           manager_id: editingDept.manager_id || null,
+          director_id: editingDept.director_id || null,
           max_invoice_amount: editingDept.max_invoice_amount,
           max_monthly_amount: editingDept.max_monthly_amount,
           google_drive_draft_folder_id: editingDept.google_drive_draft_folder_id,
@@ -285,9 +294,11 @@ export default function DepartmentManagement() {
               <div className="font-semibold text-xs text-text-primary-light dark:text-text-primary-dark truncate">
                 {dept.name}
               </div>
-              {dept.manager && (
+              {(dept.manager || dept.director) && (
                 <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
-                  Kierownik: {dept.manager.full_name}
+                  {dept.manager && `Kierownik: ${dept.manager.full_name}`}
+                  {dept.manager && dept.director && ' | '}
+                  {dept.director && `Dyrektor: ${dept.director.full_name}`}
                 </div>
               )}
             </div>
@@ -529,9 +540,27 @@ export default function DepartmentManagement() {
                   className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
-                  {users.map(user => (
+                  {users.filter(u => u.role === 'Kierownik').map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} ({user.role})
+                      {user.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Dyrektor (opcjonalnie)
+                </label>
+                <select
+                  value={newDept.director_id}
+                  onChange={(e) => setNewDept({ ...newDept, director_id: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                >
+                  <option value="">Brak</option>
+                  {users.filter(u => u.role === 'Dyrektor').map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name}
                     </option>
                   ))}
                 </select>
@@ -712,9 +741,27 @@ export default function DepartmentManagement() {
                   className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
-                  {users.map(user => (
+                  {users.filter(u => u.role === 'Kierownik').map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name} ({user.role})
+                      {user.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Dyrektor (opcjonalnie)
+                </label>
+                <select
+                  value={editingDept.director_id || ''}
+                  onChange={(e) => setEditingDept({ ...editingDept, director_id: e.target.value || null })}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                >
+                  <option value="">Brak</option>
+                  {users.filter(u => u.role === 'Dyrektor').map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name}
                     </option>
                   ))}
                 </select>

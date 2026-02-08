@@ -7,6 +7,7 @@ interface Department {
   name: string;
   parent_department_id: string | null;
   manager_id: string | null;
+  director_id: string | null;
   created_at: string;
 }
 
