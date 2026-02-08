@@ -87,7 +87,7 @@
 
     <div class="form-group">
       <label>Email Odbiorcy:</label>
-      <input type="email" id="recipientEmail" value="test-invitation@auraherbals.pl" />
+      <input type="email" id="recipientEmail" value="s.hoffman@auraherbals.pl" />
     </div>
 
     <div class="form-group">
@@ -98,6 +98,12 @@
         <option value="director">Dyrektor</option>
         <option value="ceo">Prezes</option>
       </select>
+    </div>
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="testMode" checked /> Tryb testowy (pomija sprawdzanie czy użytkownik istnieje)
+      </label>
     </div>
 
     <button onclick="sendInvitation()">Wyślij Zaproszenie</button>
@@ -148,6 +154,7 @@
     window.sendInvitation = async function() {
       const email = document.getElementById('recipientEmail').value;
       const role = document.getElementById('role').value;
+      const testMode = document.getElementById('testMode').checked;
       const resultDiv = document.getElementById('invitationResult');
 
       if (!email) {
@@ -170,7 +177,7 @@
             'apikey': SUPABASE_ANON_KEY,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ email, role })
+          body: JSON.stringify({ email, role, test_mode: testMode })
         });
 
         const data = await response.json();
@@ -179,7 +186,8 @@
           resultDiv.innerHTML = `
             <div class="result success">
               <strong>Zaproszenie wysłane pomyślnie!</strong><br>
-              <small>Link: ${data.invitation_link}</small>
+              <small>Link: ${data.invitation_link}</small><br>
+              ${testMode ? '<br><em>Tryb testowy - email wysłany bez zapisywania w bazie</em>' : ''}
             </div>
           `;
         } else {

@@ -10,6 +10,7 @@ interface InvitationRequest {
   email: string;
   role: string;
   department_id?: string;
+  test_mode?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -67,7 +68,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { email, role, department_id }: InvitationRequest = await req.json();
+    const { email, role, department_id, test_mode }: InvitationRequest = await req.json();
 
     if (!email || !role) {
       return new Response(
@@ -90,59 +91,70 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: existingUser } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    let invitation: any = null;
 
-    if (existingUser) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Użytkownik o tym emailu już istnieje" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+    if (!test_mode) {
+      const { data: existingUser } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
 
-    const { data: pendingInvitation } = await supabase
-      .from("user_invitations")
-      .select("id")
-      .eq("email", email)
-      .eq("status", "pending")
-      .maybeSingle();
+      if (existingUser) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Użytkownik o tym emailu już istnieje" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
-    if (pendingInvitation) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Zaproszenie dla tego emaila już zostało wysłane" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+      const { data: pendingInvitation } = await supabase
+        .from("user_invitations")
+        .select("id")
+        .eq("email", email)
+        .eq("status", "pending")
+        .maybeSingle();
 
-    const { data: invitation, error: inviteError } = await supabase
-      .from("user_invitations")
-      .insert({
-        email,
-        invited_by: user.id,
-        role,
-        department_id: department_id || null,
-      })
-      .select()
-      .single();
+      if (pendingInvitation) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Zaproszenie dla tego emaila już zostało wysłane" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
-    if (inviteError) {
-      console.error("Invitation creation error:", inviteError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Błąd tworzenia zaproszenia" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      const { data: invitationData, error: inviteError } = await supabase
+        .from("user_invitations")
+        .insert({
+          email,
+          invited_by: user.id,
+          role,
+          department_id: department_id || null,
+        })
+        .select()
+        .single();
+
+      if (inviteError) {
+        console.error("Invitation creation error:", inviteError);
+        return new Response(
+          JSON.stringify({ success: false, error: "Błąd tworzenia zaproszenia" }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      invitation = invitationData;
+    } else {
+      invitation = {
+        id: 'test-invitation',
+        invitation_token: 'test-token-' + Date.now(),
+      };
     }
 
     const { data: template } = await supabase
