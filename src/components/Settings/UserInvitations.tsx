@@ -84,8 +84,15 @@ export default function UserInvitations() {
     setMessage(null);
 
     try {
+      console.log('=== DEBUG: Wysyłanie zaproszenia ===');
+      console.log('Zalogowany użytkownik:', user);
+      console.log('Profil użytkownika:', profile);
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji użytkownika');
+
+      console.log('Session user ID:', session.user?.id);
+      console.log('Session user email:', session.user?.email);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-user-invitation`,
