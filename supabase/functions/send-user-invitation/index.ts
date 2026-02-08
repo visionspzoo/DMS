@@ -69,17 +69,41 @@ Deno.serve(async (req: Request) => {
     console.log("User profile:", JSON.stringify(profile));
     console.log("Profile error:", profileError);
 
+    if (profileError || !profile) {
+      console.error("Failed to fetch profile:", profileError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Nie znaleziono profilu użytkownika",
+          details: profileError?.message
+        }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const allowedRoles = ["CEO", "Dyrektor"];
-    const hasPermission = profile && (profile.is_admin || allowedRoles.includes(profile.role));
+    const hasPermission = profile.is_admin || allowedRoles.includes(profile.role);
+
+    console.log("Permission check:", {
+      role: profile.role,
+      is_admin: profile.is_admin,
+      hasPermission,
+      allowedRoles
+    });
 
     if (!hasPermission) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Brak uprawnień",
+          error: "Brak uprawnień do wysyłania zaproszeń",
           debug: {
-            role: profile?.role,
-            is_admin: profile?.is_admin
+            role: profile.role,
+            is_admin: profile.is_admin,
+            allowedRoles,
+            email: profile.email
           }
         }),
         {
