@@ -261,11 +261,11 @@ Deno.serve(async (req: Request) => {
       ceo: "Prezes",
     };
 
-    const invitationLink = `${supabaseUrl.replace('https://', 'https://').replace('.supabase.co', '')}/accept-invitation?token=${invitation.invitation_token}`;
+    const invitationLink = `https://dms.auraherbals.pl/accept-invitation?token=${invitation.invitation_token}`;
 
     let emailBody = template.body
       .replace(/\{\{invited_by_name\}\}/g, profile.full_name || profile.email)
-      .replace(/\{\{company_name\}\}/g, "Twoja Firma")
+      .replace(/\{\{company_name\}\}/g, "Aura Herbals")
       .replace(/\{\{email\}\}/g, email)
       .replace(/\{\{role\}\}/g, roleNames[role] || role)
       .replace(/\{\{invitation_link\}\}/g, invitationLink);
@@ -278,7 +278,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const emailSubject = template.subject
-      .replace(/\{\{company_name\}\}/g, "Twoja Firma");
+      .replace(/\{\{company_name\}\}/g, "Aura Herbals");
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
