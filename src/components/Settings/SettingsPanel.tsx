@@ -30,6 +30,15 @@ interface Department {
   created_at: string;
 }
 
+interface DepartmentAccess {
+  id: string;
+  user_id: string;
+  department_id: string;
+  access_type: 'view' | 'workflow';
+  granted_by: string | null;
+  created_at: string;
+}
+
 export default function SettingsPanel() {
   const { profile } = useAuth();
   const [users, setUsers] = useState<Profile[]>([]);
@@ -43,6 +52,9 @@ export default function SettingsPanel() {
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack'>('users');
+  const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
+  const [selectedAccessDept, setSelectedAccessDept] = useState('');
+  const [selectedAccessType, setSelectedAccessType] = useState<'view' | 'workflow'>('view');
 
   useEffect(() => {
     loadUsers();
@@ -90,6 +102,63 @@ export default function SettingsPanel() {
     }
   }
 
+  async function loadUserAccess(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_department_access')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setUserAccess(data || []);
+    } catch (err) {
+      console.error('Error loading user access:', err);
+    }
+  }
+
+  async function addUserAccess() {
+    if (!editingUser || !selectedAccessDept) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_department_access')
+        .insert({
+          user_id: editingUser.id,
+          department_id: selectedAccessDept,
+          access_type: selectedAccessType,
+          granted_by: profile?.id
+        });
+
+      if (error) throw error;
+
+      setSuccess('Uprawnienie dodane pomyślnie');
+      setSelectedAccessDept('');
+      loadUserAccess(editingUser.id);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nie udało się dodać uprawnienia');
+    }
+  }
+
+  async function removeUserAccess(accessId: string) {
+    if (!editingUser) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_department_access')
+        .delete()
+        .eq('id', accessId);
+
+      if (error) throw error;
+
+      setSuccess('Uprawnienie usunięte pomyślnie');
+      loadUserAccess(editingUser.id);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nie udało się usunąć uprawnienia');
+    }
+  }
+
   async function updateUser(userId: string, updates: Partial<Profile>) {
     try {
       setError(null);
@@ -114,12 +183,16 @@ export default function SettingsPanel() {
     setEditingUser({ ...user });
     setEditedFullName(user.full_name);
     setError(null);
+    loadUserAccess(user.id);
   }
 
   function closeEditModal() {
     setEditingUser(null);
     setEditedFullName('');
     setError(null);
+    setUserAccess([]);
+    setSelectedAccessDept('');
+    setSelectedAccessType('view');
   }
 
   async function deleteUser(userId: string) {
@@ -552,6 +625,70 @@ export default function SettingsPanel() {
                   >
                     Uprawnienia administratora
                   </label>
+                </div>
+
+                <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4">
+                  <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Dostęp do działów
+                  </h3>
+                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+                    Przyznaj użytkownikowi dostęp do faktur wybranych działów
+                  </p>
+
+                  <div className="space-y-2 mb-3">
+                    {userAccess.map((access) => {
+                      const dept = departments.find(d => d.id === access.department_id);
+                      return (
+                        <div key={access.id} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                            <div>
+                              <div className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                                {dept?.name || 'Nieznany dział'}
+                              </div>
+                              <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                                {access.access_type === 'view' ? 'Tylko podgląd' : 'Dostęp do obiegu'}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeUserAccess(access.id)}
+                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                          >
+                            <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedAccessDept}
+                      onChange={(e) => setSelectedAccessDept(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    >
+                      <option value="">Wybierz dział</option>
+                      {departments.filter(d => !userAccess.some(a => a.department_id === d.id && a.access_type === selectedAccessType)).map(dept => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={selectedAccessType}
+                      onChange={(e) => setSelectedAccessType(e.target.value as 'view' | 'workflow')}
+                      className="px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    >
+                      <option value="view">Podgląd</option>
+                      <option value="workflow">Obieg</option>
+                    </select>
+                    <button
+                      onClick={addUserAccess}
+                      disabled={!selectedAccessDept}
+                      className="px-4 py-2 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 pt-4">

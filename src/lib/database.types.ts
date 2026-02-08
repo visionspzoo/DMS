@@ -283,6 +283,32 @@ export interface Database {
           created_at?: string;
         };
       };
+      user_department_access: {
+        Row: {
+          id: string;
+          user_id: string;
+          department_id: string;
+          access_type: 'view' | 'workflow';
+          granted_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          department_id: string;
+          access_type: 'view' | 'workflow';
+          granted_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          department_id?: string;
+          access_type?: 'view' | 'workflow';
+          granted_by?: string | null;
+          created_at?: string;
+        };
+      };
     };
   };
 }

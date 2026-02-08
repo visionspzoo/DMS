@@ -141,13 +141,31 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const loadDepartments = async () => {
     try {
-      const { data, error } = await supabase
+      const depts: {id: string, name: string}[] = [];
+
+      const { data: allDepts, error } = await supabase
         .from('departments')
         .select('id, name')
         .order('name', { ascending: true });
 
       if (error) throw error;
-      setAvailableDepartments(data || []);
+
+      const { data: userAccess } = await supabase
+        .from('user_department_access')
+        .select('department_id, access_type')
+        .eq('user_id', profile?.id || '');
+
+      const workflowDepts = new Set((userAccess || [])
+        .filter(a => a.access_type === 'workflow')
+        .map(a => a.department_id));
+
+      for (const dept of allDepts || []) {
+        if (dept.id === profile?.department_id || workflowDepts.has(dept.id)) {
+          depts.push(dept);
+        }
+      }
+
+      setAvailableDepartments(depts);
     } catch (error) {
       console.error('Error loading departments:', error);
     }
