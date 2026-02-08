@@ -63,40 +63,49 @@ function NodeCard({ node }: { node: TreeNode }) {
   const hasLimit = node.dept.max_invoice_amount || node.dept.max_monthly_amount;
 
   return (
-    <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className="p-1.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-md flex-shrink-0">
-          <Building2 className="w-3.5 h-3.5 text-brand-primary" />
-        </div>
-        <span className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark truncate">
-          {node.dept.name}
-        </span>
-      </div>
-
-      {node.dept.manager && (
-        <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-1 truncate">
-          {node.dept.manager.full_name}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 mt-1.5">
-        <div className="flex items-center gap-1">
-          <Users className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-          <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-            {node.memberCount}
+    <div className="flex flex-col items-center gap-2">
+      <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="p-1.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-md flex-shrink-0">
+            <Building2 className="w-3.5 h-3.5 text-brand-primary" />
+          </div>
+          <span className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark truncate">
+            {node.dept.name}
           </span>
         </div>
-        {hasLimit && (
-          <div className="flex items-center gap-1">
-            <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-            <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-              {node.dept.max_invoice_amount
-                ? `${(node.dept.max_invoice_amount / 1000).toFixed(0)}k`
-                : '-'}
-            </span>
+
+        {node.dept.manager && (
+          <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-1 truncate">
+            {node.dept.manager.full_name}
           </div>
         )}
+
+        <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-1">
+            <Users className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+            <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+              {node.memberCount}
+            </span>
+          </div>
+          {hasLimit && (
+            <div className="flex items-center gap-1">
+              <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+              <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                {node.dept.max_invoice_amount
+                  ? `${(node.dept.max_invoice_amount / 1000).toFixed(0)}k`
+                  : '-'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
+
+      {node.dept.director && (
+        <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
+          <Crown className="w-3 h-3" />
+          <span>{node.dept.director.full_name}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -112,16 +121,7 @@ function TreeBranch({ nodes }: { nodes: TreeNode[] }) {
 
           {node.children.length > 0 && (
             <div className="flex flex-col items-center">
-              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />
-
-              {node.dept.director && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium mb-1">
-                  <Crown className="w-3 h-3" />
-                  <span>{node.dept.director.full_name}</span>
-                </div>
-              )}
-
-              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />
+              <div className="w-px h-6 bg-slate-300 dark:bg-slate-600" />
 
               {node.children.length === 1 ? (
                 <TreeBranch nodes={node.children} />
