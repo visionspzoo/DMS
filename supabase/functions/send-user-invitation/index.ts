@@ -213,45 +213,14 @@ Deno.serve(async (req: Request) => {
 
       invitation = invitationData;
 
-      // NOW create the user account in Supabase Auth
-      // Generate a random password that will never be shared with the user
-      // User will set their own password via the invitation link
-      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
+      console.log("Invitation created:", invitation.id, invitation.invitation_token);
 
-      const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
-        email,
-        password: randomPassword,
-        email_confirm: true, // Auto-confirm email
-        user_metadata: {
-          invitation_token: invitation.invitation_token,
-          invited_by: user.id,
-          role,
-        }
-      });
-
-      if (createUserError) {
-        console.error("User creation error:", createUserError);
-
-        // Cleanup: cancel the invitation
-        await supabase
-          .from("user_invitations")
-          .update({ status: "cancelled" })
-          .eq("id", invitation.id);
-
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Błąd tworzenia konta użytkownika",
-            details: createUserError.message
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      console.log("User account created:", newUser.user?.id, newUser.user?.email);
+      // NOTE: We do NOT create a user account in Supabase Auth here
+      // Users will login ONLY via Google OAuth
+      // When they first login with Google, the database trigger will:
+      // 1. Check if an invitation exists for their email
+      // 2. Create their profile with the role from the invitation
+      // 3. Mark the invitation as accepted
     } else {
       invitation = {
         id: 'test-invitation',
