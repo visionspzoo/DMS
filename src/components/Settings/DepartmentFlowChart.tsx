@@ -64,6 +64,13 @@ function NodeCard({ node }: { node: TreeNode }) {
 
   return (
     <div className="flex flex-col items-center gap-2">
+      {node.dept.director && (
+        <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
+          <Crown className="w-3 h-3" />
+          <span>{node.dept.director.full_name}</span>
+        </div>
+      )}
+
       <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-1.5">
           <div className="p-1.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-md flex-shrink-0">
@@ -99,13 +106,6 @@ function NodeCard({ node }: { node: TreeNode }) {
           )}
         </div>
       </div>
-
-      {node.dept.director && (
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
-          <Crown className="w-3 h-3" />
-          <span>{node.dept.director.full_name}</span>
-        </div>
-      )}
     </div>
   );
 }
