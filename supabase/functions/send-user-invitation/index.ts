@@ -214,9 +214,13 @@ Deno.serve(async (req: Request) => {
       invitation = invitationData;
 
       // NOW create the user account in Supabase Auth
-      // User won't be able to login until they set a password via the invitation link
+      // Generate a random password that will never be shared with the user
+      // User will set their own password via the invitation link
+      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
+
       const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
         email,
+        password: randomPassword,
         email_confirm: true, // Auto-confirm email
         user_metadata: {
           invitation_token: invitation.invitation_token,
