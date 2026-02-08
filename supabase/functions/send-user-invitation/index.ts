@@ -230,10 +230,12 @@ Deno.serve(async (req: Request) => {
         const errorText = await resendResponse.text();
         console.error("Resend error:", errorText);
 
-        await supabase
-          .from("user_invitations")
-          .update({ status: "cancelled" })
-          .eq("id", invitation.id);
+        if (!test_mode) {
+          await supabase
+            .from("user_invitations")
+            .update({ status: "cancelled" })
+            .eq("id", invitation.id);
+        }
 
         return new Response(
           JSON.stringify({
