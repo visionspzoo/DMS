@@ -23,6 +23,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
@@ -37,10 +38,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const { createClient } = await import("npm:@supabase/supabase-js@2");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
 
     if (userError || !user) {
       console.error("Auth error:", userError);
@@ -53,13 +56,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: profile } = await supabase
+    console.log("Authenticated user:", user.id, user.email);
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*, department:departments(name)")
       .eq("id", user.id)
       .single();
 
     console.log("User profile:", JSON.stringify(profile));
+    console.log("Profile error:", profileError);
 
     const allowedRoles = ["CEO", "Dyrektor"];
     const hasPermission = profile && (profile.is_admin || allowedRoles.includes(profile.role));
