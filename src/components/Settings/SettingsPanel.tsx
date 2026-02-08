@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
 import SlackSettings from './SlackSettings';
+import UserInvitations from './UserInvitations';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -46,7 +47,7 @@ export default function SettingsPanel() {
   });
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'ai_prompts' | 'slack'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack'>('users');
 
   useEffect(() => {
     loadUsers();
@@ -301,6 +302,17 @@ export default function SettingsPanel() {
         >
           <Users className="w-4 h-4" />
           Użytkownicy
+        </button>
+        <button
+          onClick={() => setActiveTab('invitations')}
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+            activeTab === 'invitations'
+              ? 'bg-brand-primary text-white shadow-sm'
+              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          Zaproszenia
         </button>
         <button
           onClick={() => setActiveTab('departments')}
@@ -736,6 +748,10 @@ export default function SettingsPanel() {
               </form>
             </div>
           </div>
+        )}
+
+        {activeTab === 'invitations' && (
+          <UserInvitations />
         )}
 
         {activeTab === 'departments' && (
