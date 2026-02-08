@@ -37,14 +37,7 @@ export default function SettingsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<string | null>(null);
-  const [showAddUser, setShowAddUser] = useState(false);
   const [showAddDepartment, setShowAddDepartment] = useState(false);
-  const [newUser, setNewUser] = useState({
-    email: '',
-    role: 'Specjalista',
-    department_id: '',
-    is_admin: false
-  });
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack'>('users');
@@ -120,9 +113,27 @@ export default function SettingsPanel() {
 
     try {
       setError(null);
-      const { error } = await supabase.auth.admin.deleteUser(userId);
 
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak sesji użytkownika');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_id: userId }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Błąd usuwania użytkownika');
+      }
 
       setSuccess('Użytkownik usunięty pomyślnie');
       loadUsers();
@@ -144,56 +155,6 @@ export default function SettingsPanel() {
     setUsers(users.map(u => u.id === userId ? { ...u, is_admin: isAdmin } : u));
   }
 
-  async function handleCreateUser(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!newUser.email) {
-      setError('Email jest wymagany');
-      return;
-    }
-
-    setCreating(true);
-    setError(null);
-
-    try {
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: crypto.randomUUID(),
-      });
-
-      if (signUpError) throw signUpError;
-
-      if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: authData.user.id,
-            email: newUser.email,
-            full_name: newUser.email.split('@')[0],
-            role: newUser.role,
-            department_id: newUser.department_id || null,
-            is_admin: newUser.is_admin
-          });
-
-        if (profileError) throw profileError;
-
-        setSuccess('Użytkownik utworzony pomyślnie');
-        setShowAddUser(false);
-        setNewUser({
-          email: '',
-          role: 'Specjalista',
-          department_id: '',
-          is_admin: false
-        });
-        loadUsers();
-        setTimeout(() => setSuccess(null), 3000);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie udało się utworzyć użytkownika');
-    } finally {
-      setCreating(false);
-    }
-  }
 
   async function handleCreateDepartment(e: React.FormEvent) {
     e.preventDefault();
@@ -271,15 +232,6 @@ export default function SettingsPanel() {
             Zarządzanie użytkownikami, rolami i konfiguracją systemu
           </p>
         </div>
-        {activeTab === 'users' && (
-          <button
-            onClick={() => setShowAddUser(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all text-sm"
-          >
-            <UserPlus className="w-4 h-4" />
-            Dodaj Użytkownika
-          </button>
-        )}
         {activeTab === 'departments' && (
           <button
             onClick={() => setShowAddDepartment(true)}
@@ -368,142 +320,6 @@ export default function SettingsPanel() {
           </div>
         </div>
       )}
-
-        {showAddUser && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-light-surface dark:bg-dark-surface rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700/50">
-              <div className="px-6 py-4 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between sticky top-0">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-                  <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Dodaj Nowego Użytkownika</h2>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowAddUser(false);
-                    setError(null);
-                  }}
-                  className="p-1 hover:bg-light-surface dark:hover:bg-dark-surface rounded transition-colors"
-                >
-                  <X className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateUser} className="p-6 space-y-6">
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="font-semibold text-red-900">Błąd</h3>
-                      <p className="text-red-700 text-sm">{error}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Email Google Workspace *
-                    </label>
-                    <input
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                      placeholder="uzytkownik@auraherbals.pl"
-                      required
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
-                    />
-                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                      Użytkownik zaloguje się przez Google Workspace
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                        Rola *
-                      </label>
-                      <select
-                        value={newUser.role}
-                        onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      >
-                        {roles.map((role) => (
-                          <option key={role} value={role}>
-                            {role}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                        Dział
-                      </label>
-                      <select
-                        value={newUser.department_id}
-                        onChange={(e) => setNewUser({ ...newUser, department_id: e.target.value })}
-                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      >
-                        <option value="">Wybierz dział</option>
-                        {departments.map((dept) => (
-                          <option key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Uprawnienia Administratora
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer mt-2">
-                      <input
-                        type="checkbox"
-                        checked={newUser.is_admin}
-                        onChange={(e) => setNewUser({ ...newUser, is_admin: e.target.checked })}
-                        className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
-                      />
-                      <span className="text-sm text-text-primary-light dark:text-text-primary-dark">Przyznaj uprawnienia administratora</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-4">
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-                  >
-                    {creating ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Tworzenie...
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-5 h-5" />
-                        Utwórz Użytkownika
-                      </>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddUser(false);
-                      setError(null);
-                    }}
-                    disabled={creating}
-                    className="px-6 py-3 text-text-secondary-light dark:text-text-secondary-dark font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors disabled:opacity-50"
-                  >
-                    Anuluj
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
       {activeTab === 'users' && (
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">

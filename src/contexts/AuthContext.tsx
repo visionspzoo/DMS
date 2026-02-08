@@ -16,7 +16,6 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, role: UserRole) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -98,24 +97,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setProfile(data);
       } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user?.email) {
-          const isAdmin = user.email === 's.hoffman@auraherbals.pl';
-          const { data: newProfile, error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: userId,
-              email: user.email,
-              full_name: user.user_metadata?.full_name || user.email.split('@')[0],
-              role: isAdmin ? 'CEO' : 'Specjalista',
-              is_admin: isAdmin,
-            })
-            .select()
-            .single();
+        // No profile found - user needs a valid invitation to access the system
+        console.warn('No profile found for user. User must be invited to access the system.');
 
-          if (insertError) throw insertError;
-          setProfile(newProfile);
-        }
+        // Sign out the user since they don't have a valid profile
+        await supabase.auth.signOut();
+
+        // Show error message
+        alert('Brak dostępu: Musisz otrzymać zaproszenie aby uzyskać dostęp do systemu. Skontaktuj się z administratorem.');
+
+        setUser(null);
+        setProfile(null);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -129,31 +121,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName: string, role: UserRole) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-
-    if (data.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: data.user.id,
-          email,
-          full_name: fullName,
-          role,
-        });
-
-      if (profileError) throw profileError;
-    }
-  };
-
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
