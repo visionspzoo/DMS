@@ -60,14 +60,22 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // First check if profile exists at all
+    const { data: allProfiles } = await supabase
+      .from("profiles")
+      .select("id, email, role, is_admin");
+
+    console.log("All profiles in DB:", JSON.stringify(allProfiles));
+    console.log("Looking for user ID:", user.id);
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*, department:departments(name)")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    console.log("User profile:", JSON.stringify(profile));
-    console.log("Profile error:", profileError);
+    console.log("User profile query result:", JSON.stringify(profile));
+    console.log("Profile error:", JSON.stringify(profileError));
 
     if (profileError || !profile) {
       console.error("Failed to fetch profile:", profileError);
