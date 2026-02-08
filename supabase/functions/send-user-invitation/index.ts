@@ -180,6 +180,7 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // Create invitation record FIRST (before creating user)
       const { data: invitationData, error: inviteError } = await supabase
         .from("user_invitations")
         .insert({
@@ -203,6 +204,42 @@ Deno.serve(async (req: Request) => {
       }
 
       invitation = invitationData;
+
+      // NOW create the user account in Supabase Auth
+      // User won't be able to login until they set a password via the invitation link
+      const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
+        email,
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          invitation_token: invitation.invitation_token,
+          invited_by: user.id,
+          role,
+        }
+      });
+
+      if (createUserError) {
+        console.error("User creation error:", createUserError);
+
+        // Cleanup: cancel the invitation
+        await supabase
+          .from("user_invitations")
+          .update({ status: "cancelled" })
+          .eq("id", invitation.id);
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Błąd tworzenia konta użytkownika",
+            details: createUserError.message
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      console.log("User account created:", newUser.user?.id, newUser.user?.email);
     } else {
       invitation = {
         id: 'test-invitation',
