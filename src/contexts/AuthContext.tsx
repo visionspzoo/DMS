@@ -9,6 +9,7 @@ interface Profile {
   full_name: string;
   role: UserRole;
   is_admin: boolean;
+  last_login_at?: string;
 }
 
 interface AuthContextType {
@@ -95,6 +96,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq('id', data.id);
           data = { ...data, full_name: googleName };
         }
+
+        await supabase.rpc('update_last_login');
+
         setProfile(data);
       } else {
         // No profile found - user needs a valid invitation to access the system

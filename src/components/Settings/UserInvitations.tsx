@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, UserPlus, Send, XCircle, CheckCircle, Clock, AlertCircle, Trash2, Copy, Loader } from 'lucide-react';
+import { Mail, UserPlus, Send, XCircle, CheckCircle, Clock, AlertCircle, Trash2, Copy, Loader, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -28,6 +28,18 @@ interface Invitation {
   };
 }
 
+interface ActiveUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  last_login_at: string | null;
+  created_at: string;
+  department?: {
+    name: string;
+  };
+}
+
 export default function UserInvitations() {
   const { user, profile } = useAuth();
   const [email, setEmail] = useState('');
@@ -35,6 +47,7 @@ export default function UserInvitations() {
   const [departmentId, setDepartmentId] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -42,6 +55,7 @@ export default function UserInvitations() {
   useEffect(() => {
     loadDepartments();
     loadInvitations();
+    loadActiveUsers();
   }, []);
 
   const loadDepartments = async () => {
@@ -75,6 +89,28 @@ export default function UserInvitations() {
       console.error('Error loading invitations:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadActiveUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(`
+          id,
+          email,
+          full_name,
+          role,
+          last_login_at,
+          created_at,
+          department:departments(name)
+        `)
+        .order('last_login_at', { ascending: false, nullsFirst: false });
+
+      if (error) throw error;
+      setActiveUsers(data || []);
+    } catch (error) {
+      console.error('Error loading active users:', error);
     }
   };
 
@@ -356,6 +392,82 @@ export default function UserInvitations() {
             )}
           </button>
         </form>
+      </div>
+
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Users className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Aktywni użytkownicy
+          </h3>
+        </div>
+
+        {activeUsers.length === 0 ? (
+          <div className="text-center py-8">
+            <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+              Brak użytkowników
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-700">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                    Użytkownik
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                    Email
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                    Rola
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                    Dział
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                    Ostatnio zalogowany
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeUsers.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <td className="py-3 px-4 text-sm text-text-primary-light dark:text-text-primary-dark">
+                      {user.full_name || '-'}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      {user.email}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-xs font-medium">
+                        {getRoleText(user.role)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      {user.department?.name || '-'}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      {user.last_login_at
+                        ? new Date(user.last_login_at).toLocaleString('pl-PL', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : 'Nigdy'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-6">
