@@ -15,6 +15,7 @@ interface Profile {
   department_id: string | null;
   is_admin: boolean;
   created_at: string;
+  last_login_at: string | null;
   department?: {
     id: string;
     name: string;
@@ -61,6 +62,7 @@ export default function SettingsPanel() {
           department_id,
           is_admin,
           created_at,
+          last_login_at,
           department:department_id(id, name)
         `)
         .order('created_at', { ascending: false });
@@ -380,6 +382,9 @@ export default function SettingsPanel() {
                   Admin
                 </th>
                 <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
+                  Ostatnio zalogowany
+                </th>
+                <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Utworzono
                 </th>
               </tr>
@@ -416,6 +421,17 @@ export default function SettingsPanel() {
                     ) : (
                       <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">-</span>
                     )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                    {user.last_login_at
+                      ? new Date(user.last_login_at).toLocaleString('pl-PL', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : 'Nigdy'}
                   </td>
                   <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
                     {new Date(user.created_at).toLocaleDateString()}
