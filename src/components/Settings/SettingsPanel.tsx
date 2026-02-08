@@ -36,7 +36,8 @@ export default function SettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [editedFullName, setEditedFullName] = useState('');
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -99,11 +100,24 @@ export default function SettingsPanel() {
 
       setSuccess('Użytkownik zaktualizowany pomyślnie');
       setEditingUser(null);
+      setEditedFullName('');
       loadUsers();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nie udało się zaktualizować użytkownika');
     }
+  }
+
+  function openEditModal(user: Profile) {
+    setEditingUser({ ...user });
+    setEditedFullName(user.full_name);
+    setError(null);
+  }
+
+  function closeEditModal() {
+    setEditingUser(null);
+    setEditedFullName('');
+    setError(null);
   }
 
   async function deleteUser(userId: string) {
@@ -143,16 +157,33 @@ export default function SettingsPanel() {
     }
   }
 
-  function handleRoleChange(userId: string, newRole: string) {
-    setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+  function handleRoleChange(newRole: string) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, role: newRole });
+    }
   }
 
-  function handleDepartmentChange(userId: string, newDepartmentId: string) {
-    setUsers(users.map(u => u.id === userId ? { ...u, department_id: newDepartmentId } : u));
+  function handleDepartmentChange(newDepartmentId: string) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, department_id: newDepartmentId || null });
+    }
   }
 
-  function handleAdminChange(userId: string, isAdmin: boolean) {
-    setUsers(users.map(u => u.id === userId ? { ...u, is_admin: isAdmin } : u));
+  function handleAdminChange(isAdmin: boolean) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, is_admin: isAdmin });
+    }
+  }
+
+  function handleSaveUser() {
+    if (!editingUser) return;
+
+    updateUser(editingUser.id, {
+      full_name: editedFullName,
+      role: editingUser.role,
+      department_id: editingUser.department_id,
+      is_admin: editingUser.is_admin
+    });
   }
 
 
@@ -351,129 +382,45 @@ export default function SettingsPanel() {
                 <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Utworzono
                 </th>
-                <th className="px-3 py-2 text-right text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                  Akcje
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
               {users.map((user) => (
-                <tr key={user.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors">
+                <tr
+                  key={user.id}
+                  onClick={() => openEditModal(user)}
+                  className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors cursor-pointer"
+                >
                   <td className="px-3 py-2">
-                        <div>
-                          <div className="font-medium text-text-primary-light dark:text-text-primary-dark text-sm">{user.full_name}</div>
-                          <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{user.email}</div>
-                        </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {editingUser === user.id ? (
-                        <select
-                          value={user.role}
-                          onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                          className="px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                        >
-                          {roles.map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20">
-                          {user.role}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {editingUser === user.id ? (
-                        <select
-                          value={user.department_id || ''}
-                          onChange={(e) => handleDepartmentChange(user.id, e.target.value)}
-                          className="px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                        >
-                          <option value="">Wybierz dział</option>
-                          {departments.map((dept) => (
-                            <option key={dept.id} value={dept.id}>
-                              {dept.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                          {user.department?.name || '-'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {editingUser === user.id ? (
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={user.is_admin}
-                            onChange={(e) => handleAdminChange(user.id, e.target.checked)}
-                            className="w-3.5 h-3.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
-                          />
-                          <span className="text-xs text-text-primary-light dark:text-text-primary-dark">Admin</span>
-                        </label>
-                      ) : (
-                        user.is_admin ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-ai-accent/10 text-ai-accent dark:bg-ai-accent/20">
-                            <Shield className="w-3 h-3 mr-0.5" />
-                            Admin
-                          </span>
-                        ) : (
-                          <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">-</span>
-                        )
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {editingUser === user.id ? (
-                          <>
-                            <button
-                              onClick={() => updateUser(user.id, {
-                                role: user.role,
-                                department_id: user.department_id,
-                                is_admin: user.is_admin
-                              })}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-brand-primary text-white text-xs font-medium rounded hover:bg-brand-primary/90 transition-colors"
-                            >
-                              <Save className="w-3 h-3" />
-                              Zapisz
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingUser(null);
-                                loadUsers();
-                              }}
-                              className="px-2 py-1 text-text-secondary-light dark:text-text-secondary-dark text-xs font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
-                            >
-                              Anuluj
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => setEditingUser(user.id)}
-                              className="px-2 py-1 text-brand-primary text-xs font-medium hover:text-brand-primary/80 transition-colors"
-                            >
-                              Edytuj
-                            </button>
-                            <button
-                              onClick={() => deleteUser(user.id)}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-status-error text-xs font-medium hover:text-red-700 transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              Usuń
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                    <div>
+                      <div className="font-medium text-text-primary-light dark:text-text-primary-dark text-sm">{user.full_name}</div>
+                      <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{user.email}</div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20">
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {user.department?.name || '-'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {user.is_admin ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-ai-accent/10 text-ai-accent dark:bg-ai-accent/20">
+                        <Shield className="w-3 h-3 mr-0.5" />
+                        Admin
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">-</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                    {new Date(user.created_at).toLocaleDateString()}
+                  </td>
+                </tr>
                 ))}
               </tbody>
             </table>
@@ -486,6 +433,139 @@ export default function SettingsPanel() {
         )}
       </div>
       )}
+
+        {editingUser && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-light-surface dark:bg-dark-surface rounded-xl shadow-xl max-w-lg w-full border border-slate-200 dark:border-slate-700/50">
+              <div className="px-6 py-4 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
+                  <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Edytuj Użytkownika</h2>
+                </div>
+                <button
+                  onClick={closeEditModal}
+                  className="p-1 hover:bg-light-surface dark:hover:bg-dark-surface rounded transition-colors"
+                >
+                  <X className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {error && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-red-900 dark:text-red-400">Błąd</h3>
+                      <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editingUser.email}
+                    disabled
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-slate-100 dark:bg-slate-800 text-text-secondary-light dark:text-text-secondary-dark cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Imię i Nazwisko *
+                  </label>
+                  <input
+                    type="text"
+                    value={editedFullName}
+                    onChange={(e) => setEditedFullName(e.target.value)}
+                    placeholder="Wpisz imię i nazwisko"
+                    required
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Rola
+                  </label>
+                  <select
+                    value={editingUser.role}
+                    onChange={(e) => handleRoleChange(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  >
+                    {roles.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Dział
+                  </label>
+                  <select
+                    value={editingUser.department_id || ''}
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  >
+                    <option value="">Brak przypisania</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="is_admin"
+                    checked={editingUser.is_admin}
+                    onChange={(e) => handleAdminChange(e.target.checked)}
+                    className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
+                  />
+                  <label
+                    htmlFor="is_admin"
+                    className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                  >
+                    Uprawnienia administratora
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3 pt-4">
+                  <button
+                    onClick={handleSaveUser}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all shadow-md"
+                  >
+                    <Save className="w-5 h-5" />
+                    Zapisz zmiany
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteUser(editingUser.id)}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-all shadow-md"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    Usuń
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="px-6 py-3 text-text-secondary-light dark:text-text-secondary-dark font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showAddDepartment && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
