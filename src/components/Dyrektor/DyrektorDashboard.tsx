@@ -81,12 +81,59 @@ export default function DyrektorDashboard({ onUpload, onManageDepartments, onMan
   async function handleAccept(invoiceId: string) {
     try {
       setError(null);
-      const { error } = await supabase
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, role, department_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile) throw new Error('Profile not found');
+
+      const { data: invoice } = await supabase
         .from('invoices')
-        .update({ status: 'accepted' })
+        .select('department_id')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!invoice) throw new Error('Invoice not found');
+
+      const { error: approvalError } = await supabase
+        .from('approvals')
+        .insert({
+          invoice_id: invoiceId,
+          approver_id: profile.id,
+          approver_role: profile.role,
+          action: 'approved',
+          comment: null,
+        });
+
+      if (approvalError) throw approvalError;
+
+      let newStatus = 'accepted';
+
+      if (invoice.department_id) {
+        const { data: nextApprover, error: approverError } = await supabase
+          .rpc('get_next_approver_in_department', {
+            dept_id: invoice.department_id,
+            user_role: profile.role,
+          });
+
+        if (!approverError && nextApprover) {
+          newStatus = 'waiting';
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: newStatus })
         .eq('id', invoiceId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
       loadInvoices();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept invoice');
@@ -101,19 +148,36 @@ export default function DyrektorDashboard({ onUpload, onManageDepartments, onMan
 
     try {
       setError(null);
-      const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, role')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile) throw new Error('Profile not found');
+
+      const { error: approvalError } = await supabase
+        .from('approvals')
+        .insert({
+          invoice_id: invoiceId,
+          approver_id: profile.id,
+          approver_role: profile.role,
+          action: 'rejected',
+          comment: rejectionReason,
+        });
+
+      if (approvalError) throw approvalError;
+
+      const { error: updateError } = await supabase
         .from('invoices')
-        .update({
-          status: 'rejected',
-          rejection_reason: rejectionReason.trim(),
-          rejected_by: user?.id,
-          rejected_at: new Date().toISOString()
-        })
+        .update({ status: 'rejected' })
         .eq('id', invoiceId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
       setVerifyingInvoice(null);
       setRejectionReason('');

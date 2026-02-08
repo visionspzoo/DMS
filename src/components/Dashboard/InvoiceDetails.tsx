@@ -188,7 +188,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (approvalError) throw approvalError;
 
-      const newStatus = action === 'approved' ? 'accepted' : 'rejected';
+      let newStatus = action === 'approved' ? 'accepted' : 'rejected';
+
+      if (action === 'approved' && invoice.department_id) {
+        const { data: nextApprover, error: approverError } = await supabase
+          .rpc('get_next_approver_in_department', {
+            dept_id: invoice.department_id,
+            user_role: profile.role,
+          });
+
+        if (approverError) {
+          console.error('Error getting next approver:', approverError);
+        }
+
+        if (nextApprover) {
+          newStatus = 'waiting';
+        } else {
+          newStatus = 'accepted';
+        }
+      }
 
       const { data, error: updateError } = await supabase
         .from('invoices')
@@ -201,7 +219,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       Object.assign(invoice, data);
 
-      if (action === 'approved' && invoice.google_drive_id && invoice.department_id) {
+      if (newStatus === 'accepted' && invoice.google_drive_id && invoice.department_id) {
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
@@ -442,6 +460,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           return;
         }
 
+        const { data: nextApprover, error: approverError } = await supabase
+          .rpc('get_next_approver_in_department', {
+            dept_id: invoice.department_id,
+            user_role: profile.role,
+          });
+
+        if (approverError) {
+          console.error('Error getting next approver:', approverError);
+          alert('Nie udało się znaleźć następnego akceptującego');
+          setLoading(false);
+          return;
+        }
+
+        if (!nextApprover) {
+          alert('Brak dostępnego akceptującego w hierarchii działu');
+          setLoading(false);
+          return;
+        }
+
         const { error: updateError } = await supabase
           .from('invoices')
           .update({
@@ -451,25 +488,31 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         if (updateError) throw updateError;
 
-        alert('Faktura została przesłana do akceptacji kierownika działu');
+        alert('Faktura została przesłana do akceptacji');
         onUpdate();
         onClose();
-      } else if (invoice.status === 'waiting') {
+      } else if (invoice.status === 'accepted') {
         if (!invoice.department_id) {
           alert('Faktura musi mieć przypisany dział.');
           setLoading(false);
           return;
         }
-        const { data: currentDept, error: deptError } = await supabase
-          .from('departments')
-          .select('parent_department_id')
-          .eq('id', invoice.department_id)
-          .single();
 
-        if (deptError) throw deptError;
+        const { data: nextApprover, error: approverError } = await supabase
+          .rpc('get_next_approver_in_department', {
+            dept_id: invoice.department_id,
+            user_role: profile.role,
+          });
 
-        if (!currentDept.parent_department_id) {
-          alert('Brak działu nadrzędnego. Faktura jest już na najwyższym poziomie.');
+        if (approverError) {
+          console.error('Error getting next approver:', approverError);
+          alert('Nie udało się znaleźć następnego akceptującego');
+          setLoading(false);
+          return;
+        }
+
+        if (!nextApprover) {
+          alert('Faktura została już zaakceptowana przez wszystkich. Nie ma już kolejnych akceptujących.');
           setLoading(false);
           return;
         }
@@ -477,14 +520,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         const { error: updateError } = await supabase
           .from('invoices')
           .update({
-            department_id: currentDept.parent_department_id,
             status: 'waiting',
           })
           .eq('id', invoice.id);
 
         if (updateError) throw updateError;
 
-        alert('Faktura została przekazana do działu nadrzędnego');
+        alert('Faktura została przekazana do kolejnego akceptującego');
         onUpdate();
         onClose();
       }
@@ -659,7 +701,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {(invoice.status === 'waiting' || invoice.status === 'pending') && invoice.uploaded_by !== profile?.id && profile?.role !== 'Dyrektor' && (
+                {invoice.status === 'accepted' && invoice.uploaded_by !== profile?.id && (
                   <button
                     onClick={handleForwardToCirculation}
                     disabled={loading}
