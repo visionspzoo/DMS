@@ -197,34 +197,26 @@ Deno.serve(async (req: Request) => {
     const emailSubject = template.subject
       .replace(/\{\{company_name\}\}/g, "Twoja Firma");
 
-    const sendGridApiKey = Deno.env.get("SENDGRID_API_KEY");
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
-    if (sendGridApiKey) {
-      const sendGridResponse = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    if (resendApiKey) {
+      const resendResponse = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${sendGridApiKey}`,
+          "Authorization": `Bearer ${resendApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          personalizations: [{
-            to: [{ email }],
-            subject: emailSubject,
-          }],
-          from: {
-            email: Deno.env.get("SENDGRID_FROM_EMAIL") || "noreply@dms.com",
-            name: "DMS System",
-          },
-          content: [{
-            type: "text/html",
-            value: emailBody,
-          }],
+          from: Deno.env.get("RESEND_FROM_EMAIL") || "DMS System <onboarding@resend.dev>",
+          to: [email],
+          subject: emailSubject,
+          html: emailBody,
         }),
       });
 
-      if (!sendGridResponse.ok) {
-        const errorText = await sendGridResponse.text();
-        console.error("SendGrid error:", errorText);
+      if (!resendResponse.ok) {
+        const errorText = await resendResponse.text();
+        console.error("Resend error:", errorText);
 
         await supabase
           .from("user_invitations")
@@ -234,7 +226,7 @@ Deno.serve(async (req: Request) => {
         return new Response(
           JSON.stringify({
             success: false,
-            error: "Błąd wysyłania emaila. Sprawdź konfigurację SendGrid.",
+            error: "Błąd wysyłania emaila. Sprawdź konfigurację Resend.",
             details: errorText.substring(0, 200)
           }),
           {
@@ -244,18 +236,18 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      console.log(`Invitation email sent to ${email} via SendGrid`);
+      console.log(`Invitation email sent to ${email} via Resend`);
     } else {
-      console.log(`SendGrid not configured. Invitation created but email not sent.`);
+      console.log(`Resend not configured. Invitation created but email not sent.`);
       console.log(`Invitation link: ${invitationLink}`);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: sendGridApiKey
+        message: resendApiKey
           ? "Zaproszenie zostało wysłane"
-          : "Zaproszenie utworzone (email nie został wysłany - brak konfiguracji SendGrid)",
+          : "Zaproszenie utworzone (email nie został wysłany - brak konfiguracji Resend)",
         invitation_id: invitation.id,
         invitation_link: invitationLink,
       }),
