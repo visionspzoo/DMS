@@ -39,11 +39,13 @@ Deno.serve(async (req: Request) => {
 
     const { createClient } = await import("npm:@supabase/supabase-js@2");
 
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
+    // Extract JWT token from Authorization header
+    const token = authHeader.replace('Bearer ', '');
 
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Verify user with JWT token
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
 
     if (userError || !user) {
       console.error("Auth error:", userError);
@@ -57,8 +59,6 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("Authenticated user:", user.id, user.email);
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // First check if profile exists at all
     const { data: allProfiles } = await supabase
