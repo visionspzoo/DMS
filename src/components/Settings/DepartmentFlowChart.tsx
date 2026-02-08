@@ -26,9 +26,11 @@ interface Department {
   name: string;
   parent_department_id: string | null;
   manager_id: string | null;
+  director_id: string | null;
   max_invoice_amount: number | null;
   max_monthly_amount: number | null;
   manager?: { full_name: string; email: string } | null;
+  director?: { full_name: string; email: string } | null;
 }
 
 interface TreeNode {
@@ -110,7 +112,16 @@ function TreeBranch({ nodes }: { nodes: TreeNode[] }) {
 
           {node.children.length > 0 && (
             <div className="flex flex-col items-center">
-              <div className="w-px h-5 bg-slate-300 dark:bg-slate-600" />
+              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />
+
+              {node.dept.director && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium mb-1">
+                  <Crown className="w-3 h-3" />
+                  <span>{node.dept.director.full_name}</span>
+                </div>
+              )}
+
+              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600" />
 
               {node.children.length === 1 ? (
                 <TreeBranch nodes={node.children} />
