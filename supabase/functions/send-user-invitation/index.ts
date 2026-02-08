@@ -207,7 +207,7 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: Deno.env.get("RESEND_FROM_EMAIL") || "DMS System <onboarding@resend.dev>",
+          from: Deno.env.get("RESEND_FROM_EMAIL") || "DMS System <dms@auraherbals.pl>",
           to: [email],
           subject: emailSubject,
           html: emailBody,
