@@ -208,11 +208,21 @@ async function queryInvoiceDatabase(supabase: any, userRole: string, userId: str
   const { data: invoices, error } = await supabase
     .from('invoices')
     .select(`
-      *,
+      id,
+      invoice_number,
+      vendor_name,
+      amount,
+      currency,
+      pln_amount,
+      status,
+      due_date,
+      issue_date,
       uploader:uploaded_by(full_name, role),
-      department:department_id(id, name)
+      department:department_id(id, name),
+      created_at
     `)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(50);
 
   if (error) {
     console.error('Error fetching invoices:', error);
@@ -283,13 +293,14 @@ async function queryContractsDatabase(supabase: any) {
   const { data: contracts, error } = await supabase
     .from('contracts')
     .select(`
-      id, contract_number, title, description, status, file_url,
+      id, contract_number, title, status,
       department:department_id(id, name),
       uploader:uploaded_by(full_name, role),
       current_approver,
       created_at, updated_at
     `)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(30);
 
   if (error) {
     console.error('Error fetching contracts:', error);
@@ -305,11 +316,11 @@ async function queryContractsDatabase(supabase: any) {
   const [summariesResult, approvalsResult] = await Promise.all([
     supabase
       .from('contract_summaries')
-      .select('contract_id, brief, key_points')
+      .select('contract_id, brief')
       .in('contract_id', contractIds),
     supabase
       .from('contract_approvals')
-      .select('contract_id, approver_role, status, comment, approved_at')
+      .select('contract_id, approver_role, status')
       .in('contract_id', contractIds)
       .order('approved_at', { ascending: true }),
   ]);
@@ -482,14 +493,14 @@ ${JSON.stringify(tagUsage, null, 2)}
 4. Dostępne tagi w systemie:
 ${JSON.stringify(mlData.tags.map((t: any) => t.name), null, 2)}
 
-DANE FAKTUR (JSON):
-${JSON.stringify(invoiceData.slice(0, 200), null, 2)}
+DANE FAKTUR (ostatnie 50):
+${JSON.stringify(invoiceData, null, 2)}
 
 DANE UMÓW - STATYSTYKI:
 ${JSON.stringify(contractStats, null, 2)}
 
-DANE UMÓW (JSON):
-${JSON.stringify(contractsWithSummaries.slice(0, 100), null, 2)}
+DANE UMÓW (ostatnie 30):
+${JSON.stringify(contractsWithSummaries, null, 2)}
 
 DANE DZIAŁÓW:
 ${JSON.stringify(departments, null, 2)}
