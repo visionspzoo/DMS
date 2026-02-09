@@ -54,6 +54,10 @@ export function KSEFInvoicesPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [ksefStatus, setKsefStatus] = useState<any>(null);
 
+  const canAccessKSEFConfig = profile?.can_access_ksef_config === true ||
+                               profile?.is_admin === true ||
+                               profile?.role === 'CEO';
+
   useEffect(() => {
     loadInvoices();
     loadDepartments();
@@ -543,17 +547,19 @@ export function KSEFInvoicesPage() {
             <FileText className="w-4 h-4" />
             Faktury
           </button>
-          <button
-            onClick={() => setMainTab('configuration')}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-              mainTab === 'configuration'
-                ? 'bg-brand-primary text-white shadow-sm'
-                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Konfiguracja
-          </button>
+          {canAccessKSEFConfig && (
+            <button
+              onClick={() => setMainTab('configuration')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                mainTab === 'configuration'
+                  ? 'bg-brand-primary text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Konfiguracja
+            </button>
+          )}
         </div>
 
         {mainTab === 'invoices' && (
@@ -601,8 +607,18 @@ export function KSEFInvoicesPage() {
         )}
       </div>
 
-      {mainTab === 'configuration' ? (
+      {mainTab === 'configuration' && canAccessKSEFConfig ? (
         <KSEFConfiguration />
+      ) : mainTab === 'configuration' && !canAccessKSEFConfig ? (
+        <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-12 text-center">
+          <AlertCircle className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
+          <p className="text-text-primary-light dark:text-text-primary-dark font-medium mb-1">
+            Brak dostępu
+          </p>
+          <p className="text-text-secondary-light dark:text-text-secondary-dark text-sm">
+            Nie masz uprawnień do konfiguracji KSEF. Skontaktuj się z administratorem.
+          </p>
+        </div>
       ) : (
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         {invoices.length === 0 ? (

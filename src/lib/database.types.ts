@@ -25,6 +25,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
           preferred_llm_model: string;
+          can_access_ksef_config: boolean;
           department?: {
             id: string;
             name: string;
@@ -38,6 +39,7 @@ export interface Database {
           department_id?: string | null;
           is_admin?: boolean;
           preferred_llm_model?: string;
+          can_access_ksef_config?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -49,6 +51,7 @@ export interface Database {
           department_id?: string | null;
           is_admin?: boolean;
           preferred_llm_model?: string;
+          can_access_ksef_config?: boolean;
           created_at?: string;
           updated_at?: string;
         };
