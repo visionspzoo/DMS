@@ -85,6 +85,11 @@ export interface Database {
           paid_by: string | null;
           description: string | null;
           source: InvoiceSource;
+          current_approver_id: string | null;
+          approved_by_manager_at: string | null;
+          approved_by_director_at: string | null;
+          exchange_rate: number | null;
+          pln_gross_amount: number | null;
         };
         Insert: {
           id?: string;
@@ -113,6 +118,11 @@ export interface Database {
           paid_by?: string | null;
           description?: string | null;
           source?: InvoiceSource;
+          current_approver_id?: string | null;
+          approved_by_manager_at?: string | null;
+          approved_by_director_at?: string | null;
+          exchange_rate?: number | null;
+          pln_gross_amount?: number | null;
         };
         Update: {
           id?: string;
@@ -137,6 +147,11 @@ export interface Database {
           rejection_reason?: string | null;
           rejected_by?: string | null;
           rejected_at?: string | null;
+          current_approver_id?: string | null;
+          approved_by_manager_at?: string | null;
+          approved_by_director_at?: string | null;
+          exchange_rate?: number | null;
+          pln_gross_amount?: number | null;
           paid_at?: string | null;
           paid_by?: string | null;
           description?: string | null;

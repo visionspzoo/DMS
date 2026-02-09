@@ -18,6 +18,25 @@ type Invoice = Database['public']['Tables']['invoices']['Row'];
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000;
 
+function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string {
+  if (invoice.status === 'draft') return 'draft';
+  if (invoice.status === 'accepted') return 'accepted';
+  if (invoice.status === 'rejected') return 'rejected';
+  if (invoice.status === 'paid') return 'paid';
+
+  if (invoice.status === 'waiting') {
+    if (invoice.current_approver_id === currentUserId) {
+      return 'waiting';
+    }
+    if (invoice.uploaded_by === currentUserId) {
+      return 'in_review';
+    }
+    return 'in_review';
+  }
+
+  return invoice.status;
+}
+
 export function InvoiceList() {
   const { user, profile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -281,7 +300,9 @@ export function InvoiceList() {
     }
 
     if (selectedStatuses.length > 0) {
-      filtered = filtered.filter(inv => selectedStatuses.includes(inv.status));
+      filtered = filtered.filter(inv =>
+        selectedStatuses.includes(getUserSpecificStatus(inv, profile?.id || ''))
+      );
     }
 
     if (selectedDepartments.length > 0) {
@@ -735,9 +756,10 @@ export function InvoiceList() {
             {[
               { key: 'draft', label: 'Robocze' },
               { key: 'waiting', label: 'Oczekujące' },
-              { key: 'pending', label: 'W weryfikacji' },
+              { key: 'in_review', label: 'W weryfikacji' },
               { key: 'accepted', label: 'Zaakceptowana' },
               { key: 'rejected', label: 'Odrzucona' },
+              { key: 'paid', label: 'Opłacona' },
             ].map(({ key, label }) => (
               <button
                 key={key}

@@ -25,27 +25,49 @@ const statusColors = {
   accepted: 'bg-status-success/10 text-status-success border-status-success/30 dark:bg-status-success/20',
   rejected: 'bg-status-error/10 text-status-error border-status-error/30 dark:bg-status-error/20',
   in_review: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:bg-blue-500/20 dark:text-blue-400',
+  paid: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-400',
 };
 
 const statusLabels = {
-  draft: 'Robocza',
-  waiting: 'Oczekująca',
-  pending: 'W weryfikacji',
+  draft: 'Robocze',
+  waiting: 'Oczekujące',
+  pending: 'Oczekujące',
   in_review: 'W weryfikacji',
   accepted: 'Zaakceptowana',
   rejected: 'Odrzucona',
+  paid: 'Opłacona',
 };
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): keyof typeof statusLabels {
-  if (invoice.status === 'draft' || invoice.status === 'accepted' || invoice.status === 'rejected') {
-    return invoice.status;
+  if (invoice.status === 'draft') {
+    return 'draft';
   }
 
-  if (invoice.uploaded_by === currentUserId) {
+  if (invoice.status === 'accepted') {
+    return 'accepted';
+  }
+
+  if (invoice.status === 'rejected') {
+    return 'rejected';
+  }
+
+  if (invoice.status === 'paid') {
+    return 'paid';
+  }
+
+  if (invoice.status === 'waiting') {
+    if (invoice.current_approver_id === currentUserId) {
+      return 'waiting';
+    }
+
+    if (invoice.uploaded_by === currentUserId) {
+      return 'in_review';
+    }
+
     return 'in_review';
   }
 
-  return 'waiting';
+  return invoice.status as keyof typeof statusLabels;
 }
 
 const AURA_HERBALS_NIP = '5851490834';

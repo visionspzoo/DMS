@@ -33,6 +33,34 @@ interface AuditLogWithUser extends AuditLog {
   } | null;
 }
 
+const statusLabels: Record<string, string> = {
+  draft: 'Robocze',
+  waiting: 'Oczekujące',
+  in_review: 'W weryfikacji',
+  accepted: 'Zaakceptowana',
+  rejected: 'Odrzucona',
+  paid: 'Opłacona',
+};
+
+function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string {
+  if (invoice.status === 'draft') return 'draft';
+  if (invoice.status === 'accepted') return 'accepted';
+  if (invoice.status === 'rejected') return 'rejected';
+  if (invoice.status === 'paid') return 'paid';
+
+  if (invoice.status === 'waiting') {
+    if (invoice.current_approver_id === currentUserId) {
+      return 'waiting';
+    }
+    if (invoice.uploaded_by === currentUserId) {
+      return 'in_review';
+    }
+    return 'in_review';
+  }
+
+  return invoice.status;
+}
+
 export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsProps) {
   const { profile } = useAuth();
   const [approvals, setApprovals] = useState<ApprovalWithProfile[]>([]);
@@ -886,19 +914,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, status: e.target.value as any })}
                           className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                         >
-                          <option value="draft">Robocza</option>
+                          <option value="draft">Robocze</option>
                           <option value="waiting">Oczekujące</option>
                           <option value="in_review">W weryfikacji</option>
                           <option value="accepted">Zaakceptowana</option>
                           <option value="rejected">Odrzucona</option>
+                          <option value="paid">Opłacona</option>
                         </select>
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.status === 'draft' && 'Robocza'}
-                          {invoice.status === 'waiting' && 'Oczekujące'}
-                          {(invoice.status === 'pending' || invoice.status === 'in_review' || invoice.status === 'approved') && 'W weryfikacji'}
-                          {invoice.status === 'accepted' && 'Zaakceptowana'}
-                          {invoice.status === 'rejected' && 'Odrzucona'}
+                          {statusLabels[getUserSpecificStatus(invoice, profile?.id || '')] || invoice.status}
                         </p>
                       )}
                     </div>
