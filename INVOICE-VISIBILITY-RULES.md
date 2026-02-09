@@ -35,12 +35,14 @@ Dział IT:
 - Widzi wszystkie faktury w swoim dziale
 - Widzi faktury które sam dodał
 - Widzi faktury dodane przez Specjalistów z jego działu
+- Widzi faktury przypisane do niego do akceptacji (`current_approver_id = jego ID`)
 - Nie widzi faktur z innych działów
 
 #### Dyrektor
 - Widzi wszystkie faktury ze swojego działu
 - Widzi wszystkie faktury ze wszystkich poddziałów (hierarchia)
 - Widzi faktury które sam dodał
+- Widzi faktury przypisane do niego do akceptacji (`current_approver_id = jego ID`)
 
 #### CEO
 - Widzi wszystkie faktury w całym systemie
@@ -76,6 +78,24 @@ Dział IT:
 
 Faktury w statusie `draft` są ZAWSZE widoczne TYLKO dla osoby która je stworzyła, niezależnie od roli.
 
+### 4. Faktury w Workflow (do akceptacji)
+
+Faktury w statusie `waiting` z przypisanym akceptującym (`current_approver_id`) są widoczne dla:
+- Twórcy faktury (`uploaded_by`)
+- Aktualnego akceptującego (`current_approver_id`)
+- Kierowników/Dyrektorów zgodnie z hierarchią działu
+
+**Przykład:**
+```
+Specjalista (p.dudek) dodaje fakturę → status: waiting
+→ current_approver_id = Kierownik (s.hoffman)
+
+Widoczna dla:
+- p.dudek (twórca)
+- s.hoffman (aktualny akceptujący)
+- a.tkaczyk (Dyrektor działu IT)
+```
+
 ## Przypadki Użycia
 
 ### Scenariusz 1: Kierownik pobiera faktury z dysku/maila
@@ -104,6 +124,20 @@ Faktury w statusie `draft` są ZAWSZE widoczne TYLKO dla osoby która je stworzy
 6. Dyrektor widzi wszystkie swoje faktury KSeF
 
 **Efekt:** Faktury KSeF pobrane przez Dyrektora/Kierownika nie są widoczne dla Specjalistów
+
+### Scenariusz 4: Workflow akceptacji z limitami
+1. Specjalista wysyła fakturę do akceptacji (status: `waiting`)
+2. Faktura automatycznie przypisana do Kierownika (`current_approver_id`)
+3. Kierownik akceptuje:
+   - Jeśli mieści się w limitach → auto-akceptacja (status: `accepted`)
+   - Jeśli przekracza limity → przekazanie do Dyrektora
+4. Specjalista widzi swoją fakturę i jej status
+5. Kierownik widzi faktury przypisane do niego
+6. Dyrektor widzi faktury przekazane do niego
+
+**Efekt:** Workflow automatycznie kieruje faktury zgodnie z limitami działowymi
+
+Zobacz pełną dokumentację workflow: [WORKFLOW-DOKUMENTACJA.md](./WORKFLOW-DOKUMENTACJA.md)
 
 ## Implementacja Techniczna
 
