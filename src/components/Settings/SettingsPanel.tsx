@@ -14,6 +14,7 @@ interface Profile {
   role: string;
   department_id: string | null;
   is_admin: boolean;
+  can_access_ksef_config: boolean;
   created_at: string;
   last_login_at: string | null;
   department?: {
@@ -73,6 +74,7 @@ export default function SettingsPanel() {
           role,
           department_id,
           is_admin,
+          can_access_ksef_config,
           created_at,
           last_login_at,
           department:department_id(id, name)
@@ -250,6 +252,12 @@ export default function SettingsPanel() {
     }
   }
 
+  function handleKsefConfigAccessChange(canAccess: boolean) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, can_access_ksef_config: canAccess });
+    }
+  }
+
   function handleSaveUser() {
     if (!editingUser) return;
 
@@ -257,7 +265,8 @@ export default function SettingsPanel() {
       full_name: editedFullName,
       role: editingUser.role,
       department_id: editingUser.department_id,
-      is_admin: editingUser.is_admin
+      is_admin: editingUser.is_admin,
+      can_access_ksef_config: editingUser.can_access_ksef_config
     });
   }
 
@@ -624,6 +633,22 @@ export default function SettingsPanel() {
                     className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
                   >
                     Uprawnienia administratora
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="can_access_ksef_config"
+                    checked={editingUser.can_access_ksef_config}
+                    onChange={(e) => handleKsefConfigAccessChange(e.target.checked)}
+                    className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
+                  />
+                  <label
+                    htmlFor="can_access_ksef_config"
+                    className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                  >
+                    Dostęp do konfiguracji KSEF
                   </label>
                 </div>
 
