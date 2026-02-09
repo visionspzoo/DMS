@@ -16,6 +16,15 @@
 - **Problem:** Funkcja mogła być blokowana przez RLS
 - **Rozwiązanie:** Funkcja działa jako `SECURITY DEFINER` z pełnymi uprawnieniami
 
+### 4. Mapowanie Ról: Angielski → Polski
+- **Problem:** Zaproszenia używają angielskich nazw ról (specialist, manager, director, ceo), ale tabela `profiles` wymaga polskich nazw (Specjalista, Kierownik, Dyrektor, CEO)
+- **Rozwiązanie:** Dodano funkcję `map_role_to_polish()` która automatycznie mapuje role podczas tworzenia profilu
+- **Efekt:** Trigger automatycznie przekształca:
+  - `specialist` → `Specjalista`
+  - `manager` → `Kierownik`
+  - `director` → `Dyrektor`
+  - `ceo` → `CEO`
+
 ## Jak Działa Proces Logowania
 
 ### Krok 1: Administrator Wysyła Zaproszenie
@@ -149,12 +158,13 @@ To narzędzie pozwoli:
 2. Jeśli nie, sprawdź logi triggera w Supabase Dashboard → Database → Logs
 3. Jeśli trigger nie zadziałał, ręcznie utwórz profil:
    ```sql
+   -- WAŻNE: Użyj funkcji map_role_to_polish() żeby zmapować rolę
    INSERT INTO profiles (id, email, full_name, role, department_id)
    SELECT
      u.id,
      u.email,
      COALESCE(u.raw_user_meta_data->>'name', u.email),
-     i.role,
+     map_role_to_polish(i.role),  -- Mapuj rolę z angielskiego na polski
      i.department_id
    FROM auth.users u
    JOIN user_invitations i ON LOWER(i.email) = LOWER(u.email)
@@ -177,6 +187,23 @@ To narzędzie pozwoli:
    ```sql
    SELECT * FROM pg_policies WHERE tablename = 'profiles';
    ```
+
+### Problem: "new row for relation profiles violates check constraint profiles_role_check"
+**Przyczyna:** Próba wstawienia angielskiej nazwy roli zamiast polskiej
+
+**Rozwiązanie:**
+System powinien automatycznie mapować role. Jeśli widzisz ten błąd:
+1. Sprawdź czy funkcja mapowania istnieje:
+   ```sql
+   SELECT map_role_to_polish('specialist');  -- Powinno zwrócić 'Specjalista'
+   ```
+2. Sprawdź czy trigger używa mapowania:
+   ```sql
+   SELECT pg_get_functiondef(oid)
+   FROM pg_proc
+   WHERE proname = 'handle_new_user';
+   ```
+3. Jeśli problem nadal występuje, ręcznie utwórz profil używając `map_role_to_polish()` (zobacz sekcję wyżej)
 
 ## Sprawdzanie Statusu Systemu
 
