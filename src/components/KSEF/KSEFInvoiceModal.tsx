@@ -102,7 +102,37 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
         }
       }
 
+      // If we have XML content, generate PDF from XML
+      const xmlContent = invoice.xml_content || invoice.invoice_xml;
+      if (xmlContent) {
+        console.log('Generating PDF from XML content');
+        const generateResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              xml: xmlContent,
+              ksefNumber: invoice.ksef_reference_number,
+            }),
+          }
+        );
+
+        if (generateResponse.ok) {
+          const pdfBlob = await generateResponse.blob();
+          const url = URL.createObjectURL(pdfBlob);
+          setPdfUrl(url);
+          return;
+        } else {
+          console.error('PDF generation from XML failed:', await generateResponse.text());
+        }
+      }
+
       // Otherwise, download from KSEF API
+      console.log('Downloading PDF from KSEF API');
       const proxyParams = new URLSearchParams({
         path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`,
       });

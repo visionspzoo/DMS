@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
 import { KSEFConfiguration } from './KSEFConfiguration';
-import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
+import { fetchKSEFInvoices, fetchKSEFInvoiceXML, checkKSEFStatus } from '../../lib/ksefApiClient';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
@@ -173,6 +173,14 @@ export function KSEFInvoicesPage() {
           const grossAmount = invoice.grossAmount || 0;
           const taxAmount = grossAmount - netAmount;
 
+          let xmlContent = null;
+          try {
+            xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
+            console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber}`);
+          } catch (xmlError) {
+            console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
+          }
+
           const { error: insertError } = await supabase
             .from('ksef_invoices')
             .insert({
@@ -187,6 +195,7 @@ export function KSEFInvoicesPage() {
               net_amount: netAmount,
               tax_amount: taxAmount,
               currency: invoice.currency || 'PLN',
+              xml_content: xmlContent,
               fetched_by: profile?.id,
             });
 
