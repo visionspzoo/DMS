@@ -217,12 +217,10 @@ async function queryInvoiceDatabase(supabase: any, userRole: string, userId: str
       status,
       due_date,
       issue_date,
-      uploader:uploaded_by(full_name, role),
-      department:department_id(id, name),
-      created_at
+      department_id
     `)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(30);
 
   if (error) {
     console.error('Error fetching invoices:', error);
