@@ -231,51 +231,16 @@ async function queryInvoiceDatabase(supabase: any, userRole: string, userId: str
 }
 
 async function queryMLData(supabase: any) {
-  const { data: tagLearning } = await supabase
-    .from('tag_learning')
-    .select(`
-      vendor_name,
-      supplier_nip,
-      description_keywords,
-      tag:tag_id(id, name, color),
-      department:department_id(id, name),
-      amount_bucket,
-      frequency
-    `)
-    .order('frequency', { ascending: false })
-    .limit(100);
-
   const { data: tags } = await supabase
     .from('tags')
-    .select('id, name, color');
-
-  const { data: recentPredictions } = await supabase
-    .from('ml_tag_predictions')
-    .select(`
-      invoice_id,
-      tag:tag_id(id, name),
-      confidence,
-      source,
-      applied,
-      dismissed,
-      created_at
-    `)
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  const { data: invoiceTags } = await supabase
-    .from('invoice_tags')
-    .select(`
-      invoice_id,
-      tag:tag_id(id, name)
-    `)
-    .limit(200);
+    .select('id, name')
+    .limit(20);
 
   return {
-    tagLearning: tagLearning || [],
+    tagLearning: [],
     tags: tags || [],
-    recentPredictions: recentPredictions || [],
-    invoiceTags: invoiceTags || [],
+    recentPredictions: [],
+    invoiceTags: [],
   };
 }
 
@@ -290,43 +255,19 @@ async function queryDepartmentStats(supabase: any) {
 async function queryContractsDatabase(supabase: any) {
   const { data: contracts, error } = await supabase
     .from('contracts')
-    .select(`
-      id, contract_number, title, status,
-      department:department_id(id, name),
-      uploader:uploaded_by(full_name, role),
-      current_approver,
-      created_at, updated_at
-    `)
+    .select('id, contract_number, title, status, department_id')
     .order('created_at', { ascending: false })
-    .limit(30);
+    .limit(10);
 
   if (error) {
     console.error('Error fetching contracts:', error);
     return { contracts: [], summaries: [], approvals: [] };
   }
 
-  const contractIds = (contracts || []).map((c: any) => c.id);
-
-  if (contractIds.length === 0) {
-    return { contracts: [], summaries: [], approvals: [] };
-  }
-
-  const [summariesResult, approvalsResult] = await Promise.all([
-    supabase
-      .from('contract_summaries')
-      .select('contract_id, brief')
-      .in('contract_id', contractIds),
-    supabase
-      .from('contract_approvals')
-      .select('contract_id, approver_role, status')
-      .in('contract_id', contractIds)
-      .order('approved_at', { ascending: true }),
-  ]);
-
   return {
     contracts: contracts || [],
-    summaries: summariesResult.data || [],
-    approvals: approvalsResult.data || [],
+    summaries: [],
+    approvals: [],
   };
 }
 
@@ -407,33 +348,6 @@ function buildSystemPrompt(
   contractsData: { contracts: any[]; summaries: any[]; approvals: any[] },
   modelLabel: string,
 ): string {
-  const tagLearningStats = mlData.tagLearning.reduce((acc: any, item: any) => {
-    const vendorKey = item.vendor_name || item.supplier_nip || 'unknown';
-    if (!acc[vendorKey]) acc[vendorKey] = [];
-    acc[vendorKey].push({
-      tag: item.tag?.name,
-      frequency: item.frequency,
-      amount_bucket: item.amount_bucket,
-      department: item.department?.name,
-    });
-    return acc;
-  }, {});
-
-  const predictionStats = {
-    total: mlData.recentPredictions.length,
-    applied: mlData.recentPredictions.filter((p: any) => p.applied).length,
-    dismissed: mlData.recentPredictions.filter((p: any) => p.dismissed).length,
-    avgConfidence: mlData.recentPredictions.length > 0
-      ? (mlData.recentPredictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / mlData.recentPredictions.length).toFixed(2)
-      : 0,
-  };
-
-  const tagUsage = mlData.invoiceTags.reduce((acc: any, it: any) => {
-    const tagName = it.tag?.name || 'unknown';
-    acc[tagName] = (acc[tagName] || 0) + 1;
-    return acc;
-  }, {});
-
   const contractStats = {
     total: contractsData.contracts.length,
     byStatus: contractsData.contracts.reduce((acc: Record<string, number>, c: any) => {
@@ -442,20 +356,18 @@ function buildSystemPrompt(
     }, {}),
   };
 
-  const contractsWithSummaries = contractsData.contracts.map((c: any) => {
-    const summary = contractsData.summaries.find((s: any) => s.contract_id === c.id);
-    const approvals = contractsData.approvals.filter((a: any) => a.contract_id === c.id);
-    return {
-      ...c,
-      summary_brief: summary?.brief || null,
-      key_points: summary?.key_points || null,
-      approvals,
-    };
-  });
+  const invoiceStats = {
+    total: invoiceData.length,
+    byStatus: invoiceData.reduce((acc: Record<string, number>, inv: any) => {
+      acc[inv.status] = (acc[inv.status] || 0) + 1;
+      return acc;
+    }, {}),
+    totalPLN: invoiceData.reduce((sum: number, inv: any) => sum + (inv.pln_amount || 0), 0),
+  };
 
   return `Jesteś AuruśAI - zaawansowanym asystentem AI do zarządzania dokumentami: fakturami i umowami.
 Aktualnie korzystasz z modelu: ${modelLabel}.
-Masz dostęp do pełnej bazy danych faktur, umów, danych uczenia maszynowego (ML) i statystyk systemu.
+Masz dostęp do bazy danych faktur i umów.
 
 Możesz odpowiadać na pytania dotyczące:
 FAKTURY:
@@ -464,49 +376,35 @@ FAKTURY:
 - Dat wystawienia i terminów płatności
 - Statusów faktur (draft=robocza, waiting=oczekujące, accepted=zaakceptowana, rejected=odrzucona, paid=opłacona)
 - Dostawców i ich numerów NIP/VAT ID
-- Tagów i kategorii faktur
-- Danych ML: wzorców tagowania, predykcji, trafności sugestii
 
 UMOWY:
 - Liczby umów według statusu i działu
 - Statusów umów (draft=robocza, pending_specialist, pending_manager, pending_director, pending_ceo, pending_signature, signed=podpisana, approved=zatwierdzona, rejected=odrzucona)
-- Ścieżki zatwierdzania umów i aktualnych akceptantów
-- Streszczeń i kluczowych punktów umów (jeśli dostępne)
-- Historii zatwierdzeń i komentarzy
 
 OGÓLNE:
 - Działów, limitów miesięcznych i hierarchii
 - Analizy trendów i wzorców w danych
 
-DANE SYSTEMU ML:
-1. Wzorce tagowania (nauka z akcji użytkowników):
-${JSON.stringify(tagLearningStats, null, 2)}
+STATYSTYKI FAKTUR:
+${JSON.stringify(invoiceStats, null, 2)}
 
-2. Statystyki predykcji ML:
-${JSON.stringify(predictionStats, null, 2)}
-
-3. Popularne tagi i ich użycie:
-${JSON.stringify(tagUsage, null, 2)}
-
-4. Dostępne tagi w systemie:
-${JSON.stringify(mlData.tags.map((t: any) => t.name), null, 2)}
-
-DANE FAKTUR (ostatnie 50):
+DANE FAKTUR (ostatnie 30):
 ${JSON.stringify(invoiceData, null, 2)}
 
-DANE UMÓW - STATYSTYKI:
+STATYSTYKI UMÓW:
 ${JSON.stringify(contractStats, null, 2)}
 
-DANE UMÓW (ostatnie 30):
-${JSON.stringify(contractsWithSummaries, null, 2)}
+DANE UMÓW (ostatnie 10):
+${JSON.stringify(contractsData.contracts, null, 2)}
 
 DANE DZIAŁÓW:
 ${JSON.stringify(departments, null, 2)}
 
+Dostępne tagi: ${mlData.tags.map((t: any) => t.name).join(', ')}
+
 Odpowiadaj w języku polskim, zwięźle i konkretnie.
 Używaj formatowania markdown gdy to pomaga czytelności.
 Zawsze podawaj źródło informacji (liczba faktur/umów, suma wartości itp.).
-Gdy pytanie dotyczy ML/tagów, uwzględnij dane z systemu uczenia maszynowego.
 Jeśli nie masz wystarczających danych, powiedz o tym.`;
 }
 
