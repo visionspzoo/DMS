@@ -13,7 +13,7 @@ interface AccessibleDepartment {
  * Pobiera działy dostępne dla użytkownika na podstawie:
  * - Roli (CEO widzi wszystkie, Dyrektor widzi swój + poddziały, Kierownik widzi swój)
  * - Uprawnień w user_department_access
- * - is_admin (Admin widzi działy z user_department_access lub wszystkie jeśli brak ograniczeń)
+ * - is_admin (Admin zawsze widzi wszystkie działy)
  */
 export async function getAccessibleDepartments(
   profile: Profile | null
@@ -34,30 +34,8 @@ export async function getAccessibleDepartments(
       return data || [];
     }
 
-    // Admin widzi działy z user_department_access lub wszystkie jeśli ma is_admin
+    // Admin zawsze widzi wszystkie działy
     if (is_admin) {
-      // Sprawdź czy admin ma ograniczenia w user_department_access
-      const { data: accessData, error: accessError } = await supabase
-        .from('user_department_access')
-        .select('department_id')
-        .eq('user_id', userId);
-
-      if (accessError) throw accessError;
-
-      // Jeśli ma przypisane konkretne działy, pokaż tylko te
-      if (accessData && accessData.length > 0) {
-        const deptIds = accessData.map(a => a.department_id);
-        const { data: depts, error: deptsError } = await supabase
-          .from('departments')
-          .select('id, name')
-          .in('id', deptIds)
-          .order('name');
-
-        if (deptsError) throw deptsError;
-        return depts || [];
-      }
-
-      // Jeśli nie ma ograniczeń, pokaż wszystkie działy
       const { data, error } = await supabase
         .from('departments')
         .select('id, name')

@@ -33,20 +33,11 @@ export async function getAccessibleDepartments(
 - Bez ograniczeń
 
 #### 2. Admin (is_admin = true)
-- Sprawdza czy ma przypisane działy w `user_department_access`
-- Jeśli TAK: widzi tylko przypisane działy
-- Jeśli NIE: widzi wszystkie działy (pełen admin)
+- Zawsze widzi **wszystkie działy** w systemie
+- Bez ograniczeń (podobnie jak CEO)
+- Wpisy w `user_department_access` nie wpływają na widoczność działów w filtrach
 
-**Przykład:**
-```sql
--- Admin z ograniczeniami
-INSERT INTO user_department_access (user_id, department_id, access_type)
-VALUES
-  ('admin-uuid', 'IT-dept-uuid', 'view'),
-  ('admin-uuid', 'HR-dept-uuid', 'view');
-
--- Admin widzi tylko: IT, HR
-```
+**Uwaga:** `user_department_access` jest używany do innych celów (workflow, specjalne uprawnienia), ale nie ogranicza widoczności działów dla adminów w filtrach.
 
 #### 3. Dyrektor
 - Widzi swój dział (`department_id`)
@@ -254,7 +245,7 @@ FROM departments WHERE name = 'HR';
 **Oczekiwany wynik:**
 - Widoczne wszystkie działy w systemie
 
-### Test 6: Admin z ograniczeniami
+### Test 6: Admin
 
 **Kroki:**
 1. Stwórz admina:
@@ -263,20 +254,11 @@ UPDATE profiles
 SET is_admin = true
 WHERE email = 'admin@example.com';
 ```
-2. Przyznaj dostęp tylko do IT:
-```sql
-INSERT INTO user_department_access (user_id, department_id, access_type)
-SELECT
-  (SELECT id FROM profiles WHERE email = 'admin@example.com'),
-  id,
-  'view'
-FROM departments WHERE name = 'IT';
-```
-3. Zaloguj się jako admin
-4. Sprawdź filtry działów
+2. Zaloguj się jako admin
+3. Sprawdź filtry działów
 
 **Oczekiwany wynik:**
-- Widoczny tylko dział: IT
+- Widoczne wszystkie działy w systemie (podobnie jak CEO)
 
 ## Bezpieczeństwo
 
@@ -400,21 +382,18 @@ SELECT * FROM get_department_hierarchy(
 - Sprawdź czy poddziały mają poprawnie ustawiony `parent_department_id`
 - Upewnij się że funkcja `get_department_hierarchy` działa
 
-### Problem: Admin widzi wszystkie działy zamiast tylko przypisanych
+### Problem: Admin nie widzi wszystkich działów
 
 **Diagnoza:**
 ```sql
-SELECT
-  uda.department_id,
-  d.name
-FROM user_department_access uda
-JOIN departments d ON d.id = uda.department_id
-WHERE uda.user_id = (SELECT id FROM profiles WHERE email = 'admin@example.com');
+SELECT is_admin
+FROM profiles
+WHERE email = 'admin@example.com';
 ```
 
 **Rozwiązanie:**
-- Jeśli wynik jest pusty, admin widzi wszystkie działy (to oczekiwane zachowanie)
-- Aby ograniczyć, dodaj rekordy do `user_department_access`
+- Upewnij się że `is_admin = true` w tabeli profiles
+- Admin zawsze widzi wszystkie działy, niezależnie od `user_department_access`
 
 ## Kontakt i Wsparcie
 
@@ -426,7 +405,13 @@ W razie problemów:
 
 ## Changelog
 
-### 2026-02-09
+### 2026-02-09 (Update 2)
+- Naprawiono: Admin teraz zawsze widzi wszystkie działy (bez ograniczeń)
+- Naprawiono: Użytkownicy z przypisanym department_id teraz widzą swój dział w filtrach
+- Dodano pole `department_id` do interface Profile w AuthContext
+- Uproszczono funkcję loadDepartments w InvoiceListPage (używa profile z AuthContext)
+
+### 2026-02-09 (Initial)
 - Utworzono funkcję `getAccessibleDepartments()` w `departmentUtils.ts`
 - Zaktualizowano komponenty: InvoiceListPage, KSEFInvoicesPage, InvoiceDetails, UserInvitations
 - Dodano inteligentne filtrowanie działów na podstawie roli i uprawnień

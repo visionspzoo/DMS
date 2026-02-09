@@ -9,6 +9,7 @@ interface Profile {
   full_name: string;
   role: UserRole;
   is_admin: boolean;
+  department_id: string | null;
   last_login_at?: string;
 }
 

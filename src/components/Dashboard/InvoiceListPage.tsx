@@ -19,7 +19,7 @@ type Invoice = Database['public']['Tables']['invoices']['Row'];
 const SYNC_INTERVAL_MS = 10 * 60 * 1000;
 
 export function InvoiceList() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
@@ -454,18 +454,9 @@ export function InvoiceList() {
 
   const loadDepartments = async () => {
     try {
-      const { profile } = await supabase.auth.getUser();
-      if (!profile.data.user) return;
+      if (!profile) return;
 
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', profile.data.user.id)
-        .single();
-
-      if (!userProfile) return;
-
-      const accessibleDepts = await getAccessibleDepartments(userProfile);
+      const accessibleDepts = await getAccessibleDepartments(profile);
       setAvailableDepartments(accessibleDepts.map(d => d.name));
     } catch (error) {
       console.error('Error loading departments:', error);
