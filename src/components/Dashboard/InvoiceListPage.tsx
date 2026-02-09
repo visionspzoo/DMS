@@ -12,6 +12,7 @@ import {
   validateFiles,
   type FileUploadEntry,
 } from '../../lib/uploadUtils';
+import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 
@@ -453,13 +454,19 @@ export function InvoiceList() {
 
   const loadDepartments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('name')
-        .order('name', { ascending: true });
+      const { profile } = await supabase.auth.getUser();
+      if (!profile.data.user) return;
 
-      if (error) throw error;
-      setAvailableDepartments(data?.map(d => d.name) || []);
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', profile.data.user.id)
+        .single();
+
+      if (!userProfile) return;
+
+      const accessibleDepts = await getAccessibleDepartments(userProfile);
+      setAvailableDepartments(accessibleDepts.map(d => d.name));
     } catch (error) {
       console.error('Error loading departments:', error);
     }

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 import { InvoiceTags } from './InvoiceTags';
+import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
 
@@ -141,31 +142,10 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const loadDepartments = async () => {
     try {
-      const depts: {id: string, name: string}[] = [];
+      if (!profile) return;
 
-      const { data: allDepts, error } = await supabase
-        .from('departments')
-        .select('id, name')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-
-      const { data: userAccess } = await supabase
-        .from('user_department_access')
-        .select('department_id, access_type')
-        .eq('user_id', profile?.id || '');
-
-      const workflowDepts = new Set((userAccess || [])
-        .filter(a => a.access_type === 'workflow')
-        .map(a => a.department_id));
-
-      for (const dept of allDepts || []) {
-        if (dept.id === profile?.department_id || workflowDepts.has(dept.id)) {
-          depts.push(dept);
-        }
-      }
-
-      setAvailableDepartments(depts);
+      const accessibleDepts = await getAccessibleDepartments(profile);
+      setAvailableDepartments(accessibleDepts);
     } catch (error) {
       console.error('Error loading departments:', error);
     }

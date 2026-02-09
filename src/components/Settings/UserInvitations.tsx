@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Mail, UserPlus, Send, XCircle, CheckCircle, Clock, AlertCircle, Trash2, Copy, Loader } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 interface Department {
   id: string;
@@ -46,13 +47,10 @@ export default function UserInvitations() {
 
   const loadDepartments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('id, name')
-        .order('name');
+      if (!profile) return;
 
-      if (error) throw error;
-      setDepartments(data || []);
+      const accessibleDepts = await getAccessibleDepartments(profile);
+      setDepartments(accessibleDepts);
     } catch (error) {
       console.error('Error loading departments:', error);
     }

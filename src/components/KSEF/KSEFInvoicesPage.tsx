@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
 import { KSEFConfiguration } from './KSEFConfiguration';
 import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
+import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
 
@@ -83,19 +84,8 @@ export function KSEFInvoicesPage() {
     if (!profile) return;
 
     try {
-      const { data: allDepts, error } = await supabase
-        .from('departments')
-        .select('id, name')
-        .order('name');
-
-      if (error) {
-        console.error('Error loading departments:', error);
-        return;
-      }
-
-      if (allDepts && allDepts.length > 0) {
-        setDepartments(allDepts);
-      }
+      const accessibleDepts = await getAccessibleDepartments(profile);
+      setDepartments(accessibleDepts);
     } catch (error) {
       console.error('Error loading departments:', error);
     }
