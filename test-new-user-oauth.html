@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Logowania Nowego Użytkownika - OAuth</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .info-box {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+      border-left: 4px solid #2196F3;
+    }
+    .success {
+      background: #e8f5e9;
+      border-left-color: #4CAF50;
+    }
+    .error {
+      background: #ffebee;
+      border-left-color: #f44336;
+    }
+    .warning {
+      background: #fff3e0;
+      border-left-color: #ff9800;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .google-btn {
+      background: white;
+      color: #333;
+      border: 2px solid #ddd;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .google-btn:hover {
+      background: #f5f5f5;
+      border-color: #ccc;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .step {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .step h3 {
+      margin-top: 0;
+      color: #2196F3;
+    }
+    input {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      width: 100%;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Test Nowego Użytkownika - OAuth Flow</h1>
+
+    <div class="info-box">
+      <strong>Ten test sprawdzi:</strong>
+      <ul>
+        <li>Czy istnieje zaproszenie dla użytkownika</li>
+        <li>Czy logowanie OAuth działa</li>
+        <li>Czy trigger tworzy profil automatycznie</li>
+        <li>Czy użytkownik ma dostęp do systemu po zalogowaniu</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <h3>Krok 1: Sprawdź Zaproszenie</h3>
+      <input type="email" id="emailToCheck" placeholder="np. k.majcherski@auraherbals.pl">
+      <button onclick="checkInvitation()">Sprawdź Zaproszenie</button>
+      <div id="invitationResult"></div>
+    </div>
+
+    <div class="step">
+      <h3>Krok 2: Zaloguj się przez Google</h3>
+      <button class="google-btn" onclick="loginWithGoogle()">
+        <svg width="20" height="20" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        Zaloguj przez Google
+      </button>
+      <div id="loginResult"></div>
+    </div>
+
+    <div class="step">
+      <h3>Krok 3: Sprawdź Status Po Zalogowaniu</h3>
+      <button onclick="checkStatus()">Sprawdź Status</button>
+      <div id="statusResult"></div>
+    </div>
+
+    <div class="step">
+      <h3>Krok 4: Sprawdź Profil</h3>
+      <button onclick="checkProfile()">Sprawdź Profil</button>
+      <div id="profileResult"></div>
+    </div>
+
+    <div class="step">
+      <h3>Debug Info</h3>
+      <button onclick="getDebugInfo()">Pokaż Szczegóły Debugowania</button>
+      <div id="debugInfo"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://mzncjizbhvrqyyzclqxi.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16bmNqaXpiaHZycXl5emNscXhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjgzNzk3NzYsImV4cCI6MjA0Mzk1NTc3Nn0.TdGmcBmHW1w7_b3_lPOuaJ22e8_HFqK-y47jMOGNRLE';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Monitor auth state changes
+    supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session);
+      if (event === 'SIGNED_IN') {
+        document.getElementById('loginResult').innerHTML = `
+          <div class="info-box success">
+            <strong>✓ Zalogowano pomyślnie!</strong><br>
+            Email: ${session.user.email}<br>
+            User ID: ${session.user.id}
+          </div>
+        `;
+        // Automatycznie sprawdź profil
+        setTimeout(checkProfile, 1000);
+      }
+      if (event === 'SIGNED_OUT') {
+        document.getElementById('loginResult').innerHTML = `
+          <div class="info-box">Wylogowano</div>
+        `;
+      }
+    });
+
+    async function checkInvitation() {
+      const email = document.getElementById('emailToCheck').value;
+      if (!email) {
+        alert('Wprowadź adres email');
+        return;
+      }
+
+      const result = document.getElementById('invitationResult');
+      result.innerHTML = '<div class="info-box">Sprawdzanie...</div>';
+
+      try {
+        const { data, error } = await supabase
+          .from('user_invitations')
+          .select('*, department:departments(name)')
+          .eq('email', email.toLowerCase())
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          result.innerHTML = `
+            <div class="info-box success">
+              <strong>✓ Znaleziono zaproszenie!</strong><br>
+              Email: ${data.email}<br>
+              Rola: ${data.role}<br>
+              Dział: ${data.department?.name || 'Brak'}<br>
+              Wygasa: ${new Date(data.expires_at).toLocaleString('pl-PL')}<br>
+              <br>
+              <em>Możesz się zalogować przez Google</em>
+            </div>
+          `;
+        } else {
+          result.innerHTML = `
+            <div class="info-box error">
+              <strong>✗ Brak zaproszenia</strong><br>
+              Nie znaleziono aktywnego zaproszenia dla tego adresu email.<br>
+              <br>
+              Administrator musi najpierw wysłać zaproszenie.
+            </div>
+          `;
+        }
+      } catch (err) {
+        result.innerHTML = `
+          <div class="info-box error">
+            <strong>Błąd:</strong> ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    async function loginWithGoogle() {
+      const result = document.getElementById('loginResult');
+      result.innerHTML = '<div class="info-box">Przekierowywanie do Google...</div>';
+
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.href,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        if (!data.url) {
+          throw new Error('Google OAuth nie jest skonfigurowany w Supabase');
+        }
+
+        // User will be redirected to Google
+      } catch (err) {
+        result.innerHTML = `
+          <div class="info-box error">
+            <strong>Błąd logowania:</strong> ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    async function checkStatus() {
+      const result = document.getElementById('statusResult');
+      result.innerHTML = '<div class="info-box">Sprawdzanie...</div>';
+
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) throw error;
+
+        if (session) {
+          result.innerHTML = `
+            <div class="info-box success">
+              <strong>✓ Sesja aktywna</strong><br>
+              User ID: ${session.user.id}<br>
+              Email: ${session.user.email}<br>
+              Email potwierdzony: ${session.user.email_confirmed_at ? 'Tak' : 'Nie'}<br>
+              Zalogowano: ${new Date(session.user.created_at).toLocaleString('pl-PL')}
+            </div>
+          `;
+        } else {
+          result.innerHTML = `
+            <div class="info-box warning">
+              Brak aktywnej sesji. Zaloguj się ponownie.
+            </div>
+          `;
+        }
+      } catch (err) {
+        result.innerHTML = `
+          <div class="info-box error">
+            <strong>Błąd:</strong> ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    async function checkProfile() {
+      const result = document.getElementById('profileResult');
+      result.innerHTML = '<div class="info-box">Sprawdzanie profilu...</div>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+          result.innerHTML = `
+            <div class="info-box warning">
+              Musisz być zalogowany żeby sprawdzić profil.
+            </div>
+          `;
+          return;
+        }
+
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*, department:departments(name)')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (profile) {
+          result.innerHTML = `
+            <div class="info-box success">
+              <strong>✓ Profil utworzony!</strong><br>
+              ID: ${profile.id}<br>
+              Email: ${profile.email}<br>
+              Imię: ${profile.full_name}<br>
+              Rola: ${profile.role}<br>
+              Dział: ${profile.department?.name || 'Brak'}<br>
+              Admin: ${profile.is_admin ? 'Tak' : 'Nie'}<br>
+              <br>
+              <em style="color: green;">✓ Trigger zadziałał poprawnie! Możesz korzystać z aplikacji.</em>
+            </div>
+          `;
+        } else {
+          result.innerHTML = `
+            <div class="info-box error">
+              <strong>✗ Profil nie został utworzony</strong><br>
+              <br>
+              To oznacza że trigger nie zadziałał lub wystąpił błąd.<br>
+              <br>
+              <strong>Możliwe przyczyny:</strong>
+              <ul>
+                <li>Brak aktywnego zaproszenia</li>
+                <li>Trigger nie jest włączony</li>
+                <li>Błąd w funkcji handle_new_user</li>
+                <li>Problem z uprawnieniami RLS</li>
+              </ul>
+              <br>
+              Skontaktuj się z administratorem systemu.
+            </div>
+          `;
+        }
+      } catch (err) {
+        result.innerHTML = `
+          <div class="info-box error">
+            <strong>Błąd sprawdzania profilu:</strong> ${err.message}<br>
+            <pre>${err.stack}</pre>
+          </div>
+        `;
+      }
+    }
+
+    async function getDebugInfo() {
+      const result = document.getElementById('debugInfo');
+      result.innerHTML = '<div class="info-box">Zbieranie informacji...</div>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        const debugData = {
+          supabase_url: SUPABASE_URL,
+          session_exists: !!session,
+          user_id: session?.user?.id || 'brak',
+          user_email: session?.user?.email || 'brak',
+          email_confirmed: session?.user?.email_confirmed_at || 'nie',
+          created_at: session?.user?.created_at || 'brak',
+          oauth_provider: session?.user?.app_metadata?.provider || 'brak',
+          user_metadata: session?.user?.user_metadata || {},
+          current_url: window.location.href,
+          hash_params: window.location.hash,
+        };
+
+        result.innerHTML = `
+          <div class="info-box">
+            <strong>Debug Information:</strong>
+            <pre>${JSON.stringify(debugData, null, 2)}</pre>
+          </div>
+        `;
+      } catch (err) {
+        result.innerHTML = `
+          <div class="info-box error">
+            <strong>Błąd:</strong> ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    // Check for OAuth errors in URL
+    window.addEventListener('load', () => {
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.substring(1));
+        const error = params.get('error');
+        const errorDescription = params.get('error_description');
+
+        if (error) {
+          document.getElementById('loginResult').innerHTML = `
+            <div class="info-box error">
+              <strong>OAuth Error:</strong><br>
+              ${error}<br>
+              ${errorDescription || ''}
+            </div>
+          `;
+        }
+      }
+
+      // Auto-check status if logged in
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          checkStatus();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
