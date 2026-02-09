@@ -13,9 +13,22 @@ export function LoginForm() {
     const hash = window.location.hash;
     if (hash) {
       const params = new URLSearchParams(hash.substring(1));
-      const oauthError = params.get('error_description') || params.get('error');
-      if (oauthError) {
-        setError(decodeURIComponent(oauthError.replace(/\+/g, ' ')));
+      const errorCode = params.get('error');
+      const errorDescription = params.get('error_description');
+
+      if (errorCode) {
+        console.error('OAuth Error:', errorCode, errorDescription);
+
+        // Provide user-friendly error messages
+        let friendlyError = decodeURIComponent((errorDescription || errorCode).replace(/\+/g, ' '));
+
+        if (errorCode === 'access_denied') {
+          friendlyError = 'Anulowano logowanie przez Google. Spróbuj ponownie.';
+        } else if (friendlyError.includes('invitation')) {
+          friendlyError = 'Brak aktywnego zaproszenia dla tego konta. Skontaktuj się z administratorem.';
+        }
+
+        setError(friendlyError);
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
@@ -40,8 +53,11 @@ export function LoginForm() {
       if (error) throw error;
 
       if (!data?.url) {
-        throw new Error('Google OAuth nie jest skonfigurowany w Supabase.');
+        throw new Error('Google OAuth nie jest skonfigurowany w Supabase. Skontaktuj się z administratorem.');
       }
+
+      // Log successful OAuth initiation
+      console.log('OAuth URL generated, redirecting to Google...');
     } catch (err: any) {
       setError(err.message || 'Błąd logowania przez Google');
       setLoading(false);
