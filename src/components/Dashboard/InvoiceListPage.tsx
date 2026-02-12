@@ -340,6 +340,14 @@ export function InvoiceList() {
 
         const deptMap = new Map(depts?.map(d => [d.id, d]) || []);
 
+        const fetcherIds = [...new Set(ksefInvoices.map(k => k.fetched_by).filter(Boolean))];
+        const { data: fetchers } = await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('id', fetcherIds);
+
+        const fetcherMap = new Map(fetchers?.map(f => [f.id, f]) || []);
+
         const convertedKsefInvoices = ksefInvoices.map(ksef => ({
           id: ksef.id,
           invoice_number: ksef.invoice_number,
@@ -351,7 +359,7 @@ export function InvoiceList() {
           issue_date: ksef.issue_date,
           due_date: null,
           status: 'draft',
-          uploaded_by: null,
+          uploaded_by: ksef.fetched_by,
           department_id: ksef.transferred_to_department_id,
           file_url: null,
           pdf_base64: null,
@@ -360,7 +368,9 @@ export function InvoiceList() {
           exchange_rate: 1,
           created_at: ksef.created_at,
           updated_at: ksef.created_at,
-          uploader: null,
+          source: 'ksef',
+          ksef_reference_number: ksef.ksef_reference_number,
+          uploader: ksef.fetched_by ? fetcherMap.get(ksef.fetched_by) : null,
           department: ksef.transferred_to_department_id ? deptMap.get(ksef.transferred_to_department_id) : null,
         }));
 

@@ -83,6 +83,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [ksefPdfBase64, setKsefPdfBase64] = useState<string | null>(null);
+  const [loadingKsefPdf, setLoadingKsefPdf] = useState(false);
 
   const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
     (invoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -94,6 +96,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadDepartments();
     loadInvoiceDepartments();
     checkIfFromKSEF();
+    loadKsefPdfIfNeeded();
   }, [invoice.id]);
 
   const checkIfFromKSEF = async () => {
@@ -111,6 +114,45 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
     } catch (error) {
       console.error('Error checking if invoice is from KSEF:', error);
+    }
+  };
+
+  const loadKsefPdfIfNeeded = async () => {
+    const ksefReferenceNumber = (invoice as any).ksef_reference_number;
+
+    if (!ksefReferenceNumber || invoice.pdf_base64 || invoice.file_url) {
+      return;
+    }
+
+    setLoadingKsefPdf(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
+      const pdfParams = new URLSearchParams({
+        path: `/api/external/invoices/${encodeURIComponent(ksefReferenceNumber)}/pdf`,
+      });
+
+      const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (pdfResponse.ok) {
+        const pdfBlob = await pdfResponse.blob();
+        const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+        const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+        setKsefPdfBase64(pdfBase64);
+      } else {
+        console.error('Failed to load KSEF PDF');
+      }
+    } catch (error) {
+      console.error('Error loading KSEF PDF:', error);
+    } finally {
+      setLoadingKsefPdf(false);
     }
   };
 
@@ -867,7 +909,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         <div className="flex-1 overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 h-full">
-            {(invoice.file_url || invoice.pdf_base64) && (
+            {(invoice.file_url || invoice.pdf_base64 || ksefPdfBase64 || loadingKsefPdf) && (
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Podgląd dokumentu</h3>
@@ -884,9 +926,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   )}
                 </div>
                 <div className="flex-1 border-2 border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800">
-                  {invoice.pdf_base64 ? (
+                  {loadingKsefPdf ? (
+                    <div className="flex flex-col items-center justify-center gap-4 p-8 h-full">
+                      <RefreshCw className="w-12 h-12 text-brand-primary animate-spin" />
+                      <p className="text-slate-600 dark:text-slate-400">Pobieranie PDF z KSEF...</p>
+                    </div>
+                  ) : (invoice.pdf_base64 || ksefPdfBase64) ? (
                     <iframe
-                      src={`data:application/pdf;base64,${invoice.pdf_base64}`}
+                      src={`data:application/pdf;base64,${invoice.pdf_base64 || ksefPdfBase64}`}
                       className="w-full h-full"
                       title="Podgląd faktury PDF"
                       style={{ border: 'none', minHeight: '600px' }}
