@@ -814,13 +814,13 @@ export function KSEFInvoicesPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+              <thead className="bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
                 <tr>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                     Numer faktury
                   </th>
                   <th
-                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-light-surface dark:hover:bg-dark-surface transition"
                     onClick={() => handleSort('supplier_name')}
                   >
                     <div className="flex items-center gap-1">
@@ -831,7 +831,7 @@ export function KSEFInvoicesPage() {
                     </div>
                   </th>
                   <th
-                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-light-surface dark:hover:bg-dark-surface transition"
                     onClick={() => handleSort('issue_date')}
                   >
                     <div className="flex items-center gap-1">
@@ -853,7 +853,7 @@ export function KSEFInvoicesPage() {
                     </div>
                   </th>
                   <th
-                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-light-surface dark:hover:bg-dark-surface transition"
                     onClick={() => handleSort('department')}
                   >
                     <div className="flex items-center gap-1">
