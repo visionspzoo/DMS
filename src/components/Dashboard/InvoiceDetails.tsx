@@ -64,6 +64,7 @@ function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string 
 
 export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsProps) {
   const { profile } = useAuth();
+  const [currentInvoice, setCurrentInvoice] = useState<Invoice>(invoice);
   const [approvals, setApprovals] = useState<ApprovalWithProfile[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogWithUser[]>([]);
   const [invoiceDepartments, setInvoiceDepartments] = useState<InvoiceDepartment[]>([]);
@@ -71,9 +72,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedInvoice, setEditedInvoice] = useState<Partial<Invoice>>({
-    ...invoice,
-    supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
-    supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+    ...currentInvoice,
+    supplier_name: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+    supplier_nip: currentInvoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
   });
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -91,9 +92,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
 
-  const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
-    (invoice.supplier_nip?.includes('[BŁĄD]')) ||
-    (invoice.supplier_name?.includes('[BŁĄD'));
+  const isInvalidBuyer = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
+    (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
+    (currentInvoice.supplier_name?.includes('[BŁĄD'));
 
   useEffect(() => {
     loadApprovals();
@@ -103,7 +104,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     checkIfFromKSEF();
     loadKsefPdfIfNeeded();
     loadCostCenters();
-  }, [invoice.id]);
+  }, [currentInvoice.id]);
 
   const checkIfFromKSEF = async () => {
     try {
@@ -125,7 +126,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         const { data, error } = await supabase
           .from('ksef_invoices')
           .select('id')
-          .eq('transferred_to_invoice_id', invoice.id)
+          .eq('transferred_to_invoice_id', currentInvoice.id)
           .maybeSingle();
 
         if (error) throw error;
@@ -143,7 +144,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     const { data: ksefRecord } = await supabase
       .from('ksef_invoices')
       .select('xml_content, ksef_reference_number, pdf_base64')
-      .eq('transferred_to_invoice_id', invoice.id)
+      .eq('transferred_to_invoice_id', currentInvoice.id)
       .maybeSingle();
 
     if (!ksefRecord) return null;
@@ -170,7 +171,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           await supabase
             .from('ksef_invoices')
             .update({ pdf_base64: pdfBase64 })
-            .eq('transferred_to_invoice_id', invoice.id);
+            .eq('transferred_to_invoice_id', currentInvoice.id);
           return pdfBase64;
         } else {
           console.warn(`PDF download from KSEF API failed (${pdfResponse.status}), trying XML generation`);
@@ -203,7 +204,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           await supabase
             .from('ksef_invoices')
             .update({ pdf_base64: pdfBase64 })
-            .eq('transferred_to_invoice_id', invoice.id);
+            .eq('transferred_to_invoice_id', currentInvoice.id);
           return pdfBase64;
         } else {
           console.warn(`PDF generation from XML failed (${genResponse.status})`);
@@ -217,15 +218,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const loadKsefPdfIfNeeded = async () => {
-    if (invoice.pdf_base64 || invoice.file_url) return;
-    if (invoice.source !== 'ksef') return;
+    if (currentInvoice.pdf_base64 || currentInvoice.file_url) return;
+    if (currentInvoice.source !== 'ksef') return;
 
     setLoadingKsefPdf(true);
     try {
       const pdf = await fetchKsefPdf();
       if (pdf) {
         setKsefPdfBase64(pdf);
-        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', invoice.id);
+        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', currentInvoice.id);
       }
     } catch (error) {
       console.error('Error loading KSEF PDF:', error);
@@ -241,7 +242,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const pdf = await fetchKsefPdf();
       if (pdf) {
         setKsefPdfBase64(pdf);
-        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', invoice.id);
+        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', currentInvoice.id);
         onUpdate();
       } else {
         alert('Nie udalo sie wygenerowac PDF. Sprobuj ponownie pozniej.');
@@ -262,7 +263,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           *,
           approver:approver_id(full_name, role)
         `)
-        .eq('invoice_id', invoice.id)
+        .eq('invoice_id', currentInvoice.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -277,7 +278,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { data: logs, error } = await supabase
         .from('audit_logs')
         .select('*')
-        .eq('invoice_id', invoice.id)
+        .eq('invoice_id', currentInvoice.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -329,7 +330,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           *,
           department:departments(id, name)
         `)
-        .eq('invoice_id', invoice.id)
+        .eq('invoice_id', currentInvoice.id)
         .order('is_primary', { ascending: false });
 
       if (error) throw error;
@@ -363,7 +364,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { error: approvalError } = await supabase
         .from('approvals')
         .insert({
-          invoice_id: invoice.id,
+          invoice_id: currentInvoice.id,
           approver_id: profile.id,
           approver_role: profile.role,
           action,
@@ -374,10 +375,10 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       let newStatus = action === 'approved' ? 'accepted' : 'rejected';
 
-      if (action === 'approved' && invoice.department_id) {
+      if (action === 'approved' && currentInvoice.department_id) {
         const { data: nextApprover, error: approverError } = await supabase
           .rpc('get_next_approver_in_department', {
-            dept_id: invoice.department_id,
+            dept_id: currentInvoice.department_id,
             user_role: profile.role,
           });
 
@@ -395,7 +396,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { data, error: updateError } = await supabase
         .from('invoices')
         .update({ status: newStatus })
-        .eq('id', invoice.id)
+        .eq('id', currentInvoice.id)
         .select()
         .single();
 
@@ -403,11 +404,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       Object.assign(invoice, data);
 
-      if (newStatus === 'accepted' && invoice.google_drive_id && invoice.department_id) {
+      if (newStatus === 'accepted' && currentInvoice.google_drive_id && currentInvoice.department_id) {
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
-          .eq('id', invoice.department_id)
+          .eq('id', currentInvoice.department_id)
           .single();
 
         if (deptData?.google_drive_unpaid_folder_id) {
@@ -421,7 +422,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  fileId: invoice.google_drive_id,
+                  fileId: currentInvoice.google_drive_id,
                   targetFolderId: deptData.google_drive_unpaid_folder_id,
                 }),
               }
@@ -455,11 +456,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    if (invoice.uploaded_by === profile.id) {
+    if (currentInvoice.uploaded_by === profile.id) {
       return false;
     }
 
-    return invoice.status === 'pending' || invoice.status === 'waiting';
+    return currentInvoice.status === 'pending' || currentInvoice.status === 'waiting';
   };
 
   const canEdit = () => {
@@ -467,11 +468,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    if (invoice.status === 'draft' && invoice.uploaded_by === profile.id) {
+    if (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile.id) {
       return true;
     }
 
-    if (invoice.uploaded_by !== profile.id && (invoice.status === 'waiting' || invoice.status === 'pending')) {
+    if (currentInvoice.uploaded_by !== profile.id && (currentInvoice.status === 'waiting' || currentInvoice.status === 'pending')) {
       return true;
     }
 
@@ -498,7 +499,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           description: editedInvoice.description,
           cost_center_id: editedInvoice.cost_center_id || null,
         })
-        .eq('id', invoice.id);
+        .eq('id', currentInvoice.id);
 
       if (error) throw error;
 
@@ -514,7 +515,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleDelete = async () => {
     setLoading(true);
     try {
-      if (invoice.google_drive_id) {
+      if (currentInvoice.google_drive_id) {
         try {
           const deleteResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
@@ -525,7 +526,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                fileId: invoice.google_drive_id,
+                fileId: currentInvoice.google_drive_id,
               }),
             }
           );
@@ -540,8 +541,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         }
       }
 
-      if (invoice.file_url) {
-        const filePath = invoice.file_url.split('/').pop();
+      if (currentInvoice.file_url) {
+        const filePath = currentInvoice.file_url.split('/').pop();
         if (filePath) {
           const { error: storageError } = await supabase.storage
             .from('documents')
@@ -556,7 +557,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { error } = await supabase
         .from('invoices')
         .delete()
-        .eq('id', invoice.id);
+        .eq('id', currentInvoice.id);
 
       if (error) throw error;
 
@@ -583,15 +584,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           paid_by: profile.id,
           status: 'accepted',
         })
-        .eq('id', invoice.id);
+        .eq('id', currentInvoice.id);
 
       if (error) throw error;
 
-      if (invoice.google_drive_id && invoice.department_id) {
+      if (currentInvoice.google_drive_id && currentInvoice.department_id) {
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_paid_folder_id')
-          .eq('id', invoice.department_id)
+          .eq('id', currentInvoice.department_id)
           .single();
 
         if (deptData?.google_drive_paid_folder_id) {
@@ -605,7 +606,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  fileId: invoice.google_drive_id,
+                  fileId: currentInvoice.google_drive_id,
                   targetFolderId: deptData.google_drive_paid_folder_id,
                 }),
               }
@@ -638,8 +639,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      if (invoice.status === 'draft') {
-        if (!invoice.department_id) {
+      if (currentInvoice.status === 'draft') {
+        if (!currentInvoice.department_id) {
           alert('Proszę przypisać dział przed przesłaniem faktury do obiegu.');
           setLoading(false);
           return;
@@ -647,7 +648,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         const { data: nextApprover, error: approverError } = await supabase
           .rpc('get_next_approver_in_department', {
-            dept_id: invoice.department_id,
+            dept_id: currentInvoice.department_id,
             user_role: profile.role,
           });
 
@@ -669,15 +670,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           .update({
             status: 'waiting',
           })
-          .eq('id', invoice.id);
+          .eq('id', currentInvoice.id);
 
         if (updateError) throw updateError;
 
         alert('Faktura została przesłana do akceptacji');
         onUpdate();
         onClose();
-      } else if (invoice.status === 'accepted') {
-        if (!invoice.department_id) {
+      } else if (currentInvoice.status === 'accepted') {
+        if (!currentInvoice.department_id) {
           alert('Faktura musi mieć przypisany dział.');
           setLoading(false);
           return;
@@ -685,7 +686,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         const { data: nextApprover, error: approverError } = await supabase
           .rpc('get_next_approver_in_department', {
-            dept_id: invoice.department_id,
+            dept_id: currentInvoice.department_id,
             user_role: profile.role,
           });
 
@@ -707,7 +708,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           .update({
             status: 'waiting',
           })
-          .eq('id', invoice.id);
+          .eq('id', currentInvoice.id);
 
         if (updateError) throw updateError;
 
@@ -728,34 +729,193 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
+      console.log('🔄 === ROZPOCZYNAM TRANSFER FAKTURY KSEF DO OBIEGU ===');
+      console.log('Invoice ID:', currentInvoice.id);
+      console.log('KSEF Invoice ID:', ksefInvoiceId);
+      console.log('User ID:', profile.id);
+
+      // Step 1: Get user's department
+      console.log('📂 Pobieranie informacji o dziale użytkownika...');
+      const { data: department, error: deptError } = await supabase
+        .from('departments')
+        .select('id, name, google_drive_draft_folder_id')
+        .eq('id', profile.department_id)
+        .maybeSingle();
+
+      if (deptError || !department) {
+        throw new Error('Nie znaleziono działu użytkownika');
+      }
+      console.log('✓ Dział:', department.name);
+
+      // Step 2: Get PDF from KSEF invoice
+      console.log('📄 Pobieranie PDF z KSEF invoice...');
       const { data: ksefInvoice, error: ksefError } = await supabase
         .from('ksef_invoices')
-        .select('pdf_base64')
+        .select('pdf_base64, invoice_number, supplier_name, supplier_nip, gross_amount, net_amount, tax_amount, currency, issue_date')
         .eq('id', ksefInvoiceId)
         .maybeSingle();
 
       if (ksefError) throw ksefError;
+      if (!ksefInvoice?.pdf_base64) {
+        throw new Error('Brak PDF dla tej faktury KSEF');
+      }
+      console.log('✓ PDF base64 pobrany, długość:', ksefInvoice.pdf_base64.length);
 
-      let updateData: Partial<Invoice> = {
+      // Step 3: Upload to Google Drive if configured
+      let driveFileUrl: string | null = null;
+      let googleDriveId: string | null = null;
+
+      if (department.google_drive_draft_folder_id) {
+        try {
+          console.log('☁️ Przesyłanie PDF na Google Drive...');
+          console.log('Folder ID:', department.google_drive_draft_folder_id);
+
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                pdfBase64: ksefInvoice.pdf_base64,
+                fileName: `${ksefInvoice.invoice_number.replace(/\//g, '_')}.pdf`,
+                folderId: department.google_drive_draft_folder_id,
+              }),
+            }
+          );
+
+          if (uploadResponse.ok) {
+            const uploadResult = await uploadResponse.json();
+            googleDriveId = uploadResult.fileId;
+            driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
+            console.log('✓ PDF przesłany na Google Drive:', driveFileUrl);
+          } else {
+            const errorText = await uploadResponse.text();
+            console.warn('⚠️ Nie udało się przesłać PDF na Google Drive:', errorText);
+          }
+        } catch (uploadError) {
+          console.error('❌ Google Drive upload failed:', uploadError);
+        }
+      } else {
+        console.warn('⚠️ Brak skonfigurowanego folderu Google Drive dla tego działu');
+      }
+
+      // Step 4: Get exchange rate if needed
+      console.log('💱 Sprawdzanie kursu wymiany...');
+      let exchangeRate = 1;
+      let plnGrossAmount = ksefInvoice.gross_amount;
+
+      if (ksefInvoice.currency !== 'PLN' && ksefInvoice.issue_date) {
+        try {
+          const rateResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-exchange-rate`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                currency: ksefInvoice.currency,
+                date: ksefInvoice.issue_date,
+              }),
+            }
+          );
+
+          if (rateResponse.ok) {
+            const rateData = await rateResponse.json();
+            exchangeRate = rateData.rate;
+            plnGrossAmount = ksefInvoice.gross_amount * exchangeRate;
+            console.log('✓ Kurs wymiany:', exchangeRate, 'PLN =', plnGrossAmount);
+          } else {
+            console.warn('⚠️ Nie udało się pobrać kursu wymiany, używam 1:1');
+          }
+        } catch (rateError) {
+          console.error('❌ Błąd pobierania kursu wymiany:', rateError);
+        }
+      }
+
+      // Step 5: Update invoice with all data
+      console.log('💾 Aktualizowanie faktury...');
+      const updateData: Partial<Invoice> = {
         status: 'draft',
         uploaded_by: profile.id,
+        department_id: profile.department_id,
+        current_approver_id: profile.id,
+        pdf_base64: ksefInvoice.pdf_base64,
+        file_url: driveFileUrl,
+        google_drive_id: googleDriveId,
+        pln_gross_amount: plnGrossAmount,
+        exchange_rate: exchangeRate,
       };
-
-      if (ksefInvoice?.pdf_base64 && !invoice.pdf_base64) {
-        updateData.pdf_base64 = ksefInvoice.pdf_base64;
-      }
 
       const { error: updateError } = await supabase
         .from('invoices')
         .update(updateData)
-        .eq('id', invoice.id);
+        .eq('id', currentInvoice.id);
 
       if (updateError) throw updateError;
+      console.log('✓ Faktura zaktualizowana pomyślnie');
+
+      // Step 6: Run OCR if uploaded to Google Drive
+      if (driveFileUrl) {
+        try {
+          console.log('🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===');
+          const ocrResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileUrl: driveFileUrl,
+                invoiceId: currentInvoice.id,
+              }),
+            }
+          );
+
+          if (ocrResponse.ok) {
+            const ocrData = await ocrResponse.json();
+            console.log('✓ OCR zakończone pomyślnie:', ocrData);
+          } else {
+            const ocrError = await ocrResponse.text();
+            console.error('❌ OCR nie powiodło się:', ocrError);
+          }
+        } catch (ocrError) {
+          console.error('❌ Błąd OCR (non-blocking):', ocrError);
+        }
+      } else {
+        console.log('ℹ️ Pomijam OCR - brak pliku na Google Drive');
+      }
+
+      console.log('✅ === TRANSFER FAKTURY ZAKOŃCZONY POMYŚLNIE ===');
+
+      // Wait a bit and reload the data
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Refresh invoice data
+      console.log('🔄 Odświeżam dane faktury...');
+      const { data: updatedInvoice, error: refreshError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+
+      if (refreshError) {
+        console.error('Błąd odświeżania faktury:', refreshError);
+      } else if (updatedInvoice) {
+        setCurrentInvoice(updatedInvoice as Invoice);
+        console.log('✓ Dane faktury odświeżone');
+      }
 
       onUpdate();
     } catch (error) {
-      console.error('Error confirming KSEF invoice:', error);
-      alert('Nie udało się potwierdzić faktury');
+      console.error('❌ Error confirming KSEF invoice:', error);
+      alert(error instanceof Error ? error.message : 'Nie udało się potwierdzić faktury');
     } finally {
       setLoading(false);
     }
@@ -766,7 +926,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      if (invoice.google_drive_id) {
+      if (currentInvoice.google_drive_id) {
         try {
           const deleteResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
@@ -777,7 +937,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                fileId: invoice.google_drive_id,
+                fileId: currentInvoice.google_drive_id,
               }),
             }
           );
@@ -806,14 +966,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { data: checkInvoice } = await supabase
         .from('invoices')
         .select('id')
-        .eq('id', invoice.id)
+        .eq('id', currentInvoice.id)
         .maybeSingle();
 
       if (checkInvoice) {
         const { error: deleteInvoiceError } = await supabase
           .from('invoices')
           .delete()
-          .eq('id', invoice.id);
+          .eq('id', currentInvoice.id);
 
         if (deleteInvoiceError) throw deleteInvoiceError;
       }
@@ -831,7 +991,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const handleReprocessOCR = async () => {
-    if (!invoice.file_url && !invoice.pdf_base64) {
+    if (!currentInvoice.file_url && !currentInvoice.pdf_base64) {
       alert('Brak pliku do przetworzenia');
       return;
     }
@@ -839,13 +999,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     setIsReprocessing(true);
     try {
       const requestBody: any = {
-        invoiceId: invoice.id,
+        invoiceId: currentInvoice.id,
       };
 
-      if (invoice.file_url) {
-        requestBody.fileUrl = invoice.file_url;
-      } else if (invoice.pdf_base64) {
-        requestBody.pdfBase64 = invoice.pdf_base64;
+      if (currentInvoice.file_url) {
+        requestBody.fileUrl = currentInvoice.file_url;
+      } else if (currentInvoice.pdf_base64) {
+        requestBody.pdfBase64 = currentInvoice.pdf_base64;
       }
 
       const response = await fetch(
@@ -874,7 +1034,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             const { error: tagError } = await supabase
               .from('invoice_tags')
               .upsert({
-                invoice_id: invoice.id,
+                invoice_id: currentInvoice.id,
                 tag_id: tag.id,
               }, {
                 onConflict: 'invoice_id,tag_id',
@@ -913,7 +1073,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           current_approver_id: userId,
           status: 'waiting',
         })
-        .eq('id', invoice.id);
+        .eq('id', currentInvoice.id);
 
       if (updateError) throw updateError;
 
@@ -934,7 +1094,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const { error: auditError } = await supabase
         .from('audit_logs')
         .insert({
-          invoice_id: invoice.id,
+          invoice_id: currentInvoice.id,
           user_id: profile.id,
           action: 'update',
           description: 'Użytkownik potwierdził dane rozpoznane przez AI',
@@ -952,7 +1112,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
-  const needsKsefPdf = invoice.source === 'ksef' && !invoice.pdf_base64 && !invoice.file_url && !ksefPdfBase64 && pdfLoadAttempted && !loadingKsefPdf;
+  const needsKsefPdf = currentInvoice.source === 'ksef' && !currentInvoice.pdf_base64 && !currentInvoice.file_url && !ksefPdfBase64 && pdfLoadAttempted && !loadingKsefPdf;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -962,7 +1122,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {isFromKSEF && invoice.status === 'draft' && (profile?.role === 'Administrator' || invoice.uploaded_by === profile?.id) && (
+                {isFromKSEF && currentInvoice.status === 'draft' && (profile?.role === 'Administrator' || currentInvoice.uploaded_by === profile?.id) && (
                   <>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -981,7 +1141,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
+                {currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
@@ -1002,7 +1162,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {invoice.status === 'accepted' && invoice.uploaded_by !== profile?.id && (
+                {currentInvoice.status === 'accepted' && currentInvoice.uploaded_by !== profile?.id && (
                   <button
                     onClick={() => setShowTransferModal(true)}
                     disabled={loading}
@@ -1012,7 +1172,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Prześlij</span>
                   </button>
                 )}
-                {!invoice.paid_at && invoice.status !== 'accepted' && (
+                {!currentInvoice.paid_at && currentInvoice.status !== 'accepted' && (
                   <button
                     onClick={() => setShowPaidConfirm(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
@@ -1021,7 +1181,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
-                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
+                {currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
@@ -1035,8 +1195,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     onClick={() => {
                       setEditedInvoice({
                         ...invoice,
-                        supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
-                        supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                        supplier_name: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                        supplier_nip: currentInvoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
                       });
                       setIsEditing(true);
                     }}
@@ -1054,8 +1214,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     setIsEditing(false);
                     setEditedInvoice({
                       ...invoice,
-                      supplier_name: invoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
-                      supplier_nip: invoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                      supplier_name: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+                      supplier_nip: currentInvoice.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
                     });
                   }}
                   className="px-3 py-2 bg-slate-200 dark:bg-slate-700 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition font-medium"
@@ -1083,13 +1243,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         <div className="flex-1 overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 h-full">
-            {(invoice.file_url || invoice.pdf_base64 || ksefPdfBase64 || loadingKsefPdf || generatingPdf || needsKsefPdf) && (
+            {(currentInvoice.file_url || currentInvoice.pdf_base64 || ksefPdfBase64 || loadingKsefPdf || generatingPdf || needsKsefPdf) && (
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Podgląd dokumentu</h3>
-                  {invoice.file_url && (
+                  {currentInvoice.file_url && (
                     <a
-                      href={invoice.file_url}
+                      href={currentInvoice.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-2 text-brand-primary hover:text-brand-primary/80 font-medium text-sm"
@@ -1110,14 +1270,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <RefreshCw className="w-12 h-12 text-brand-primary animate-spin" />
                       <p className="text-slate-600 dark:text-slate-400">Pobieranie PDF z KSEF...</p>
                     </div>
-                  ) : (invoice.pdf_base64 || ksefPdfBase64) ? (
+                  ) : (currentInvoice.pdf_base64 || ksefPdfBase64) ? (
                     <iframe
-                      src={`data:application/pdf;base64,${invoice.pdf_base64 || ksefPdfBase64}`}
+                      src={`data:application/pdf;base64,${currentInvoice.pdf_base64 || ksefPdfBase64}`}
                       className="w-full h-full"
                       title="Podgląd faktury PDF"
                       style={{ border: 'none', minHeight: '600px' }}
                     />
-                  ) : isFromKSEF && invoice.status === 'draft' ? (
+                  ) : isFromKSEF && currentInvoice.status === 'draft' ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileCheck className="w-20 h-20 text-blue-400 dark:text-blue-500" />
                       <div className="text-center max-w-md">
@@ -1159,7 +1319,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         </button>
                       </div>
                     </div>
-                  ) : invoice.file_url && invoice.file_url.toLowerCase().endsWith('.pdf') ? (
+                  ) : currentInvoice.file_url && currentInvoice.file_url.toLowerCase().endsWith('.pdf') ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileText className="w-24 h-24 text-slate-400" />
                       <div className="text-center">
@@ -1167,10 +1327,10 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           Podgląd niedostępny
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          {invoice.invoice_number || 'Faktura'}
+                          {currentInvoice.invoice_number || 'Faktura'}
                         </p>
                         <a
-                          href={invoice.file_url}
+                          href={currentInvoice.file_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
@@ -1180,7 +1340,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         </a>
                       </div>
                     </div>
-                  ) : invoice.file_url.includes('drive.google.com') ? (
+                  ) : currentInvoice.file_url.includes('drive.google.com') ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileText className="w-24 h-24 text-slate-400" />
                       <div className="text-center">
@@ -1188,10 +1348,10 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           Dokument w Google Drive
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          {invoice.invoice_number || 'Faktura'}
+                          {currentInvoice.invoice_number || 'Faktura'}
                         </p>
                         <a
-                          href={invoice.file_url}
+                          href={currentInvoice.file_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
@@ -1203,7 +1363,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   ) : (
                     <img
-                      src={invoice.file_url}
+                      src={currentInvoice.file_url}
                       alt="Podgląd faktury"
                       className="w-full h-full object-contain"
                     />
@@ -1233,7 +1393,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         />
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.invoice_number || 'Przetwarzanie...'}
+                          {currentInvoice.invoice_number || 'Przetwarzanie...'}
                         </p>
                       )}
                     </div>
@@ -1241,7 +1401,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Status</label>
                       {isEditing ? (
                         <select
-                          value={editedInvoice.status || invoice.status}
+                          value={editedInvoice.status || currentInvoice.status}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, status: e.target.value as any })}
                           className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                         >
@@ -1254,7 +1414,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         </select>
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {statusLabels[getUserSpecificStatus(invoice, profile?.id || '')] || invoice.status}
+                          {statusLabels[getUserSpecificStatus(currentInvoice, profile?.id || '')] || currentInvoice.status}
                         </p>
                       )}
                     </div>
@@ -1293,7 +1453,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
-                          {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
+                          {(currentInvoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                         </p>
                       )}
                     </div>
@@ -1316,7 +1476,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
-                          {(invoice.supplier_nip || '—').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
+                          {(currentInvoice.supplier_nip || '—').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                         </p>
                       )}
                     </div>
@@ -1334,8 +1494,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         />
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.issue_date
-                            ? new Date(invoice.issue_date).toLocaleDateString('pl-PL')
+                          {currentInvoice.issue_date
+                            ? new Date(currentInvoice.issue_date).toLocaleDateString('pl-PL')
                             : '—'}
                         </p>
                       )}
@@ -1351,8 +1511,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         />
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.due_date
-                            ? new Date(invoice.due_date).toLocaleDateString('pl-PL')
+                          {currentInvoice.due_date
+                            ? new Date(currentInvoice.due_date).toLocaleDateString('pl-PL')
                             : '—'}
                         </p>
                       )}
@@ -1377,7 +1537,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         </select>
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.department?.name || '—'}
+                          {currentInvoice.department?.name || '—'}
                         </p>
                       )}
                     </div>
@@ -1386,7 +1546,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         Dział nadrzędny
                       </label>
                       <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.department?.parent?.name || '—'}
+                        {currentInvoice.department?.parent?.name || '—'}
                       </p>
                     </div>
                   </div>
@@ -1403,7 +1563,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         />
                       ) : (
                         <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.currency || '—'}
+                          {currentInvoice.currency || '—'}
                         </p>
                       )}
                     </div>
@@ -1453,7 +1613,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         />
                       ) : (
                         <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {invoice.description || '—'}
+                          {currentInvoice.description || '—'}
                         </p>
                       )}
                     </div>
@@ -1551,8 +1711,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       />
                     ) : (
                       <p className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.net_amount
-                          ? `${invoice.net_amount.toFixed(2)} ${invoice.currency}`
+                        {currentInvoice.net_amount
+                          ? `${currentInvoice.net_amount.toFixed(2)} ${currentInvoice.currency}`
                           : '—'}
                       </p>
                     )}
@@ -1569,8 +1729,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       />
                     ) : (
                       <p className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.tax_amount
-                          ? `${invoice.tax_amount.toFixed(2)} ${invoice.currency}`
+                        {currentInvoice.tax_amount
+                          ? `${currentInvoice.tax_amount.toFixed(2)} ${currentInvoice.currency}`
                           : '—'}
                       </p>
                     )}
@@ -1588,16 +1748,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     ) : (
                       <div className="mt-1">
                         <p className="text-lg font-bold text-brand-primary">
-                          {invoice.gross_amount
-                            ? `${invoice.gross_amount.toFixed(2)} ${invoice.currency}`
+                          {currentInvoice.gross_amount
+                            ? `${currentInvoice.gross_amount.toFixed(2)} ${currentInvoice.currency}`
                             : '—'}
                         </p>
-                        {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                        {currentInvoice.currency !== 'PLN' && currentInvoice.pln_gross_amount && (
                           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                            = {invoice.pln_gross_amount.toFixed(2)} PLN
-                            {invoice.exchange_rate && (
+                            = {currentInvoice.pln_gross_amount.toFixed(2)} PLN
+                            {currentInvoice.exchange_rate && (
                               <span className="text-xs ml-1">
-                                (kurs: {invoice.exchange_rate.toFixed(4)})
+                                (kurs: {currentInvoice.exchange_rate.toFixed(4)})
                               </span>
                             )}
                           </p>
@@ -1609,15 +1769,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               </div>
 
               <InvoiceTags
-                invoiceId={invoice.id}
+                invoiceId={currentInvoice.id}
                 isEditing={isEditing}
-                supplierName={invoice.supplier_name}
-                supplierNip={invoice.supplier_nip}
-                description={invoice.description}
-                grossAmount={invoice.gross_amount}
-                currency={invoice.currency}
-                departmentId={invoice.department_id}
-                showConfirmButton={!isEditing && invoice.status === 'draft' && invoice.uploaded_by === profile?.id}
+                supplierName={currentInvoice.supplier_name}
+                supplierNip={currentInvoice.supplier_nip}
+                description={currentInvoice.description}
+                grossAmount={currentInvoice.gross_amount}
+                currency={currentInvoice.currency}
+                departmentId={currentInvoice.department_id}
+                showConfirmButton={!isEditing && currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id}
                 onConfirmAIData={handleConfirmAIData}
                 confirmLoading={loading}
               />
@@ -1767,7 +1927,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             </div>
 
             <p className="text-slate-700 dark:text-slate-300 mb-6">
-              Czy na pewno chcesz usunąć fakturę <strong>{invoice.invoice_number || 'bez numeru'}</strong>?
+              Czy na pewno chcesz usunąć fakturę <strong>{currentInvoice.invoice_number || 'bez numeru'}</strong>?
               Zostaną również usunięte wszystkie powiązane dane, w tym historia akceptacji i logi audytu.
             </p>
 
@@ -1873,7 +2033,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             </div>
 
             <p className="text-slate-700 dark:text-slate-300 mb-6">
-              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{invoice.invoice_number || 'bez numeru'}</strong>?
+              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{currentInvoice.invoice_number || 'bez numeru'}</strong>?
               Faktura wróci do listy nieprzypisanych faktur KSEF, a plik zostanie usunięty z Google Drive.
             </p>
 
@@ -1909,8 +2069,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       {showTransferModal && (
         <TransferInvoiceModal
-          invoiceId={invoice.id}
-          currentDepartmentId={invoice.department_id}
+          invoiceId={currentInvoice.id}
+          currentDepartmentId={currentInvoice.department_id}
           onClose={() => setShowTransferModal(false)}
           onTransferToApproval={handleForwardToCirculation}
           onTransferToDepartment={handleTransferToDepartment}
