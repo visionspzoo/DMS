@@ -737,8 +737,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (ksefError) throw ksefError;
 
       let updateData: Partial<Invoice> = {
-        status: 'waiting',
-        current_approver_id: null,
+        status: 'draft',
+        uploaded_by: profile.id,
       };
 
       if (ksefInvoice?.pdf_base64 && !invoice.pdf_base64) {
