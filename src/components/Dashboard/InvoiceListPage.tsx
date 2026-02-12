@@ -301,6 +301,8 @@ export function InvoiceList() {
 
   const loadInvoices = async () => {
     try {
+      console.log('👤 Current user:', { id: user?.id, role: profile?.role, department_id: profile?.department_id });
+
       const { data, error } = await supabase
         .from('invoices')
         .select(`
@@ -310,7 +312,15 @@ export function InvoiceList() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error loading invoices:', error);
+        throw error;
+      }
+
+      console.log('📊 Loaded invoices from DB:', data?.length || 0);
+      console.log('🔍 Google Drive invoices:', data?.filter(i => i.source === 'google_drive').length || 0);
+      console.log('📝 Draft invoices:', data?.filter(i => i.status === 'draft').length || 0);
+      console.log('👥 My invoices:', data?.filter(i => i.uploaded_by === user?.id).length || 0);
 
       let allInvoices = data || [];
 
