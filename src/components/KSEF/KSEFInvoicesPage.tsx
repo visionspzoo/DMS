@@ -23,8 +23,6 @@ interface KSEFInvoice {
   tax_amount: number | null;
   gross_amount: number;
   currency: string;
-  invoice_xml: string | null;
-  xml_content: string | null;
   transferred_to_invoice_id: string | null;
   transferred_to_department_id: string | null;
   transferred_at: string | null;
@@ -444,36 +442,6 @@ export function KSEFInvoicesPage() {
         const grossAmount = invoice.grossAmount || 0;
         const taxAmount = grossAmount - netAmount;
 
-        let xmlContent = null;
-        try {
-          console.log(`Pobieranie XML dla faktury ${invoice.invoiceNumber}...`);
-          await delay(3000);
-          const proxyParams = new URLSearchParams({
-            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/xml`,
-          });
-          const xmlResponse = await fetchWithRetry(() =>
-            fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-              {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                },
-              }
-            )
-          );
-          if (xmlResponse.ok) {
-            xmlContent = await xmlResponse.text();
-            if (xmlContent && xmlContent.length > 0) {
-              console.log(`Pobrano XML (${xmlContent.length} znaków)`);
-            } else {
-              xmlContent = null;
-            }
-          }
-        } catch (xmlError: any) {
-          console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
-        }
-
         let pdfBase64 = null;
         try {
           console.log(`Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
@@ -522,7 +490,6 @@ export function KSEFInvoicesPage() {
           net_amount: netAmount,
           tax_amount: taxAmount,
           currency: invoice.currency || 'PLN',
-          xml_content: xmlContent,
           pdf_base64: pdfBase64,
           fetched_by: profile?.id,
         };
@@ -664,56 +631,19 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      // Step 1: Download PDF from KSEF API via proxy (as base64)
-      const proxyParams = new URLSearchParams({
-        path: `/api/external/invoices/${encodeURIComponent(selectedInvoice.ksef_reference_number)}/pdf-base64`,
-      });
+      const { data: ksefData, error: ksefFetchError } = await supabase
+        .from('ksef_invoices')
+        .select('pdf_base64')
+        .eq('id', selectedInvoice.id)
+        .maybeSingle();
 
-      const pdfResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        }
-      );
+      if (ksefFetchError) throw ksefFetchError;
 
-      if (!pdfResponse.ok) {
-        throw new Error('Nie udało się pobrać PDF z KSEF');
+      const base64Pdf = ksefData?.pdf_base64;
+      if (!base64Pdf) {
+        throw new Error('Brak danych PDF (base64) dla tej faktury. Pobierz faktury ponownie.');
       }
 
-      const pdfData = await pdfResponse.json();
-
-      if (!pdfData.success || !pdfData.data?.base64) {
-        throw new Error('Nieprawidłowa odpowiedź PDF base64 z KSEF');
-      }
-
-      // Step 2: Get base64 directly from response
-      const base64Pdf = pdfData.data.base64;
-
-      let xmlContent = null;
-      try {
-        const xmlProxyParams = new URLSearchParams({
-          path: `/api/external/invoices/${encodeURIComponent(selectedInvoice.ksef_reference_number)}/xml`,
-        });
-        const xmlResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${xmlProxyParams}`,
-          {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-          }
-        );
-        if (xmlResponse.ok) {
-          xmlContent = await xmlResponse.text();
-        }
-      } catch (xmlError) {
-        console.error('Nie udało się pobrać XML (non-blocking):', xmlError);
-      }
-
-      // Step 4: Get department info
       const { data: department, error: folderError } = await supabase
         .from('departments')
         .select('name, google_drive_draft_folder_id')
@@ -828,21 +758,14 @@ export function KSEFInvoicesPage() {
 
       if (insertError) throw insertError;
 
-      // Step 8: Update KSEF invoice record with XML content
-      const updateData: any = {
-        transferred_to_invoice_id: newInvoice.id,
-        transferred_to_department_id: departmentId,
-        transferred_at: new Date().toISOString(),
-        assigned_to_department_at: new Date().toISOString(),
-      };
-
-      if (xmlContent) {
-        updateData.xml_content = xmlContent;
-      }
-
       const { error: updateError } = await supabase
         .from('ksef_invoices')
-        .update(updateData)
+        .update({
+          transferred_to_invoice_id: newInvoice.id,
+          transferred_to_department_id: departmentId,
+          transferred_at: new Date().toISOString(),
+          assigned_to_department_at: new Date().toISOString(),
+        })
         .eq('id', selectedInvoice.id);
 
       if (updateError) throw updateError;
@@ -880,7 +803,7 @@ export function KSEFInvoicesPage() {
         }
       }
 
-      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF' + (xmlContent ? ' i XML' : '') + (driveFileUrl ? ' i przetworzona przez OCR' : '') + '.');
+      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF' + (driveFileUrl ? ' i przetworzona przez OCR' : '') + '.');
       setSelectedInvoice(null);
       await loadInvoices();
     } catch (err: any) {

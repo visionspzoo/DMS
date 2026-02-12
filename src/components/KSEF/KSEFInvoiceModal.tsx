@@ -18,8 +18,6 @@ interface KSEFInvoice {
   tax_amount: number | null;
   gross_amount: number;
   currency: string;
-  invoice_xml: string | null;
-  xml_content: string | null;
   transferred_to_invoice_id: string | null;
   transferred_to_department_id: string | null;
   transferred_at: string | null;
@@ -132,6 +130,17 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     setShowUnassignConfirm(false);
   };
 
+  const decodeBase64ToPdfUrl = (base64: string): string => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
+    return URL.createObjectURL(pdfBlob);
+  };
+
   const loadPdfContent = async (forceRetry = false) => {
     if (pdfUrl && !forceRetry) return;
 
@@ -144,46 +153,18 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     setPdfError(null);
 
     try {
-      console.log('=== LOADING PDF FOR KSEF INVOICE ===');
-      console.log('KSEF Reference Number:', invoice.ksef_reference_number);
-      console.log('Has invoice_xml:', !!invoice.invoice_xml);
-      console.log('Has xml_content:', !!invoice.xml_content);
-      console.log('Has transferred_to_invoice_id:', !!invoice.transferred_to_invoice_id);
-
-      // Strategy 0: Check if PDF is already stored in ksef_invoices table
-      console.log('Strategy 0: Checking for stored PDF in ksef_invoices...');
       const { data: ksefInvoiceData, error: ksefError } = await supabase
         .from('ksef_invoices')
-        .select('pdf_base64, xml_content')
+        .select('pdf_base64')
         .eq('id', invoice.id)
         .maybeSingle();
 
       if (!ksefError && ksefInvoiceData?.pdf_base64) {
-        console.log('✓ Found PDF stored in ksef_invoices table, length:', ksefInvoiceData.pdf_base64.length);
-        try {
-          const byteCharacters = atob(ksefInvoiceData.pdf_base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
-          console.log('✓ Successfully loaded PDF from ksef_invoices storage');
-          return;
-        } catch (decodeError) {
-          console.error('Failed to decode stored PDF:', decodeError);
-        }
+        setPdfUrl(decodeBase64ToPdfUrl(ksefInvoiceData.pdf_base64));
+        return;
       }
-      console.log('Strategy 0 failed: No PDF in ksef_invoices table');
 
-      // Update xml_content if we got fresh data from database
-      const xmlData = ksefInvoiceData?.xml_content || invoice.xml_content || invoice.invoice_xml;
-
-      // Strategy 1: If invoice was transferred, try loading PDF from invoices table
       if (invoice.transferred_to_invoice_id) {
-        console.log('Strategy 1: Loading from transferred invoice...');
         const { data: transferredInvoice, error } = await supabase
           .from('invoices')
           .select('pdf_base64')
@@ -191,109 +172,15 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
           .maybeSingle();
 
         if (!error && transferredInvoice?.pdf_base64) {
-          console.log('✓ Found PDF in transferred invoice');
-          const byteCharacters = atob(transferredInvoice.pdf_base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
+          setPdfUrl(decodeBase64ToPdfUrl(transferredInvoice.pdf_base64));
           return;
         }
-        console.log('Strategy 1 failed:', error?.message || 'No PDF data');
       }
 
-      // Strategy 2: Generate PDF from XML if available
-      if (xmlData) {
-        console.log('Strategy 2: Generating PDF from XML...');
-        console.log('XML length:', xmlData.length, 'characters');
-
-        const generateResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              xml: xmlData,
-              ksefNumber: invoice.ksef_reference_number,
-            }),
-          }
-        );
-
-        console.log('PDF generation response status:', generateResponse.status);
-
-        if (generateResponse.ok) {
-          const pdfBlob = await generateResponse.blob();
-          console.log('✓ PDF generated from XML, size:', pdfBlob.size, 'bytes');
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
-          return;
-        } else {
-          const errorText = await generateResponse.text();
-          console.error('Strategy 2 failed:', errorText);
-        }
-      } else {
-        console.log('Strategy 2 skipped: No XML data available');
-      }
-
-      // Strategy 3: Try downloading PDF from external KSEF API (as base64)
-      console.log('Strategy 3: Downloading from external API as base64...');
-      const path = `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf-base64`;
-      console.log('API path:', path);
-
-      const proxyParams = new URLSearchParams({ path });
-      const fetchUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`;
-      console.log('Fetch URL:', fetchUrl);
-
-      const response = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-      });
-
-      console.log('External API response status:', response.status);
-      console.log('External API response content-type:', response.headers.get('content-type'));
-
-      if (response.ok) {
-        const pdfData = await response.json();
-        if (pdfData.success && pdfData.data?.base64) {
-          console.log('✓ PDF downloaded from external API as base64, size:', pdfData.data.sizeBytes || 'unknown');
-          const byteCharacters = atob(pdfData.data.base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
-          return;
-        } else {
-          console.error('Strategy 3 failed: Invalid base64 response format');
-        }
-      } else {
-        const errorText = await response.text();
-        console.error('Strategy 3 failed: HTTP', response.status);
-        console.error('Error response:', errorText);
-      }
-
-      const errorMsg = xmlData
-        ? 'Nie udało się wygenerować PDF. Spróbuj ponownie lub sprawdź konsolę przeglądarki (F12).'
-        : 'Brak danych XML i PDF dla tej faktury. Kliknij przycisk "Pobierz XML/PDF" na stronie Faktury KSEF aby pobrać brakujące dane.';
-      setPdfError(errorMsg);
-      throw new Error(errorMsg);
+      setPdfError('Brak danych PDF (base64) dla tej faktury. Pobierz faktury ponownie z KSEF.');
     } catch (error) {
       console.error('Error loading PDF:', error);
-      if (!pdfError) {
-        setPdfError(error instanceof Error ? error.message : 'Nieznany błąd');
-      }
+      setPdfError(error instanceof Error ? error.message : 'Nieznany blad');
     } finally {
       setLoadingPdf(false);
     }
