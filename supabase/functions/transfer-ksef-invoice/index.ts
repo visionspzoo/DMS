@@ -72,13 +72,53 @@ Deno.serve(async (req: Request) => {
     let xmlContent = ksefInvoice.xml_content || ksefInvoice.invoice_xml;
 
     console.log(`📥 Getting PDF for ${ksefInvoice.ksef_reference_number}...`);
-    console.log(`   Has existing XML: ${!!xmlContent}`);
+    console.log(`   Has existing XML in DB: ${!!xmlContent}`);
+
+    // Strategy 0: If no XML in DB, try to fetch it from KSEF first
+    if (!xmlContent) {
+      console.log("Strategy 0: Fetching XML from KSEF API (not in DB)...");
+      try {
+        const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
+        const xmlParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/xml`,
+        });
+
+        const xmlResponse = await fetch(`${ksefProxyUrl}?${xmlParams}`, {
+          method: "GET",
+          headers: {
+            "Authorization": req.headers.get("Authorization") || "",
+          },
+        });
+
+        if (xmlResponse.ok) {
+          xmlContent = await xmlResponse.text();
+          console.log(`✓ XML fetched from KSEF (${xmlContent.length} chars)`);
+
+          // Save XML to database for future use
+          try {
+            await supabase
+              .from("ksef_invoices")
+              .update({ xml_content: xmlContent })
+              .eq("id", ksefInvoice.id);
+            console.log("✓ XML saved to database");
+          } catch (saveError) {
+            console.warn("Failed to save XML to DB (non-critical):", saveError);
+          }
+        } else {
+          const errorText = await xmlResponse.text();
+          console.warn(`Strategy 0 failed: ${xmlResponse.status} - ${errorText}`);
+        }
+      } catch (xmlError: any) {
+        console.warn("Strategy 0 error:", xmlError.message);
+      }
+    }
+
     if (xmlContent) {
       console.log(`   XML length: ${xmlContent.length} characters`);
       console.log(`   XML preview (first 200 chars): ${xmlContent.substring(0, 200)}`);
     }
 
-    // Strategy 1: Generate PDF from existing XML (most reliable)
+    // Strategy 1: Generate PDF from XML (most reliable)
     if (xmlContent) {
       console.log("Strategy 1: Generating PDF from existing XML...");
       try {
