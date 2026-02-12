@@ -65,7 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loadProfile = async (userId: string, email?: string | null) => {
+  const loadProfile = async (userId: string, email?: string | null, retryCount = 0) => {
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY = 1000;
+
     try {
       let { data, error } = await supabase
         .from('profiles')
@@ -102,13 +105,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setProfile(data);
       } else {
-        // No profile found - user needs a valid invitation to access the system
-        console.warn('No profile found for user. User must be invited to access the system.');
+        if (retryCount < MAX_RETRIES) {
+          console.log(`Profile not found, retrying in ${RETRY_DELAY}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          return loadProfile(userId, email, retryCount + 1);
+        }
 
-        // Sign out the user since they don't have a valid profile
+        console.warn('No profile found for user after all retries. User must be invited to access the system.');
+
         await supabase.auth.signOut();
 
-        // Show error message
         alert('Brak dostępu: Musisz otrzymać zaproszenie aby uzyskać dostęp do systemu. Skontaktuj się z administratorem.');
 
         setUser(null);
@@ -117,7 +123,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error loading profile:', error);
     } finally {
-      setLoading(false);
+      if (retryCount >= MAX_RETRIES || profile) {
+        setLoading(false);
+      }
     }
   };
 
