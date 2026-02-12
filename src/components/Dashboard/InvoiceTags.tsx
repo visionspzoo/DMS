@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Tag, Plus, X, Brain, Check, Loader, XCircle, Sparkles } from 'lucide-react';
+import { Tag, Plus, X, Brain, Check, Loader, XCircle, Sparkles, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface TagType {
@@ -32,6 +32,9 @@ interface InvoiceTagsProps {
   grossAmount?: number | null;
   currency?: string | null;
   departmentId?: string | null;
+  showConfirmButton?: boolean;
+  onConfirmAIData?: () => void;
+  confirmLoading?: boolean;
 }
 
 function confidenceColor(c: number) {
@@ -40,7 +43,7 @@ function confidenceColor(c: number) {
   return { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800' };
 }
 
-export function InvoiceTags({ invoiceId, isEditing, supplierName, supplierNip, description, grossAmount, currency, departmentId }: InvoiceTagsProps) {
+export function InvoiceTags({ invoiceId, isEditing, supplierName, supplierNip, description, grossAmount, currency, departmentId, showConfirmButton, onConfirmAIData, confirmLoading }: InvoiceTagsProps) {
   const [invoiceTags, setInvoiceTags] = useState<InvoiceTag[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [showTagSelector, setShowTagSelector] = useState(false);
@@ -271,15 +274,28 @@ export function InvoiceTags({ invoiceId, isEditing, supplierName, supplierNip, d
           <Tag className="w-5 h-5" />
           Tagi
         </h3>
-        {isEditing && (
-          <button
-            onClick={() => setShowTagSelector(!showTagSelector)}
-            className="p-1.5 text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
-            title="Dodaj tag"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {showConfirmButton && onConfirmAIData && (
+            <button
+              onClick={onConfirmAIData}
+              disabled={confirmLoading}
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              title="Potwierdź że dane i tagi rozpoznane przez AI są poprawne"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span>Potwierdź dane AI</span>
+            </button>
+          )}
+          {isEditing && (
+            <button
+              onClick={() => setShowTagSelector(!showTagSelector)}
+              className="p-1.5 text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
+              title="Dodaj tag"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

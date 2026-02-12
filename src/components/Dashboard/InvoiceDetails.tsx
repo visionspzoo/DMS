@@ -942,17 +942,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <FileText className="w-5 h-5" />
                     Informacje podstawowe
                   </h3>
-                  {!isEditing && invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
-                    <button
-                      onClick={handleConfirmAIData}
-                      disabled={loading}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      title="Potwierdź że dane rozpoznane przez AI są poprawne"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Potwierdź dane AI</span>
-                    </button>
-                  )}
                 </div>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
@@ -1277,6 +1266,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 grossAmount={invoice.gross_amount}
                 currency={invoice.currency}
                 departmentId={invoice.department_id}
+                showConfirmButton={!isEditing && invoice.status === 'draft' && invoice.uploaded_by === profile?.id}
+                onConfirmAIData={handleConfirmAIData}
+                confirmLoading={loading}
               />
 
               {approvals.length > 0 && (
