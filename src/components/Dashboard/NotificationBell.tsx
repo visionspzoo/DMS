@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check, FileText } from 'lucide-react';
+import { Bell, X, Check, FileText, UserPlus, ArrowRightLeft, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Notification {
   id: string;
-  type: 'new_invoice' | 'status_change' | 'pending_review';
+  type: 'new_invoice' | 'status_change' | 'pending_review' | 'invoice_assigned' | 'invoice_transferred' | 'ksef_invoice_assigned' | 'new_contract' | 'contract_status_change';
   title: string;
   message: string;
   invoice_id: string | null;
@@ -147,6 +147,16 @@ export default function NotificationBell() {
         return <Check className="w-5 h-5 text-green-500" />;
       case 'pending_review':
         return <Bell className="w-5 h-5 text-amber-500" />;
+      case 'invoice_assigned':
+        return <UserPlus className="w-5 h-5 text-purple-500" />;
+      case 'invoice_transferred':
+        return <ArrowRightLeft className="w-5 h-5 text-indigo-500" />;
+      case 'ksef_invoice_assigned':
+        return <Download className="w-5 h-5 text-cyan-500" />;
+      case 'new_contract':
+        return <FileText className="w-5 h-5 text-emerald-500" />;
+      case 'contract_status_change':
+        return <Check className="w-5 h-5 text-teal-500" />;
       default:
         return <Bell className="w-5 h-5 text-gray-500" />;
     }
