@@ -963,23 +963,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {!isEditing ? (
               <>
                 {isFromKSEF && invoice.status === 'draft' && (profile?.role === 'Administrator' || invoice.uploaded_by === profile?.id) && (
-                  <>
-                    <button
-                      onClick={handleConfirmAndTransferKSEF}
-                      disabled={loading}
-                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <FileCheck className="w-4 h-4" />
-                      <span>Potwierdź i przenieś</span>
-                    </button>
-                    <button
-                      onClick={() => setShowUnassignKSEFConfirm(true)}
-                      className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
-                    >
-                      <Undo2 className="w-4 h-4" />
-                      <span>Cofnij z KSEF</span>
-                    </button>
-                  </>
+                  <button
+                    onClick={() => setShowUnassignKSEFConfirm(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    <span>Cofnij z KSEF</span>
+                  </button>
                 )}
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <>
@@ -1117,6 +1107,29 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       title="Podgląd faktury PDF"
                       style={{ border: 'none', minHeight: '600px' }}
                     />
+                  ) : isFromKSEF && invoice.status === 'draft' ? (
+                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
+                      <FileCheck className="w-20 h-20 text-blue-400 dark:text-blue-500" />
+                      <div className="text-center max-w-md">
+                        <p className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                          Faktura z systemu KSEF
+                        </p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                          Ta faktura została automatycznie pobrana z Krajowego Systemu e-Faktur i przypisana do Ciebie.
+                        </p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                          Sprawdź szczegóły i potwierdź, aby przenieść ją do obiegu dokumentów.
+                        </p>
+                        <button
+                          onClick={handleConfirmAndTransferKSEF}
+                          disabled={loading}
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <FileCheck className="w-5 h-5" />
+                          <span>Potwierdź i przenieś</span>
+                        </button>
+                      </div>
+                    </div>
                   ) : needsKsefPdf ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <Download className="w-20 h-20 text-slate-300 dark:text-slate-600" />
@@ -1190,26 +1203,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             )}
 
             <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2">
-              {isFromKSEF && invoice.status === 'draft' && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
-                    <FileCheck className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-1">
-                        Faktura z systemu KSEF
-                      </h3>
-                      <p className="text-xs text-blue-800 dark:text-blue-400 mb-2">
-                        Ta faktura została automatycznie pobrana z Krajowego Systemu e-Faktur i przypisana do Ciebie.
-                        Sprawdź szczegóły i potwierdź, aby przenieść ją do obiegu dokumentów.
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-500">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Oczekuje na potwierdzenie</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center gap-2">
