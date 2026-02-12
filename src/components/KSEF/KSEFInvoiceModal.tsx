@@ -242,9 +242,9 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
         console.log('Strategy 2 skipped: No XML data available');
       }
 
-      // Strategy 3: Try downloading PDF from external KSEF API
-      console.log('Strategy 3: Downloading from external API...');
-      const path = `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`;
+      // Strategy 3: Try downloading PDF from external KSEF API (as base64)
+      console.log('Strategy 3: Downloading from external API as base64...');
+      const path = `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf-base64`;
       console.log('API path:', path);
 
       const proxyParams = new URLSearchParams({ path });
@@ -262,17 +262,21 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
       console.log('External API response content-type:', response.headers.get('content-type'));
 
       if (response.ok) {
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/pdf')) {
-          const pdfBlob = await response.blob();
-          console.log('✓ PDF downloaded from external API, size:', pdfBlob.size, 'bytes');
+        const pdfData = await response.json();
+        if (pdfData.success && pdfData.data?.base64) {
+          console.log('✓ PDF downloaded from external API as base64, size:', pdfData.data.sizeBytes || 'unknown');
+          const byteCharacters = atob(pdfData.data.base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
           const url = URL.createObjectURL(pdfBlob);
           setPdfUrl(url);
           return;
         } else {
-          const responseText = await response.text();
-          console.error('Strategy 3 failed: Expected PDF but got:', contentType);
-          console.error('Response body:', responseText.substring(0, 500));
+          console.error('Strategy 3 failed: Invalid base64 response format');
         }
       } else {
         const errorText = await response.text();
