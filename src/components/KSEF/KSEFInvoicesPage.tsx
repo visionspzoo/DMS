@@ -299,7 +299,7 @@ export function KSEFInvoicesPage() {
     }
   };
 
-  const handleTransferInvoice = async (departmentId: string) => {
+  const handleTransferInvoice = async (departmentId: string, userId?: string) => {
     if (!selectedInvoice || !departmentId) {
       setError('Proszę wybrać dział');
       return;
@@ -415,27 +415,33 @@ export function KSEFInvoicesPage() {
       // Step 6: Create invoice record with file URL and base64
       const taxAmount = selectedInvoice.tax_amount || (selectedInvoice.gross_amount - selectedInvoice.net_amount);
 
+      const invoiceData: any = {
+        invoice_number: selectedInvoice.invoice_number,
+        supplier_name: selectedInvoice.supplier_name || 'Brak nazwy',
+        supplier_nip: selectedInvoice.supplier_nip,
+        gross_amount: selectedInvoice.gross_amount,
+        net_amount: selectedInvoice.net_amount,
+        tax_amount: taxAmount,
+        currency: selectedInvoice.currency,
+        issue_date: selectedInvoice.issue_date,
+        status: 'draft',
+        uploaded_by: profile?.id,
+        department_id: departmentId,
+        file_url: driveFileUrl,
+        pdf_base64: base64Pdf,
+        description: `Faktura z KSEF - dodana jako wersja robocza`,
+        pln_gross_amount: plnGrossAmount,
+        exchange_rate: exchangeRate,
+        source: 'ksef',
+      };
+
+      if (userId) {
+        invoiceData.current_approver_id = userId;
+      }
+
       const { data: newInvoice, error: insertError } = await supabase
         .from('invoices')
-        .insert({
-          invoice_number: selectedInvoice.invoice_number,
-          supplier_name: selectedInvoice.supplier_name || 'Brak nazwy',
-          supplier_nip: selectedInvoice.supplier_nip,
-          gross_amount: selectedInvoice.gross_amount,
-          net_amount: selectedInvoice.net_amount,
-          tax_amount: taxAmount,
-          currency: selectedInvoice.currency,
-          issue_date: selectedInvoice.issue_date,
-          status: 'draft',
-          uploaded_by: profile?.id,
-          department_id: departmentId,
-          file_url: driveFileUrl,
-          pdf_base64: base64Pdf,
-          description: `Faktura z KSEF - dodana jako wersja robocza`,
-          pln_gross_amount: plnGrossAmount,
-          exchange_rate: exchangeRate,
-          source: 'ksef',
-        })
+        .insert(invoiceData)
         .select()
         .single();
 

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 import { InvoiceTags } from './InvoiceTags';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
+import { TransferInvoiceModal } from './TransferInvoiceModal';
 
 const AURA_HERBALS_NIP = '5851490834';
 
@@ -81,6 +82,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [ksefInvoiceId, setKsefInvoiceId] = useState<string | null>(null);
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
 
   const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
     (invoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -689,6 +691,30 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleTransferToDepartment = async (departmentId: string, userId: string) => {
+    if (!profile) return;
+
+    try {
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          department_id: departmentId,
+          current_approver_id: userId,
+          status: 'waiting',
+        })
+        .eq('id', invoice.id);
+
+      if (updateError) throw updateError;
+
+      alert('Faktura została przesłana do wybranej osoby');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error transferring invoice to department:', error);
+      throw error;
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
@@ -718,23 +744,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz ponownie przez AI'}</span>
                     </button>
                     <button
-                      onClick={handleForwardToCirculation}
+                      onClick={() => setShowTransferModal(true)}
                       disabled={loading}
                       className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <ArrowRight className="w-4 h-4" />
-                      <span>Prześlij do akceptacji</span>
+                      <span>Prześlij</span>
                     </button>
                   </>
                 )}
                 {invoice.status === 'accepted' && invoice.uploaded_by !== profile?.id && (
                   <button
-                    onClick={handleForwardToCirculation}
+                    onClick={() => setShowTransferModal(true)}
                     disabled={loading}
                     className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowRight className="w-4 h-4" />
-                    <span>Prześlij dalej</span>
+                    <span>Prześlij</span>
                   </button>
                 )}
                 {!invoice.paid_at && invoice.status !== 'accepted' && (
@@ -1497,6 +1523,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             </div>
           </div>
         </div>
+      )}
+
+      {showTransferModal && (
+        <TransferInvoiceModal
+          invoiceId={invoice.id}
+          currentDepartmentId={invoice.department_id}
+          onClose={() => setShowTransferModal(false)}
+          onTransferToApproval={handleForwardToCirculation}
+          onTransferToDepartment={handleTransferToDepartment}
+        />
       )}
     </div>
   );
