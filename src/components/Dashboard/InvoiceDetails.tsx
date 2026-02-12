@@ -761,22 +761,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
                   <>
                     <button
-                      onClick={handleConfirmAIData}
-                      disabled={loading}
-                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Potwierdź że dane rozpoznane przez AI są poprawne"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Potwierdź dane AI</span>
-                    </button>
-                    <button
                       onClick={handleReprocessOCR}
                       disabled={isReprocessing || loading}
                       className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Ponownie przetworz fakturę przez AI aby poprawić rozpoznanie danych"
                     >
                       <RefreshCw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
-                      <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz ponownie przez AI'}</span>
+                      <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz Ponownie'}</span>
                     </button>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -946,10 +937,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
             <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2">
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
-                <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Informacje podstawowe
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Informacje podstawowe
+                  </h3>
+                  {!isEditing && invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
+                    <button
+                      onClick={handleConfirmAIData}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      title="Potwierdź że dane rozpoznane przez AI są poprawne"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Potwierdź dane AI</span>
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
