@@ -919,13 +919,11 @@ export function KSEFInvoicesPage() {
       }
 
       setSuccessMessage(successMsg);
-      setSelectedInvoice(null);
       await loadInvoices();
     } catch (err: any) {
       console.error('❌ === BŁĄD PODCZAS TRANSFERU FAKTURY ===');
       console.error(err);
       setError(err.message || 'Nie udało się przenieść faktury');
-      setSelectedInvoice(null);
     } finally {
       setTransferring(false);
     }

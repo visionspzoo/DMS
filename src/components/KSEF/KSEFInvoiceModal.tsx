@@ -47,7 +47,8 @@ interface KSEFInvoiceModalProps {
 
 export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
-  const [selectedDepartment, setSelectedDepartment] = useState(invoice.transferred_to_department_id || '');
+  const [currentInvoice, setCurrentInvoice] = useState<KSEFInvoice>(invoice);
+  const [selectedDepartment, setSelectedDepartment] = useState(currentInvoice.transferred_to_department_id || '');
   const [selectedUser, setSelectedUser] = useState('');
   const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -56,8 +57,8 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
-  const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
-  const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
+  const isSupplierInvalid = currentInvoice.supplier_nip === AURA_HERBALS_NIP;
+  const isBuyerInvalid = currentInvoice.buyer_nip !== AURA_HERBALS_NIP;
   const hasError = isSupplierInvalid || isBuyerInvalid;
 
   useEffect(() => {
@@ -78,6 +79,13 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
       setSelectedUser('');
     }
   }, [selectedDepartment]);
+
+  useEffect(() => {
+    if (currentInvoice.transferred_to_invoice_id) {
+      console.log('🔄 Faktura została przeniesiona, odświeżam PDF...');
+      loadPdfContent(true);
+    }
+  }, [currentInvoice.transferred_to_invoice_id]);
 
   async function loadDepartmentUsers(departmentId: string) {
     try {
@@ -126,18 +134,36 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
       await onTransfer(selectedDepartment, selectedUser || undefined);
       setSelectedDepartment('');
       setSelectedUser('');
+
+      console.log('🔄 Transfer zakończony, odświeżam dane faktury...');
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const { data: updatedInvoice, error: refreshError } = await supabase
+        .from('ksef_invoices')
+        .select('*')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+
+      if (refreshError) {
+        console.error('Błąd odświeżania faktury:', refreshError);
+      } else if (updatedInvoice) {
+        setCurrentInvoice(updatedInvoice as KSEFInvoice);
+        console.log('✓ Dane faktury odświeżone, invoice_id:', updatedInvoice.transferred_to_invoice_id);
+        console.log('useEffect automatycznie odświeży PDF...');
+      }
     } catch (error) {
       console.error('Transfer error:', error);
     }
   };
 
   const handleUnassign = async () => {
-    await onUnassign(invoice.id);
+    await onUnassign(currentInvoice.id);
     setShowUnassignConfirm(false);
   };
 
   const handleDelete = async () => {
-    await onDelete(invoice.id);
+    await onDelete(currentInvoice.id);
     setShowDeleteConfirm(false);
   };
 
@@ -164,30 +190,39 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     setPdfError(null);
 
     try {
+      console.log('📄 Ładowanie PDF dla faktury KSEF:', currentInvoice.id);
+      console.log('transferred_to_invoice_id:', currentInvoice.transferred_to_invoice_id);
+
       const { data: ksefInvoiceData, error: ksefError } = await supabase
         .from('ksef_invoices')
         .select('pdf_base64')
-        .eq('id', invoice.id)
+        .eq('id', currentInvoice.id)
         .maybeSingle();
 
       if (!ksefError && ksefInvoiceData?.pdf_base64) {
+        console.log('✓ Znaleziono PDF base64 w ksef_invoices');
         setPdfUrl(decodeBase64ToPdfUrl(ksefInvoiceData.pdf_base64));
         return;
       }
 
-      if (invoice.transferred_to_invoice_id) {
+      if (currentInvoice.transferred_to_invoice_id) {
+        console.log('📄 Próbuję pobrać PDF z przeniesionej faktury:', currentInvoice.transferred_to_invoice_id);
         const { data: transferredInvoice, error } = await supabase
           .from('invoices')
           .select('pdf_base64')
-          .eq('id', invoice.transferred_to_invoice_id)
+          .eq('id', currentInvoice.transferred_to_invoice_id)
           .maybeSingle();
 
         if (!error && transferredInvoice?.pdf_base64) {
+          console.log('✓ Znaleziono PDF base64 w invoices');
           setPdfUrl(decodeBase64ToPdfUrl(transferredInvoice.pdf_base64));
           return;
+        } else {
+          console.warn('⚠️ Brak PDF base64 w przeniesionej fakturze');
         }
       }
 
+      console.error('❌ Nie znaleziono PDF dla tej faktury');
       setPdfError('Brak danych PDF (base64) dla tej faktury. Pobierz faktury ponownie z KSEF.');
     } catch (error) {
       console.error('Error loading PDF:', error);
@@ -291,7 +326,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                         Numer faktury
                       </label>
                       <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.invoice_number}
+                        {currentInvoice.invoice_number}
                       </p>
                     </div>
                     <div>
@@ -299,7 +334,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                         Numer referencyjny KSeF
                       </label>
                       <p className="text-xs font-mono text-text-primary-light dark:text-text-primary-dark mt-1 break-all">
-                        {invoice.ksef_reference_number}
+                        {currentInvoice.ksef_reference_number}
                       </p>
                     </div>
                   </div>
@@ -314,15 +349,15 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                           ? 'text-red-600 dark:text-red-500'
                           : 'text-text-primary-light dark:text-text-primary-dark'
                       }`}>
-                        {invoice.supplier_name || 'Brak nazwy'}
+                        {currentInvoice.supplier_name || 'Brak nazwy'}
                       </p>
-                      {invoice.supplier_nip && (
+                      {currentInvoice.supplier_nip && (
                         <p className={`text-xs mt-0.5 ${
                           isSupplierInvalid
                             ? 'text-red-600 dark:text-red-500 font-medium'
                             : 'text-text-secondary-light dark:text-text-secondary-dark'
                         }`}>
-                          NIP: {invoice.supplier_nip}
+                          NIP: {currentInvoice.supplier_nip}
                         </p>
                       )}
                     </div>
@@ -335,15 +370,15 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                           ? 'text-orange-600 dark:text-orange-500'
                           : 'text-text-primary-light dark:text-text-primary-dark'
                       }`}>
-                        {invoice.buyer_name || 'Brak nazwy'}
+                        {currentInvoice.buyer_name || 'Brak nazwy'}
                       </p>
-                      {invoice.buyer_nip && (
+                      {currentInvoice.buyer_nip && (
                         <p className={`text-xs mt-0.5 ${
                           isBuyerInvalid
                             ? 'text-orange-600 dark:text-orange-500 font-medium'
                             : 'text-text-secondary-light dark:text-text-secondary-dark'
                         }`}>
-                          NIP: {invoice.buyer_nip}
+                          NIP: {currentInvoice.buyer_nip}
                         </p>
                       )}
                     </div>
@@ -356,8 +391,8 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       </label>
                       <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mt-1 flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        {invoice.issue_date
-                          ? new Date(invoice.issue_date).toLocaleDateString('pl-PL')
+                        {currentInvoice.issue_date
+                          ? new Date(currentInvoice.issue_date).toLocaleDateString('pl-PL')
                           : '—'}
                       </p>
                     </div>
@@ -366,7 +401,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                         Waluta
                       </label>
                       <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.currency}
+                        {currentInvoice.currency}
                       </p>
                     </div>
                   </div>
@@ -384,7 +419,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       Netto
                     </label>
                     <p className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mt-1 font-mono">
-                      {invoice.net_amount.toFixed(2)} {invoice.currency}
+                      {currentInvoice.net_amount.toFixed(2)} {currentInvoice.currency}
                     </p>
                   </div>
                   <div className="text-center p-3 bg-light-surface dark:bg-dark-surface rounded-lg">
@@ -392,7 +427,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       VAT
                     </label>
                     <p className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mt-1 font-mono">
-                      {invoice.tax_amount ? invoice.tax_amount.toFixed(2) : (invoice.gross_amount - invoice.net_amount).toFixed(2)} {invoice.currency}
+                      {currentInvoice.tax_amount ? currentInvoice.tax_amount.toFixed(2) : (currentInvoice.gross_amount - currentInvoice.net_amount).toFixed(2)} {currentInvoice.currency}
                     </p>
                   </div>
                   <div className="text-center p-3 bg-brand-primary/10 rounded-lg">
@@ -400,13 +435,13 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       Brutto
                     </label>
                     <p className="text-base font-bold text-brand-primary mt-1 font-mono">
-                      {invoice.gross_amount.toFixed(2)} {invoice.currency}
+                      {currentInvoice.gross_amount.toFixed(2)} {currentInvoice.currency}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {!invoice.transferred_to_invoice_id && (
+              {!currentInvoice.transferred_to_invoice_id && (
                 <div className="bg-gradient-to-br from-brand-primary/5 to-brand-primary/10 dark:from-brand-primary/10 dark:to-brand-primary/5 rounded-xl p-4 border-2 border-brand-primary/20">
                   <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-3 flex items-center gap-2">
                     <Building2 className="w-4 h-4" />
@@ -417,7 +452,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                         Wybierz dział
                       </label>
-                      {invoice.transferred_to_department_id && (
+                      {currentInvoice.transferred_to_department_id && (
                         <p className="text-xs text-green-600 dark:text-green-400 mb-1.5">
                           Automatycznie przypisano na podstawie NIP dostawcy
                         </p>
@@ -483,16 +518,16 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                 </div>
               )}
 
-              {invoice.transferred_to_invoice_id && (
+              {currentInvoice.transferred_to_invoice_id && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
                   <h3 className="text-base font-semibold text-green-700 dark:text-green-400 mb-2">
                     Faktura została dodana
                   </h3>
                   <p className="text-sm text-green-600 dark:text-green-300">
                     Ta faktura została już dodana do systemu jako wersja robocza
-                    {invoice.transferred_at && (
+                    {currentInvoice.transferred_at && (
                       <span className="block mt-1">
-                        Data: {new Date(invoice.transferred_at).toLocaleString('pl-PL')}
+                        Data: {new Date(currentInvoice.transferred_at).toLocaleString('pl-PL')}
                       </span>
                     )}
                   </p>
@@ -540,7 +575,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
             </div>
 
             <p className="text-slate-700 dark:text-slate-300 mb-6">
-              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{invoice.invoice_number}</strong>?
+              Czy na pewno chcesz cofnąć przypisanie faktury <strong>{currentInvoice.invoice_number}</strong>?
               Plik zostanie usunięty z Google Drive, a faktura zostanie usunięta z systemu.
             </p>
 
@@ -592,8 +627,8 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
             </div>
 
             <p className="text-slate-700 dark:text-slate-300 mb-6">
-              Czy na pewno chcesz usunąć fakturę <strong>{invoice.invoice_number}</strong>?
-              {invoice.transferred_to_invoice_id && (
+              Czy na pewno chcesz usunąć fakturę <strong>{currentInvoice.invoice_number}</strong>?
+              {currentInvoice.transferred_to_invoice_id && (
                 <span className="block mt-2 text-sm text-orange-600 dark:text-orange-400">
                   Uwaga: Ta faktura została już przeniesiona do systemu. Usunięcie jej z KSEF nie usunie jej z obiegu dokumentów.
                 </span>
