@@ -104,13 +104,14 @@ export async function fetchKSEFInvoices(params: FetchInvoicesParams): Promise<KS
 
 export async function fetchKSEFInvoicePDF(ksefNumber: string): Promise<Blob> {
   const proxyParams = new URLSearchParams({
-    path: `/api/external/invoices/${encodeURIComponent(ksefNumber)}/pdf`,
+    path: `/api/external/invoices/${encodeURIComponent(ksefNumber)}/pdf-base64`,
   });
 
   const response = await fetch(`${KSEF_PROXY_URL}?${proxyParams}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
     },
   });
 
@@ -118,7 +119,21 @@ export async function fetchKSEFInvoicePDF(ksefNumber: string): Promise<Blob> {
     throw new Error(`Nie udało się pobrać PDF: ${response.status}`);
   }
 
-  return response.blob();
+  const jsonData = await response.json();
+
+  if (!jsonData.success || !jsonData.data?.base64) {
+    throw new Error('Nieprawidłowa odpowiedź z serwera KSEF');
+  }
+
+  // Dekoduj base64 do Blob
+  const base64Data = jsonData.data.base64;
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: 'application/pdf' });
 }
 
 export async function fetchKSEFInvoiceXML(ksefNumber: string): Promise<string> {

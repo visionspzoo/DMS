@@ -35,7 +35,7 @@
             "GET /api/external/status",
             "GET /api/external/invoices",
             "GET /api/external/invoices/:ksefNumber",
-            "GET /api/external/invoices/:ksefNumber/pdf",
+            "GET /api/external/invoices/:ksefNumber/pdf-base64",
             "GET /api/external/invoices/:ksefNumber/xml"
           ]
         }
@@ -205,10 +205,10 @@
         }
       }
     },
-    "invoice_pdf": {
+    "invoice_pdf_base64": {
       "method": "GET",
-      "path": "/api/external/invoices/{ksefNumber}/pdf",
-      "description": "Pobierz fakturę jako PDF (format rządowy KSeF)",
+      "path": "/api/external/invoices/{ksefNumber}/pdf-base64",
+      "description": "Pobierz fakturę PDF jako base64 w formacie JSON",
       "path_parameters": {
         "ksefNumber": {
           "type": "string",
@@ -216,10 +216,19 @@
           "example": "5252674798-20260202-D70460CBDF5F-32"
         }
       },
-      "response": {
-        "content_type": "application/pdf",
-        "content_disposition": "attachment; filename=\"faktura-{ksefNumber}.pdf\"",
-        "body": "Binary PDF data"
+      "response_example": {
+        "success": true,
+        "data": {
+          "ksefNumber": "5252674798-20260202-D70460CBDF5F-32",
+          "fileName": "faktura-5252674798-20260202-D70460CBDF5F-32.pdf",
+          "mimeType": "application/pdf",
+          "base64": "JVBERi0xLjQKMSAwIG9iago8PAovVHlwZS...",
+          "sizeBytes": 45230
+        },
+        "meta": {
+          "requestedAt": "2026-02-12T12:00:00.000Z",
+          "format": "base64"
+        }
       }
     },
     "invoice_xml": {
@@ -244,7 +253,7 @@
     "UNAUTHORIZED": "Brak lub nieprawidłowy klucz API (header x-api-key)",
     "API_KEY_NOT_CONFIGURED": "Klucz API nie jest skonfigurowany po stronie serwera",
     "FETCH_ERROR": "Błąd komunikacji z KSeF API lub parsowania danych",
-    "PDF_ERROR": "Błąd generowania pliku PDF",
+    "PDF_BASE64_ERROR": "Błąd generowania pliku PDF w formacie base64",
     "XML_ERROR": "Błąd pobierania pliku XML z KSeF"
   },
   "error_response_format": {
@@ -256,7 +265,7 @@
     "curl_status": "curl -H 'x-api-key: TWOJ_KLUCZ_API' https://TWOJ_ADRES/api/external/status",
     "curl_invoices": "curl -H 'x-api-key: TWOJ_KLUCZ_API' 'https://TWOJ_ADRES/api/external/invoices?dateFrom=2025-12-01&dateTo=2026-02-06'",
     "curl_invoice_detail": "curl -H 'x-api-key: TWOJ_KLUCZ_API' https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF",
-    "curl_pdf": "curl -H 'x-api-key: TWOJ_KLUCZ_API' -o faktura.pdf https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF/pdf",
+    "curl_pdf_base64": "curl -H 'x-api-key: TWOJ_KLUCZ_API' https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF/pdf-base64",
     "curl_xml": "curl -H 'x-api-key: TWOJ_KLUCZ_API' -o faktura.xml https://TWOJ_ADRES/api/external/invoices/NUMER_KSEF/xml",
     "javascript_fetch": "const response = await fetch('https://TWOJ_ADRES/api/external/invoices?dateFrom=2025-12-01&dateTo=2026-02-06', { headers: { 'x-api-key': 'TWOJ_KLUCZ_API' } }); const data = await response.json();",
     "python_requests": "import requests; r = requests.get('https://TWOJ_ADRES/api/external/invoices', params={'dateFrom': '2025-12-01', 'dateTo': '2026-02-06'}, headers={'x-api-key': 'TWOJ_KLUCZ_API'}); data = r.json()"

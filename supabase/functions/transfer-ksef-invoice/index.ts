@@ -76,26 +76,31 @@ Deno.serve(async (req: Request) => {
       try {
         const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
         const pdfParams = new URLSearchParams({
-          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
+          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf-base64`,
         });
 
         const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
           },
         });
 
         if (pdfResponse.ok) {
-          const pdfBlob = await pdfResponse.blob();
-          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-          pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-          console.log(`PDF downloaded from KSEF (${pdfBlob.size} bytes)`);
+          const pdfData = await pdfResponse.json();
+          if (pdfData.success && pdfData.data?.base64) {
+            pdfBase64 = pdfData.data.base64;
+            const sizeBytes = pdfData.data.sizeBytes || "unknown";
+            console.log(`PDF downloaded from KSEF (${sizeBytes} bytes)`);
 
-          await supabase
-            .from("ksef_invoices")
-            .update({ pdf_base64: pdfBase64 })
-            .eq("id", ksefInvoice.id);
+            await supabase
+              .from("ksef_invoices")
+              .update({ pdf_base64: pdfBase64 })
+              .eq("id", ksefInvoice.id);
+          } else {
+            console.warn("Invalid PDF response format, trying XML generation");
+          }
         } else {
           console.warn(`PDF download failed (${pdfResponse.status}), trying XML generation`);
         }
