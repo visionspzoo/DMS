@@ -356,205 +356,6 @@ export function KSEFInvoicesPage() {
     }
   };
 
-  const handleRefreshPdfXml = async () => {
-    setFetching(true);
-    setError('');
-    setSuccessMessage('');
-
-    try {
-      console.log('=== AKTUALIZACJA XML I PDF DLA ISTNIEJĄCYCH FAKTUR ===');
-
-      // Get all invoices that don't have XML or PDF
-      const { data: missingData, error: fetchError } = await supabase
-        .from('ksef_invoices')
-        .select('id, ksef_reference_number, invoice_number, xml_content, pdf_base64')
-        .or('xml_content.is.null,pdf_base64.is.null');
-
-      if (fetchError) throw fetchError;
-
-      if (!missingData || missingData.length === 0) {
-        setSuccessMessage('Wszystkie faktury mają już pobrane XML i PDF');
-        return;
-      }
-
-      console.log(`Znaleziono ${missingData.length} faktur do zaktualizowania`);
-
-      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      // Retry logic with exponential backoff for 429 errors
-      const fetchWithRetry = async (fetchFn: () => Promise<Response>, maxRetries = 3): Promise<Response> => {
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          try {
-            const response = await fetchFn();
-
-            // If 429, wait longer and retry
-            if (response.status === 429) {
-              const waitTime = Math.pow(2, attempt) * 5000; // 5s, 10s, 20s
-              console.log(`⏳ Rate limit (429), czekam ${waitTime/1000}s przed ponowną próbą...`);
-              await delay(waitTime);
-              continue;
-            }
-
-            return response;
-          } catch (err) {
-            if (attempt === maxRetries - 1) throw err;
-            const waitTime = Math.pow(2, attempt) * 2000;
-            console.log(`⚠️ Błąd sieci, czekam ${waitTime/1000}s przed ponowną próbą...`);
-            await delay(waitTime);
-          }
-        }
-        throw new Error('Przekroczono maksymalną liczbę prób');
-      };
-
-      let updated = 0;
-      let skipped = 0;
-
-      for (let i = 0; i < missingData.length; i++) {
-        const invoice = missingData[i];
-        console.log(`\n--- Aktualizacja ${i + 1}/${missingData.length}: ${invoice.invoice_number} ---`);
-
-        const updates: any = {};
-        let hasError = false;
-
-        // Fetch XML if missing
-        if (!invoice.xml_content) {
-          try {
-            await delay(3000); // Zwiększone opóźnienie: 3 sekundy między żądaniami
-            const proxyParams = new URLSearchParams({
-              path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/xml`,
-            });
-
-            const xmlResponse = await fetchWithRetry(() =>
-              fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                  },
-                }
-              )
-            );
-
-            if (xmlResponse.ok) {
-              const xml = await xmlResponse.text();
-              if (xml && xml.length > 0) {
-                updates.xml_content = xml;
-                console.log(`✓ Pobrano XML (${xml.length} znaków)`);
-              }
-            } else {
-              console.warn(`⚠️ Nie udało się pobrać XML: ${xmlResponse.status}`);
-              hasError = true;
-            }
-          } catch (err) {
-            console.error('❌ Błąd pobierania XML:', err);
-            hasError = true;
-          }
-        }
-
-        // Fetch PDF if missing
-        if (!invoice.pdf_base64) {
-          try {
-            await delay(3000); // Zwiększone opóźnienie: 3 sekundy między żądaniami
-            const proxyParams = new URLSearchParams({
-              path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`,
-            });
-
-            const pdfResponse = await fetchWithRetry(() =>
-              fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                  },
-                }
-              )
-            );
-
-            if (pdfResponse.ok) {
-              const pdfBlob = await pdfResponse.blob();
-              const pdfBase64 = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(pdfBlob);
-              });
-              updates.pdf_base64 = pdfBase64;
-              console.log(`✓ Pobrano PDF (${pdfBlob.size} bytes)`);
-            } else {
-              console.warn(`⚠️ Nie udało się pobrać PDF: ${pdfResponse.status}`);
-            }
-          } catch (err) {
-            console.error('❌ Błąd pobierania PDF:', err);
-          }
-        }
-
-        if (hasError) {
-          skipped++;
-          continue;
-        }
-
-        // Update invoice if we got any data
-        if (Object.keys(updates).length > 0) {
-          console.log('📝 Zapisywanie do bazy:', {
-            invoice: invoice.invoice_number,
-            hasXml: !!updates.xml_content,
-            hasPdf: !!updates.pdf_base64,
-            xmlLength: updates.xml_content?.length || 0,
-            pdfLength: updates.pdf_base64?.length || 0
-          });
-
-          const { error: updateError } = await supabase
-            .from('ksef_invoices')
-            .update(updates)
-            .eq('id', invoice.id);
-
-          if (updateError) {
-            console.error('❌ Błąd aktualizacji:', updateError);
-          } else {
-            updated++;
-            console.log(`✓ Zapisano do bazy`);
-
-            // Verify the update immediately
-            const { data: verifyData, error: verifyError } = await supabase
-              .from('ksef_invoices')
-              .select('xml_content, pdf_base64')
-              .eq('id', invoice.id)
-              .maybeSingle();
-
-            if (verifyError) {
-              console.error('⚠️ Nie udało się zweryfikować zapisu:', verifyError);
-            } else {
-              console.log('✓ Weryfikacja zapisu:', {
-                xmlInDb: !!verifyData?.xml_content,
-                pdfInDb: !!verifyData?.pdf_base64,
-                xmlLengthInDb: verifyData?.xml_content?.length || 0,
-                pdfLengthInDb: verifyData?.pdf_base64?.length || 0
-              });
-            }
-          }
-        } else {
-          console.log('⚠️ Brak nowych danych dla', invoice.invoice_number);
-        }
-
-        setSuccessMessage(`Aktualizowanie: ${i + 1}/${missingData.length} (${updated} OK, ${skipped} pominięto)`);
-      }
-
-      const finalMessage = skipped > 0
-        ? `✓ Zaktualizowano ${updated} faktur. Pominięto ${skipped} z powodu błędów rate limit (429)`
-        : `✓ Zaktualizowano ${updated} faktur z pełnymi danymi XML i PDF`;
-
-      setSuccessMessage(finalMessage);
-      await loadInvoices();
-    } catch (err: any) {
-      console.error('Error refreshing PDF/XML:', err);
-      setError(err.message || 'Nie udało się zaktualizować faktur');
-    } finally {
-      setFetching(false);
-    }
-  };
-
   const handleFetchInvoices = async () => {
     setFetching(true);
     setError('');
@@ -679,7 +480,7 @@ export function KSEFInvoicesPage() {
           await delay(3000);
 
           const proxyParams = new URLSearchParams({
-            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf`,
+            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf-base64`,
           });
 
           const pdfResponse = await fetchWithRetry(() =>
@@ -695,17 +496,13 @@ export function KSEFInvoicesPage() {
           );
 
           if (pdfResponse.ok) {
-            const pdfBlob = await pdfResponse.blob();
-            pdfBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(pdfBlob);
-            });
-            console.log(`Pobrano PDF (${pdfBlob.size} bytes)`);
+            const pdfData = await pdfResponse.json();
+            if (pdfData.success && pdfData.data?.base64) {
+              pdfBase64 = pdfData.data.base64;
+              console.log(`Pobrano PDF base64 (${pdfData.data.sizeBytes || 'unknown'} bytes)`);
+            } else {
+              console.warn(`Nieprawidłowa odpowiedź PDF base64`);
+            }
           } else {
             console.warn(`Nie udało się pobrać PDF: ${pdfResponse.status}`);
           }
@@ -867,9 +664,9 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      // Step 1: Download PDF from KSEF API via proxy
+      // Step 1: Download PDF from KSEF API via proxy (as base64)
       const proxyParams = new URLSearchParams({
-        path: `/api/external/invoices/${encodeURIComponent(selectedInvoice.ksef_reference_number)}/pdf`,
+        path: `/api/external/invoices/${encodeURIComponent(selectedInvoice.ksef_reference_number)}/pdf-base64`,
       });
 
       const pdfResponse = await fetch(
@@ -886,18 +683,14 @@ export function KSEFInvoicesPage() {
         throw new Error('Nie udało się pobrać PDF z KSEF');
       }
 
-      const pdfBlob = await pdfResponse.blob();
+      const pdfData = await pdfResponse.json();
 
-      // Step 2: Convert to base64
-      const base64Pdf = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(pdfBlob);
-      });
+      if (!pdfData.success || !pdfData.data?.base64) {
+        throw new Error('Nieprawidłowa odpowiedź PDF base64 z KSEF');
+      }
+
+      // Step 2: Get base64 directly from response
+      const base64Pdf = pdfData.data.base64;
 
       let xmlContent = null;
       try {
