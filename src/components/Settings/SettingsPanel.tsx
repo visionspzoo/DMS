@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
 import SlackSettings from './SlackSettings';
 import UserInvitations from './UserInvitations';
+import { CostCentersManagement } from './CostCentersManagement';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -52,7 +53,7 @@ export default function SettingsPanel() {
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk'>('users');
   const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
   const [selectedAccessDept, setSelectedAccessDept] = useState('');
   const [selectedAccessType, setSelectedAccessType] = useState<'view' | 'workflow'>('view');
@@ -413,6 +414,17 @@ export default function SettingsPanel() {
         >
           <MessageSquare className="w-4 h-4" />
           Slack
+        </button>
+        <button
+          onClick={() => setActiveTab('mpk')}
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+            activeTab === 'mpk'
+              ? 'bg-brand-primary text-white shadow-sm'
+              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+          }`}
+        >
+          <Hash className="w-4 h-4" />
+          MPK
         </button>
       </div>
 
@@ -838,6 +850,10 @@ export default function SettingsPanel() {
 
         {activeTab === 'slack' && (
           <SlackSettings />
+        )}
+
+        {activeTab === 'mpk' && (
+          <CostCentersManagement />
         )}
     </div>
   );
