@@ -261,6 +261,12 @@ export function KSEFInvoicesPage() {
       }
 
       console.log(`📦 Znaleziono ${assignedInvoices.length} faktur do przeniesienia`);
+      console.log('📋 Faktury do przeniesienia:', assignedInvoices.map(inv => ({
+        id: inv.id,
+        number: inv.invoice_number,
+        department: inv.transferred_to_department_id,
+        fetched_by: inv.fetched_by
+      })));
       setSuccessMessage(`Automatyczne przenoszenie ${assignedInvoices.length} faktur do systemu...`);
 
       // Refresh session to ensure valid token
@@ -299,17 +305,27 @@ export function KSEFInvoicesPage() {
             }
           );
 
+          console.log(`📊 Status odpowiedzi: ${transferResponse.status}`);
+
           if (transferResponse.ok) {
             const result = await transferResponse.json();
-            console.log(`✓ Faktura ${invoice.invoice_number} przeniesiona pomyślnie`);
+            console.log(`✓ Faktura ${invoice.invoice_number} przeniesiona pomyślnie`, result);
             transferred++;
           } else {
-            const errorData = await transferResponse.json();
-            console.error(`❌ Błąd przenoszenia faktury ${invoice.invoice_number}:`, errorData);
+            const responseText = await transferResponse.text();
+            console.error(`❌ Błąd przenoszenia faktury ${invoice.invoice_number}:`);
+            console.error(`   Status: ${transferResponse.status}`);
+            console.error(`   Response:`, responseText);
+            try {
+              const errorData = JSON.parse(responseText);
+              console.error(`   Parsed error:`, errorData);
+            } catch (e) {
+              console.error(`   Nie można sparsować odpowiedzi jako JSON`);
+            }
             failed++;
           }
         } catch (transferError) {
-          console.error(`❌ Błąd przenoszenia faktury ${invoice.invoice_number}:`, transferError);
+          console.error(`❌ Wyjątek podczas przenoszenia faktury ${invoice.invoice_number}:`, transferError);
           failed++;
         }
 

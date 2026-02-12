@@ -27,6 +27,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { ksefInvoiceId, departmentId, userId }: TransferRequest = await req.json();
+    console.log(`🔄 Transfer request:`, { ksefInvoiceId, departmentId, userId });
 
     // 1. Get KSEF invoice
     const { data: ksefInvoice, error: ksefError } = await supabase
@@ -35,9 +36,17 @@ Deno.serve(async (req: Request) => {
       .eq("id", ksefInvoiceId)
       .single();
 
-    if (ksefError || !ksefInvoice) {
+    if (ksefError) {
+      console.error("❌ Error fetching KSEF invoice:", ksefError);
+      throw new Error(`KSEF invoice fetch error: ${ksefError.message}`);
+    }
+
+    if (!ksefInvoice) {
+      console.error("❌ KSEF invoice not found:", ksefInvoiceId);
       throw new Error("KSEF invoice not found");
     }
+
+    console.log(`✓ Found KSEF invoice: ${ksefInvoice.invoice_number}`);
 
     // 2. Get department info
     const { data: department, error: deptError } = await supabase
@@ -46,11 +55,20 @@ Deno.serve(async (req: Request) => {
       .eq("id", departmentId)
       .single();
 
-    if (deptError || !department) {
+    if (deptError) {
+      console.error("❌ Error fetching department:", deptError);
+      throw new Error(`Department fetch error: ${deptError.message}`);
+    }
+
+    if (!department) {
+      console.error("❌ Department not found:", departmentId);
       throw new Error("Department not found");
     }
 
+    console.log(`✓ Found department: ${department.name}`);
+
     // 3. Download PDF from KSEF API
+    console.log(`📥 Downloading PDF for ${ksefInvoice.ksef_reference_number}...`);
     const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
     const pdfParams = new URLSearchParams({
       path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
@@ -64,8 +82,13 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!pdfResponse.ok) {
-      throw new Error("Failed to download PDF from KSEF");
+      console.error(`❌ Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+      const errorText = await pdfResponse.text();
+      console.error(`   Response:`, errorText);
+      throw new Error(`Failed to download PDF from KSEF: ${pdfResponse.status}`);
     }
+
+    console.log(`✓ PDF downloaded successfully`);
 
     const pdfBlob = await pdfResponse.blob();
     const pdfArrayBuffer = await pdfBlob.arrayBuffer();
