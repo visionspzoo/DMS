@@ -422,15 +422,23 @@ export function KSEFInvoicesPage() {
 
         let xmlContent = null;
         try {
+          console.log(`🔄 Pobieranie XML dla faktury ${invoice.invoiceNumber}...`);
           xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
-          console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber}`);
-        } catch (xmlError) {
-          console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
+          if (xmlContent && xmlContent.length > 0) {
+            console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber} (length: ${xmlContent.length})`);
+          } else {
+            console.warn(`⚠️ XML dla faktury ${invoice.invoiceNumber} jest puste`);
+            xmlContent = null;
+          }
+        } catch (xmlError: any) {
+          console.error(`❌ Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
+          console.error(`   Szczegóły błędu:`, xmlError.message || xmlError);
         }
 
         // Download and save PDF immediately when fetching invoices
         let pdfBase64 = null;
         try {
+          console.log(`🔄 Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
           const proxyParams = new URLSearchParams({
             path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf`,
           });
@@ -445,16 +453,31 @@ export function KSEFInvoicesPage() {
             }
           );
 
+          console.log(`📊 PDF Response status: ${pdfResponse.status}, content-type: ${pdfResponse.headers.get('content-type')}`);
+
           if (pdfResponse.ok) {
             const pdfBlob = await pdfResponse.blob();
-            const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-            pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-            console.log(`✓ Pobrano PDF dla faktury ${invoice.invoiceNumber} (${pdfBlob.size} bytes)`);
+            console.log(`📦 PDF Blob size: ${pdfBlob.size} bytes`);
+
+            // Use FileReader for safe base64 conversion (works with large files)
+            pdfBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(pdfBlob);
+            });
+
+            console.log(`✓ Pobrano PDF dla faktury ${invoice.invoiceNumber} (${pdfBlob.size} bytes, base64 length: ${pdfBase64.length})`);
           } else {
-            console.warn(`Nie udało się pobrać PDF dla faktury ${invoice.invoiceNumber}: ${pdfResponse.status}`);
+            const errorText = await pdfResponse.text();
+            console.warn(`❌ Nie udało się pobrać PDF dla faktury ${invoice.invoiceNumber}: ${pdfResponse.status}`);
+            console.warn(`   Error response:`, errorText.substring(0, 200));
           }
         } catch (pdfError) {
-          console.error(`Błąd podczas pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
+          console.error(`❌ Błąd podczas pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
         }
 
         const invoiceData = {
