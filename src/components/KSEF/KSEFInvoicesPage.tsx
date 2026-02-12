@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings } from 'lucide-react';
+import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -37,6 +37,8 @@ interface Department {
 
 type MainTabType = 'invoices' | 'configuration';
 type InvoiceTabType = 'unassigned' | 'assigned';
+type SortColumn = 'issue_date' | 'gross_amount' | 'supplier_name' | 'department';
+type SortDirection = 'asc' | 'desc';
 
 export function KSEFInvoicesPage() {
   const { profile } = useAuth();
@@ -53,10 +55,57 @@ export function KSEFInvoicesPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [ksefStatus, setKsefStatus] = useState<any>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const canAccessKSEFConfig = profile?.can_access_ksef_config === true ||
                                profile?.is_admin === true ||
                                profile?.role === 'CEO';
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortedInvoices = () => {
+    if (!sortColumn) return invoices;
+
+    return [...invoices].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortColumn) {
+        case 'issue_date':
+          aValue = a.issue_date ? new Date(a.issue_date).getTime() : 0;
+          bValue = b.issue_date ? new Date(b.issue_date).getTime() : 0;
+          break;
+        case 'gross_amount':
+          aValue = a.gross_amount;
+          bValue = b.gross_amount;
+          break;
+        case 'supplier_name':
+          aValue = (a.supplier_name || '').toLowerCase();
+          bValue = (b.supplier_name || '').toLowerCase();
+          break;
+        case 'department':
+          const aDept = departments.find(d => d.id === a.transferred_to_department_id)?.name || '';
+          const bDept = departments.find(d => d.id === b.transferred_to_department_id)?.name || '';
+          aValue = aDept.toLowerCase();
+          bValue = bDept.toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   useEffect(() => {
     loadInvoices();
@@ -654,17 +703,49 @@ export function KSEFInvoicesPage() {
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                     Numer faktury
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                    Dostawca
+                  <th
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    onClick={() => handleSort('supplier_name')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Dostawca
+                      {sortColumn === 'supplier_name' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                    Data wystawienia
+                  <th
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    onClick={() => handleSort('issue_date')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Data wystawienia
+                      {sortColumn === 'issue_date' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-3 py-2 text-right text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                    Kwota brutto
+                  <th
+                    className="px-3 py-2 text-right text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    onClick={() => handleSort('gross_amount')}
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      Kwota brutto
+                      {sortColumn === 'gross_amount' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
-                    Dział
+                  <th
+                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    onClick={() => handleSort('department')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Dział
+                      {sortColumn === 'department' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                      )}
+                    </div>
                   </th>
                   {invoiceTab === 'assigned' && (
                     <th className="px-3 py-2 text-center text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
@@ -674,7 +755,7 @@ export function KSEFInvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {invoices.map((invoice) => {
+                {getSortedInvoices().map((invoice) => {
                   const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
                   const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
                   const hasError = isSupplierInvalid || isBuyerInvalid;
