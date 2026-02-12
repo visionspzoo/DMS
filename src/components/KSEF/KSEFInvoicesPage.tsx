@@ -968,28 +968,6 @@ export function KSEFInvoicesPage() {
           </div>
         ) : (
           <>
-            {invoiceTab === 'assigned' && invoices.filter(inv => inv.transferred_to_department_id && !inv.transferred_to_invoice_id).length > 0 && (
-              <div className="m-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-1">
-                      Faktury oczekują na przeniesienie do systemu
-                    </p>
-                    <p className="text-xs text-blue-800 dark:text-blue-400 mb-2">
-                      Znaleziono <strong>{invoices.filter(inv => inv.transferred_to_department_id && !inv.transferred_to_invoice_id).length}</strong> faktur(y) automatycznie przypisane do działów.
-                    </p>
-                    <p className="text-xs text-blue-800 dark:text-blue-400">
-                      <strong>Opcje przeniesienia:</strong>
-                    </p>
-                    <ul className="text-xs text-blue-800 dark:text-blue-400 list-disc list-inside mt-1 space-y-0.5">
-                      <li>Kliknij przycisk <strong>"Przenieś auto-przypisane"</strong> u góry aby przenieść wszystkie faktury automatycznie</li>
-                      <li>Lub kliknij na pojedynczą fakturę z etykietą "Kliknij aby przenieść" aby przenieść tylko ją</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
             <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
