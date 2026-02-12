@@ -67,55 +67,102 @@ Deno.serve(async (req: Request) => {
 
     console.log(`✓ Found department: ${department.name}`);
 
-    // 3. Download PDF from KSEF API
-    console.log(`📥 Downloading PDF for ${ksefInvoice.ksef_reference_number}...`);
-    const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
-    const pdfParams = new URLSearchParams({
-      path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
-    });
+    // 3. Get or generate PDF - use same strategy as KSEFInvoiceModal
+    let pdfBase64: string;
+    let xmlContent = ksefInvoice.xml_content || ksefInvoice.invoice_xml;
 
-    const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
-      method: "GET",
-      headers: {
-        "Authorization": req.headers.get("Authorization") || "",
-      },
-    });
+    console.log(`📥 Getting PDF for ${ksefInvoice.ksef_reference_number}...`);
+    console.log(`   Has existing XML: ${!!xmlContent}`);
 
-    if (!pdfResponse.ok) {
-      console.error(`❌ Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
-      const errorText = await pdfResponse.text();
-      console.error(`   Response:`, errorText);
-      throw new Error(`Failed to download PDF from KSEF: ${pdfResponse.status}`);
+    // Strategy 1: Generate PDF from existing XML (most reliable)
+    if (xmlContent) {
+      console.log("Strategy 1: Generating PDF from existing XML...");
+      try {
+        const generateResponse = await fetch(
+          `${supabaseUrl}/functions/v1/generate-ksef-pdf`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": req.headers.get("Authorization") || "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              xml: xmlContent,
+              ksefNumber: ksefInvoice.ksef_reference_number,
+            }),
+          }
+        );
+
+        if (generateResponse.ok) {
+          const pdfBlob = await generateResponse.blob();
+          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+          pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`✓ PDF generated from XML successfully (${pdfBlob.size} bytes)`);
+        } else {
+          const errorText = await generateResponse.text();
+          console.warn(`Strategy 1 failed: ${errorText}`);
+          throw new Error("PDF generation from XML failed");
+        }
+      } catch (genError) {
+        console.error("Strategy 1 error:", genError);
+        // Continue to Strategy 2
+        pdfBase64 = null as any;
+      }
     }
 
-    console.log(`✓ PDF downloaded successfully`);
-
-    const pdfBlob = await pdfResponse.blob();
-    const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-    const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-
-    // 4. Download XML from KSEF API
-    let xmlContent = null;
-    try {
-      const xmlParams = new URLSearchParams({
-        path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/xml`,
+    // Strategy 2: Download PDF from KSEF API (fallback)
+    if (!pdfBase64) {
+      console.log("Strategy 2: Downloading PDF from KSEF API...");
+      const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
+      const pdfParams = new URLSearchParams({
+        path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
       });
 
-      const xmlResponse = await fetch(`${ksefProxyUrl}?${xmlParams}`, {
+      const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
         method: "GET",
         headers: {
           "Authorization": req.headers.get("Authorization") || "",
         },
       });
 
-      if (xmlResponse.ok) {
-        xmlContent = await xmlResponse.text();
-        console.log("✓ Downloaded XML from KSEF");
-      } else {
-        console.warn("Failed to download XML (non-blocking)");
+      if (!pdfResponse.ok) {
+        const errorText = await pdfResponse.text();
+        console.error(`❌ Strategy 2 failed: ${pdfResponse.status}`);
+        console.error(`   Response:`, errorText);
+        throw new Error(`Cannot get PDF - both XML generation and KSEF download failed`);
       }
-    } catch (xmlError) {
-      console.error("XML download error (non-blocking):", xmlError);
+
+      const pdfBlob = await pdfResponse.blob();
+      const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+      pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+      console.log(`✓ PDF downloaded from KSEF API successfully (${pdfBlob.size} bytes)`);
+    }
+
+    // 4. Try to download XML if we don't have it yet (non-blocking)
+    if (!xmlContent) {
+      console.log("Attempting to download XML from KSEF (non-blocking)...");
+      try {
+        const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
+        const xmlParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/xml`,
+        });
+
+        const xmlResponse = await fetch(`${ksefProxyUrl}?${xmlParams}`, {
+          method: "GET",
+          headers: {
+            "Authorization": req.headers.get("Authorization") || "",
+          },
+        });
+
+        if (xmlResponse.ok) {
+          xmlContent = await xmlResponse.text();
+          console.log("✓ Downloaded XML from KSEF");
+        } else {
+          console.warn("Failed to download XML (non-blocking)");
+        }
+      } catch (xmlError) {
+        console.error("XML download error (non-blocking):", xmlError);
+      }
     }
 
     // 5. Upload PDF to Google Drive (if configured)
