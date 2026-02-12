@@ -190,9 +190,15 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
+      console.log('=== ROZPOCZYNAM POBIERANIE FAKTUR KSEF ===');
+      console.log('Profile ID:', profile?.id);
+      console.log('Profile email:', profile?.email);
+
       const dateFrom = new Date();
       dateFrom.setDate(dateFrom.getDate() - 30);
       const dateTo = new Date();
+
+      console.log('Zakres dat:', dateFrom.toISOString().split('T')[0], '-', dateTo.toISOString().split('T')[0]);
 
       const response = await fetchKSEFInvoices({
         dateFrom: dateFrom.toISOString().split('T')[0],
@@ -203,62 +209,99 @@ export function KSEFInvoicesPage() {
         pageOffset: 0,
       });
 
+      console.log('Odpowiedź KSEF:', response);
+
       if (!response.success) {
         throw new Error('Nie udało się pobrać faktur z KSEF');
       }
 
       const ksefInvoices = response.data.invoices || [];
+      console.log(`Znaleziono ${ksefInvoices.length} faktur w KSEF`);
       let newInvoices = 0;
+      let skippedInvoices = 0;
+      let errorInvoices = 0;
 
       for (const invoice of ksefInvoices) {
-        const { data: existing } = await supabase
+        console.log(`\n--- Przetwarzanie faktury: ${invoice.invoiceNumber} (${invoice.ksefNumber}) ---`);
+
+        const { data: existing, error: checkError } = await supabase
           .from('ksef_invoices')
           .select('id')
           .eq('ksef_reference_number', invoice.ksefNumber)
           .maybeSingle();
 
-        if (!existing) {
-          const netAmount = invoice.netAmount || 0;
-          const grossAmount = invoice.grossAmount || 0;
-          const taxAmount = grossAmount - netAmount;
+        if (checkError) {
+          console.error('Błąd sprawdzania istnienia faktury:', checkError);
+        }
 
-          let xmlContent = null;
-          try {
-            xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
-            console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber}`);
-          } catch (xmlError) {
-            console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
-          }
+        if (existing) {
+          console.log('Faktura już istnieje w bazie, pomijam');
+          skippedInvoices++;
+          continue;
+        }
 
-          const { error: insertError } = await supabase
-            .from('ksef_invoices')
-            .insert({
-              ksef_reference_number: invoice.ksefNumber,
-              invoice_number: invoice.invoiceNumber || 'Brak numeru',
-              supplier_name: invoice.seller?.name || '',
-              supplier_nip: invoice.seller?.nip || '',
-              buyer_name: invoice.buyer?.name || '',
-              buyer_nip: invoice.buyer?.identifier?.value || '',
-              issue_date: invoice.issueDate || null,
-              gross_amount: grossAmount,
-              net_amount: netAmount,
-              tax_amount: taxAmount,
-              currency: invoice.currency || 'PLN',
-              xml_content: xmlContent,
-              fetched_by: profile?.id,
-            });
+        console.log('Faktura nie istnieje, dodaję do bazy...');
 
-          if (!insertError) {
-            newInvoices++;
-          } else {
-            console.error('Error inserting invoice:', insertError);
-          }
+        const netAmount = invoice.netAmount || 0;
+        const grossAmount = invoice.grossAmount || 0;
+        const taxAmount = grossAmount - netAmount;
+
+        console.log('Kwoty:', { netAmount, grossAmount, taxAmount });
+
+        let xmlContent = null;
+        try {
+          xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
+          console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber}`);
+        } catch (xmlError) {
+          console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
+        }
+
+        const invoiceData = {
+          ksef_reference_number: invoice.ksefNumber,
+          invoice_number: invoice.invoiceNumber || 'Brak numeru',
+          supplier_name: invoice.seller?.name || '',
+          supplier_nip: invoice.seller?.nip || '',
+          buyer_name: invoice.buyer?.name || '',
+          buyer_nip: invoice.buyer?.identifier?.value || '',
+          issue_date: invoice.issueDate || null,
+          gross_amount: grossAmount,
+          net_amount: netAmount,
+          tax_amount: taxAmount,
+          currency: invoice.currency || 'PLN',
+          xml_content: xmlContent,
+          fetched_by: profile?.id,
+        };
+
+        console.log('Dane faktury do zapisu:', invoiceData);
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('ksef_invoices')
+          .insert(invoiceData)
+          .select();
+
+        if (insertError) {
+          console.error('❌ Błąd podczas zapisu faktury:', insertError);
+          errorInvoices++;
+        } else {
+          console.log('✓ Faktura zapisana pomyślnie:', inserted);
+          newInvoices++;
         }
       }
 
-      setSuccessMessage(
-        `Pobrano ${ksefInvoices.length} faktur z KSEF, ${newInvoices} nowych`
-      );
+      console.log('\n=== PODSUMOWANIE ===');
+      console.log(`Łącznie faktur w KSEF: ${ksefInvoices.length}`);
+      console.log(`Nowe faktury: ${newInvoices}`);
+      console.log(`Pominięte (już istnieją): ${skippedInvoices}`);
+      console.log(`Błędy: ${errorInvoices}`);
+
+      if (errorInvoices > 0) {
+        setError(`Pobrano ${ksefInvoices.length} faktur, ${newInvoices} nowych, ${errorInvoices} błędów. Sprawdź konsolę przeglądarki.`);
+      } else {
+        setSuccessMessage(
+          `Pobrano ${ksefInvoices.length} faktur z KSEF, ${newInvoices} nowych`
+        );
+      }
+
       await loadInvoices();
     } catch (err: any) {
       console.error('KSEF fetch error:', err);
