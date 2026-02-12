@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -85,6 +85,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [ksefPdfBase64, setKsefPdfBase64] = useState<string | null>(null);
   const [loadingKsefPdf, setLoadingKsefPdf] = useState(false);
+  const [pdfLoadAttempted, setPdfLoadAttempted] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [costCenters, setCostCenters] = useState<Array<{id: string, code: string, description: string, is_active: boolean}>>([]);
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
@@ -137,29 +139,22 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
-  const loadKsefPdfIfNeeded = async () => {
-    if (invoice.pdf_base64 || invoice.file_url) return;
-    if (invoice.source !== 'ksef') return;
+  const fetchKsefPdf = async (): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
 
-    setLoadingKsefPdf(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    const { data: ksefRecord } = await supabase
+      .from('ksef_invoices')
+      .select('xml_content, ksef_reference_number, pdf_base64')
+      .eq('transferred_to_invoice_id', invoice.id)
+      .maybeSingle();
 
-      const { data: ksefRecord } = await supabase
-        .from('ksef_invoices')
-        .select('xml_content, ksef_reference_number, pdf_base64')
-        .eq('transferred_to_invoice_id', invoice.id)
-        .maybeSingle();
+    if (!ksefRecord) return null;
 
-      if (!ksefRecord) return;
+    if (ksefRecord.pdf_base64) return ksefRecord.pdf_base64;
 
-      if (ksefRecord.pdf_base64) {
-        setKsefPdfBase64(ksefRecord.pdf_base64);
-        return;
-      }
-
-      if (ksefRecord.xml_content && ksefRecord.ksef_reference_number) {
+    if (ksefRecord.xml_content && ksefRecord.ksef_reference_number) {
+      try {
         const genResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
           {
@@ -174,37 +169,73 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             }),
           }
         );
-
         if (genResponse.ok) {
           const pdfArrayBuffer = await genResponse.arrayBuffer();
-          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-          setKsefPdfBase64(pdfBase64);
-          return;
+          return btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
         }
+      } catch (e) {
+        console.error('PDF generation from XML failed:', e);
       }
+    }
 
-      if (ksefRecord.ksef_reference_number) {
+    if (ksefRecord.ksef_reference_number) {
+      try {
         const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
         const pdfParams = new URLSearchParams({
           path: `/api/external/invoices/${encodeURIComponent(ksefRecord.ksef_reference_number)}/pdf`,
         });
-
         const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         });
-
         if (pdfResponse.ok) {
           const pdfBlob = await pdfResponse.blob();
           const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-          setKsefPdfBase64(pdfBase64);
+          return btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
         }
+      } catch (e) {
+        console.error('PDF fetch from KSEF API failed:', e);
+      }
+    }
+
+    return null;
+  };
+
+  const loadKsefPdfIfNeeded = async () => {
+    if (invoice.pdf_base64 || invoice.file_url) return;
+    if (invoice.source !== 'ksef') return;
+
+    setLoadingKsefPdf(true);
+    try {
+      const pdf = await fetchKsefPdf();
+      if (pdf) {
+        setKsefPdfBase64(pdf);
+        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', invoice.id);
       }
     } catch (error) {
       console.error('Error loading KSEF PDF:', error);
     } finally {
       setLoadingKsefPdf(false);
+      setPdfLoadAttempted(true);
+    }
+  };
+
+  const handleGenerateKsefPdf = async () => {
+    setGeneratingPdf(true);
+    try {
+      const pdf = await fetchKsefPdf();
+      if (pdf) {
+        setKsefPdfBase64(pdf);
+        await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', invoice.id);
+        onUpdate();
+      } else {
+        alert('Nie udalo sie wygenerowac PDF. Sprobuj ponownie pozniej.');
+      }
+    } catch (error) {
+      console.error('Error generating KSEF PDF:', error);
+      alert('Wystapil blad podczas generowania PDF');
+    } finally {
+      setGeneratingPdf(false);
     }
   };
 
@@ -868,6 +899,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const needsKsefPdf = invoice.source === 'ksef' && !invoice.pdf_base64 && !invoice.file_url && !ksefPdfBase64 && pdfLoadAttempted && !loadingKsefPdf;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
@@ -987,7 +1020,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         <div className="flex-1 overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 h-full">
-            {(invoice.file_url || invoice.pdf_base64 || ksefPdfBase64 || loadingKsefPdf) && (
+            {(invoice.file_url || invoice.pdf_base64 || ksefPdfBase64 || loadingKsefPdf || generatingPdf || needsKsefPdf) && (
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Podgląd dokumentu</h3>
@@ -1004,7 +1037,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   )}
                 </div>
                 <div className="flex-1 border-2 border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800">
-                  {loadingKsefPdf ? (
+                  {generatingPdf ? (
+                    <div className="flex flex-col items-center justify-center gap-4 p-8 h-full">
+                      <RefreshCw className="w-12 h-12 text-brand-primary animate-spin" />
+                      <p className="text-slate-600 dark:text-slate-400">Generowanie podgladu PDF...</p>
+                    </div>
+                  ) : loadingKsefPdf ? (
                     <div className="flex flex-col items-center justify-center gap-4 p-8 h-full">
                       <RefreshCw className="w-12 h-12 text-brand-primary animate-spin" />
                       <p className="text-slate-600 dark:text-slate-400">Pobieranie PDF z KSEF...</p>
@@ -1016,6 +1054,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       title="Podgląd faktury PDF"
                       style={{ border: 'none', minHeight: '600px' }}
                     />
+                  ) : needsKsefPdf ? (
+                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
+                      <Download className="w-20 h-20 text-slate-300 dark:text-slate-600" />
+                      <div className="text-center">
+                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Brak podgladu PDF
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                          PDF nie zostal pobrany podczas importu z KSeF
+                        </p>
+                        <button
+                          onClick={handleGenerateKsefPdf}
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium shadow-md hover:shadow-lg"
+                        >
+                          <Download className="w-5 h-5" />
+                          <span>Pobierz PDF</span>
+                        </button>
+                      </div>
+                    </div>
                   ) : invoice.file_url && invoice.file_url.toLowerCase().endsWith('.pdf') ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileText className="w-24 h-24 text-slate-400" />
