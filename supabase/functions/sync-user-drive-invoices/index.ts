@@ -125,14 +125,19 @@ async function getValidAccessToken(
 }
 
 Deno.serve(async (req: Request) => {
+  console.error("🚀 FUNCTION INVOKED - METHOD:", req.method, "URL:", req.url);
+
   if (req.method === "OPTIONS") {
+    console.error("OPTIONS request - returning CORS headers");
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  console.error("POST request - starting sync process");
+
   try {
-    console.log("=== SYNC DRIVE INVOICES START ===");
-    console.log("Request method:", req.method);
-    console.log("Request URL:", req.url);
+    console.error("=== SYNC DRIVE INVOICES START ===");
+    console.error("Request method:", req.method);
+    console.error("Request URL:", req.url);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
