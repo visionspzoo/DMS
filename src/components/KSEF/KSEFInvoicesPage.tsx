@@ -313,6 +313,37 @@ export function KSEFInvoicesPage() {
         } else {
           console.log('✓ Faktura zapisana pomyślnie:', inserted);
           newInvoices++;
+
+          // Check if invoice was auto-assigned to department and auto-transfer it
+          if (inserted && inserted[0] && inserted[0].transferred_to_department_id) {
+            console.log(`🔄 Faktura automatycznie przypisana do działu ${inserted[0].transferred_to_department_id}, rozpoczynam transfer...`);
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              const transferResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session?.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    ksefInvoiceId: inserted[0].id,
+                    departmentId: inserted[0].transferred_to_department_id,
+                  }),
+                }
+              );
+
+              if (transferResponse.ok) {
+                console.log(`✓ Automatyczny transfer faktury ${invoice.invoiceNumber} zakończony sukcesem`);
+              } else {
+                const errorData = await transferResponse.json();
+                console.error(`❌ Błąd automatycznego transferu faktury ${invoice.invoiceNumber}:`, errorData);
+              }
+            } catch (autoTransferError) {
+              console.error(`❌ Błąd automatycznego transferu faktury ${invoice.invoiceNumber}:`, autoTransferError);
+            }
+          }
         }
       }
 
