@@ -86,6 +86,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [ksefPdfBase64, setKsefPdfBase64] = useState<string | null>(null);
   const [loadingKsefPdf, setLoadingKsefPdf] = useState(false);
   const [costCenters, setCostCenters] = useState<Array<{id: string, code: string, description: string, is_active: boolean}>>([]);
+  const [costCenterSearch, setCostCenterSearch] = useState('');
+  const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
 
   const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
     (invoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -100,12 +102,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadKsefPdfIfNeeded();
     loadCostCenters();
   }, [invoice.id]);
-
-  useEffect(() => {
-    if (editedInvoice.department_id) {
-      loadCostCenters();
-    }
-  }, [editedInvoice.department_id]);
 
   const checkIfFromKSEF = async () => {
     try {
@@ -267,18 +263,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const loadCostCenters = async () => {
     try {
-      const departmentId = editedInvoice.department_id || invoice.department_id;
-      if (!departmentId) {
-        setCostCenters([]);
-        return;
-      }
-
       const { data, error } = await supabase
         .from('cost_centers')
         .select('id, code, description, is_active')
-        .eq('department_id', departmentId)
         .eq('is_active', true)
-        .order('code');
+        .order('display_order');
 
       if (error) throw error;
       setCostCenters(data || []);
@@ -1295,21 +1284,67 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Miejsce powstawania kosztu
+                        Miejsce powstawania kosztu (MPK)
                       </label>
                       {isEditing ? (
-                        <select
-                          value={editedInvoice.cost_center_id || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, cost_center_id: e.target.value || null })}
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
-                        >
-                          <option value="">Nie wybrano</option>
-                          {costCenters.map(cc => (
-                            <option key={cc.id} value={cc.id}>
-                              {cc.code} - {cc.description}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="relative mt-1">
+                          <input
+                            type="text"
+                            value={(() => {
+                              const selected = costCenters.find(cc => cc.id === editedInvoice.cost_center_id);
+                              return selected ? `${selected.code} - ${selected.description}` : costCenterSearch;
+                            })()}
+                            onChange={(e) => {
+                              setCostCenterSearch(e.target.value);
+                              setShowCostCenterDropdown(true);
+                              if (!e.target.value) {
+                                setEditedInvoice({ ...editedInvoice, cost_center_id: null });
+                              }
+                            }}
+                            onFocus={() => setShowCostCenterDropdown(true)}
+                            placeholder="Wyszukaj kod lub opis MPK..."
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                          />
+                          {showCostCenterDropdown && (() => {
+                            const searchLower = costCenterSearch.toLowerCase();
+                            const filtered = costCenters.filter(cc =>
+                              cc.code.toLowerCase().includes(searchLower) ||
+                              cc.description.toLowerCase().includes(searchLower)
+                            );
+
+                            return filtered.length > 0 ? (
+                              <div className="absolute z-50 w-full mt-1 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {filtered.map(cc => (
+                                  <button
+                                    key={cc.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setEditedInvoice({ ...editedInvoice, cost_center_id: cc.id });
+                                      setCostCenterSearch('');
+                                      setShowCostCenterDropdown(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 border-b border-slate-200 dark:border-slate-700 last:border-b-0 text-sm"
+                                  >
+                                    <span className="font-medium text-brand-primary">{cc.code}</span>
+                                    <span className="text-text-primary-light dark:text-text-primary-dark"> - {cc.description}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
+                          {editedInvoice.cost_center_id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditedInvoice({ ...editedInvoice, cost_center_id: null });
+                                setCostCenterSearch('');
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
                           {(() => {
