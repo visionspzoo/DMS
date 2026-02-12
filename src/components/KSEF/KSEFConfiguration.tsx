@@ -38,6 +38,12 @@ export function KSEFConfiguration() {
   const [selectedUser, setSelectedUser] = useState('');
   const [adding, setAdding] = useState(false);
 
+  const [selectedMappings, setSelectedMappings] = useState<Set<string>>(new Set());
+  const [bulkDepartment, setBulkDepartment] = useState('');
+  const [bulkUser, setBulkUser] = useState('');
+  const [bulkDepartmentUsers, setBulkDepartmentUsers] = useState<DepartmentUser[]>([]);
+  const [bulkOperating, setBulkOperating] = useState(false);
+
   const canManageMappings = user?.role !== 'specialist';
 
   useEffect(() => {
@@ -52,6 +58,15 @@ export function KSEFConfiguration() {
       setSelectedUser('');
     }
   }, [selectedDepartment]);
+
+  useEffect(() => {
+    if (bulkDepartment) {
+      loadDepartmentUsers(bulkDepartment).then(users => setBulkDepartmentUsers(users || []));
+    } else {
+      setBulkDepartmentUsers([]);
+      setBulkUser('');
+    }
+  }, [bulkDepartment]);
 
   async function loadData() {
     try {
@@ -100,7 +115,7 @@ export function KSEFConfiguration() {
     }
   }
 
-  async function loadDepartmentUsers(departmentId: string) {
+  async function loadDepartmentUsers(departmentId: string): Promise<DepartmentUser[]> {
     try {
       const [primaryResult, membersResult] = await Promise.all([
         supabase
@@ -135,9 +150,11 @@ export function KSEFConfiguration() {
 
       users.sort((a, b) => a.full_name.localeCompare(b.full_name));
       setDepartmentUsers(users);
+      return users;
     } catch (err) {
       console.error('Error loading department users:', err);
       setDepartmentUsers([]);
+      return [];
     }
   }
 
@@ -147,9 +164,16 @@ export function KSEFConfiguration() {
       return;
     }
 
-    const cleanNIP = newNIP.replace(/[^0-9]/g, '');
-    if (cleanNIP.length !== 10) {
-      setError('NIP musi zawierać dokładnie 10 cyfr');
+    const nips = newNIP.split(',').map(n => n.trim().replace(/[^0-9]/g, '')).filter(n => n);
+
+    const invalidNips = nips.filter(n => n.length !== 10);
+    if (invalidNips.length > 0) {
+      setError(`Niektóre numery NIP są nieprawidłowe (muszą zawierać 10 cyfr): ${invalidNips.join(', ')}`);
+      return;
+    }
+
+    if (nips.length === 0) {
+      setError('Proszę podać przynajmniej jeden NIP');
       return;
     }
 
@@ -158,18 +182,20 @@ export function KSEFConfiguration() {
       setError(null);
       setSuccess(null);
 
+      const mappingsToAdd = nips.map(nip => ({
+        nip,
+        department_id: selectedDepartment,
+        assigned_user_id: selectedUser || null,
+        created_by: user?.id
+      }));
+
       const { error: insertError } = await supabase
         .from('ksef_nip_department_mappings')
-        .insert({
-          nip: cleanNIP,
-          department_id: selectedDepartment,
-          assigned_user_id: selectedUser || null,
-          created_by: user?.id
-        });
+        .insert(mappingsToAdd);
 
       if (insertError) throw insertError;
 
-      setSuccess('Pomyślnie dodano mapowanie NIP');
+      setSuccess(`Pomyślnie dodano ${nips.length} ${nips.length === 1 ? 'mapowanie' : nips.length < 5 ? 'mapowania' : 'mapowań'} NIP`);
       setNewNIP('');
       setSelectedDepartment('');
       setSelectedUser('');
@@ -177,7 +203,7 @@ export function KSEFConfiguration() {
     } catch (err: any) {
       console.error('Error adding mapping:', err);
       if (err.code === '23505') {
-        setError('Ten NIP już jest przypisany do działu');
+        setError('Jeden lub więcej NIPów jest już przypisanych do działu');
       } else {
         setError('Nie udało się dodać mapowania');
       }
@@ -205,6 +231,86 @@ export function KSEFConfiguration() {
     } catch (err) {
       console.error('Error deleting mapping:', err);
       setError('Nie udało się usunąć mapowania');
+    }
+  }
+
+  function toggleSelection(id: string) {
+    const newSelection = new Set(selectedMappings);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedMappings(newSelection);
+  }
+
+  function toggleSelectAll() {
+    if (selectedMappings.size === mappings.length) {
+      setSelectedMappings(new Set());
+    } else {
+      setSelectedMappings(new Set(mappings.map(m => m.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedMappings.size === 0) return;
+    if (!confirm(`Czy na pewno chcesz usunąć ${selectedMappings.size} ${selectedMappings.size === 1 ? 'mapowanie' : selectedMappings.size < 5 ? 'mapowania' : 'mapowań'}?`)) return;
+
+    try {
+      setBulkOperating(true);
+      setError(null);
+      setSuccess(null);
+
+      const { error: deleteError } = await supabase
+        .from('ksef_nip_department_mappings')
+        .delete()
+        .in('id', Array.from(selectedMappings));
+
+      if (deleteError) throw deleteError;
+
+      setSuccess(`Pomyślnie usunięto ${selectedMappings.size} ${selectedMappings.size === 1 ? 'mapowanie' : selectedMappings.size < 5 ? 'mapowania' : 'mapowań'}`);
+      setSelectedMappings(new Set());
+      await loadData();
+    } catch (err) {
+      console.error('Error bulk deleting:', err);
+      setError('Nie udało się usunąć mapowań');
+    } finally {
+      setBulkOperating(false);
+    }
+  }
+
+  async function handleBulkUpdate() {
+    if (selectedMappings.size === 0) return;
+    if (!bulkDepartment) {
+      setError('Wybierz dział dla masowej operacji');
+      return;
+    }
+
+    try {
+      setBulkOperating(true);
+      setError(null);
+      setSuccess(null);
+
+      const { error: updateError } = await supabase
+        .from('ksef_nip_department_mappings')
+        .update({
+          department_id: bulkDepartment,
+          assigned_user_id: bulkUser || null,
+        })
+        .in('id', Array.from(selectedMappings));
+
+      if (updateError) throw updateError;
+
+      setSuccess(`Pomyślnie zaktualizowano ${selectedMappings.size} ${selectedMappings.size === 1 ? 'mapowanie' : selectedMappings.size < 5 ? 'mapowania' : 'mapowań'}`);
+      setSelectedMappings(new Set());
+      setBulkDepartment('');
+      setBulkUser('');
+      await loadData();
+    } catch (err) {
+      console.error('Error bulk updating:', err);
+      setError('Nie udało się zaktualizować mapowań');
+    } finally {
+      setBulkOperating(false);
     }
   }
 
@@ -252,10 +358,12 @@ export function KSEFConfiguration() {
                 type="text"
                 value={newNIP}
                 onChange={(e) => setNewNIP(e.target.value)}
-                placeholder="1234567890"
+                placeholder="1234567890 lub 123,456,789 (po przecinku)"
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                maxLength={10}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Możesz dodać wiele NIPów oddzielonych przecinkami
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -311,11 +419,85 @@ export function KSEFConfiguration() {
         </div>
       )}
 
+      {canManageMappings && selectedMappings.size > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-3">
+            Operacje masowe ({selectedMappings.size} {selectedMappings.size === 1 ? 'zaznaczony' : selectedMappings.size < 5 ? 'zaznaczone' : 'zaznaczonych'})
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1.5">
+                Zmień dział
+              </label>
+              <select
+                value={bulkDepartment}
+                onChange={(e) => setBulkDepartment(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-blue-300 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Wybierz dział</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1.5">
+                Zmień osobę
+              </label>
+              <select
+                value={bulkUser}
+                onChange={(e) => setBulkUser(e.target.value)}
+                disabled={!bulkDepartment}
+                className="w-full px-3 py-2 text-sm border border-blue-300 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">Kierownik działu</option>
+                {bulkDepartmentUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end gap-2">
+              <button
+                onClick={handleBulkUpdate}
+                disabled={bulkOperating || !bulkDepartment}
+                className="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkOperating ? 'Aktualizacja...' : 'Zaktualizuj'}
+              </button>
+            </div>
+            <div className="flex items-end gap-2">
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkOperating}
+                className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                {bulkOperating ? 'Usuwanie...' : 'Usuń'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
+                {canManageMappings && (
+                  <th className="px-4 py-3 text-center w-12">
+                    <input
+                      type="checkbox"
+                      checked={mappings.length > 0 && selectedMappings.size === mappings.length}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   NIP
                 </th>
@@ -338,7 +520,7 @@ export function KSEFConfiguration() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {mappings.length === 0 ? (
                 <tr>
-                  <td colSpan={canManageMappings ? 5 : 4} className="px-6 py-8 text-center">
+                  <td colSpan={canManageMappings ? 6 : 4} className="px-6 py-8 text-center">
                     <Building2 className="w-12 h-12 text-gray-400 dark:text-gray-600 mx-auto mb-3" />
                     <p className="text-gray-500 dark:text-gray-400">Brak mapowań NIP</p>
                     {canManageMappings && (
@@ -351,6 +533,16 @@ export function KSEFConfiguration() {
               ) : (
                 mappings.map((mapping) => (
                   <tr key={mapping.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    {canManageMappings && (
+                      <td className="px-4 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedMappings.has(mapping.id)}
+                          onChange={() => toggleSelection(mapping.id)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="font-mono text-sm text-gray-900 dark:text-white">
                         {mapping.nip}

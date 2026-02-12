@@ -26,6 +26,8 @@ export interface Database {
           updated_at: string;
           preferred_llm_model: string;
           can_access_ksef_config: boolean;
+          theme_preference: 'light' | 'dark';
+          ksef_sort_preference: Json | null;
           department?: {
             id: string;
             name: string;
@@ -40,6 +42,8 @@ export interface Database {
           is_admin?: boolean;
           preferred_llm_model?: string;
           can_access_ksef_config?: boolean;
+          theme_preference?: 'light' | 'dark';
+          ksef_sort_preference?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -52,6 +56,8 @@ export interface Database {
           is_admin?: boolean;
           preferred_llm_model?: string;
           can_access_ksef_config?: boolean;
+          theme_preference?: 'light' | 'dark';
+          ksef_sort_preference?: Json | null;
           created_at?: string;
           updated_at?: string;
         };

@@ -208,7 +208,9 @@ Deno.serve(async (req: Request) => {
     // 9. Update KSEF invoice record with XML
     const updateData: any = {
       transferred_to_invoice_id: newInvoice.id,
+      transferred_to_department_id: departmentId,
       transferred_at: new Date().toISOString(),
+      assigned_to_department_at: new Date().toISOString(),
     };
 
     if (xmlContent) {

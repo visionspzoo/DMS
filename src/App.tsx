@@ -19,15 +19,38 @@ function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
   const [appView, setAppView] = useState<AppView>('dashboard');
   const [darkMode, setDarkMode] = useState(() => {
+    if (profile?.theme_preference) {
+      return profile.theme_preference === 'dark';
+    }
     const saved = localStorage.getItem('aura-dark-mode');
     return saved === 'true';
   });
-
-  useEffect(() => {
-    localStorage.setItem('aura-dark-mode', String(darkMode));
-  }, [darkMode]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile?.theme_preference) {
+      setDarkMode(profile.theme_preference === 'dark');
+    }
+  }, [profile?.theme_preference]);
+
+  useEffect(() => {
+    const saveThemePreference = async () => {
+      if (!user) return;
+
+      const { supabase } = await import('./lib/supabase');
+      const newTheme = darkMode ? 'dark' : 'light';
+
+      await supabase
+        .from('profiles')
+        .update({ theme_preference: newTheme })
+        .eq('id', user.id);
+
+      localStorage.setItem('aura-dark-mode', String(darkMode));
+    };
+
+    saveThemePreference();
+  }, [darkMode, user]);
 
   if (loading) {
     return (

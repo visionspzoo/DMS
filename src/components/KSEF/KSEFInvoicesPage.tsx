@@ -27,6 +27,7 @@ interface KSEFInvoice {
   transferred_to_invoice_id: string | null;
   transferred_to_department_id: string | null;
   transferred_at: string | null;
+  assigned_to_department_at: string | null;
   created_at: string;
 }
 
@@ -165,12 +166,17 @@ export function KSEFInvoicesPage() {
         .select('*');
 
       if (invoiceTab === 'unassigned') {
-        query = query.is('transferred_to_invoice_id', null).is('transferred_to_department_id', null);
+        query = query
+          .is('transferred_to_invoice_id', null)
+          .is('transferred_to_department_id', null)
+          .order('created_at', { ascending: false });
       } else {
-        query = query.or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null');
+        query = query
+          .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
+          .order('assigned_to_department_at', { ascending: false, nullsFirst: false })
+          .order('transferred_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false });
       }
-
-      query = query.order('created_at', { ascending: false });
 
       const { data, error } = await query;
 
@@ -563,6 +569,7 @@ export function KSEFInvoicesPage() {
         transferred_to_invoice_id: newInvoice.id,
         transferred_to_department_id: departmentId,
         transferred_at: new Date().toISOString(),
+        assigned_to_department_at: new Date().toISOString(),
       };
 
       if (xmlContent) {
