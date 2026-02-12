@@ -140,9 +140,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const fetchKsefPdf = async (): Promise<string | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
-
     const { data: ksefRecord } = await supabase
       .from('ksef_invoices')
       .select('xml_content, ksef_reference_number, pdf_base64')
@@ -152,6 +149,36 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     if (!ksefRecord) return null;
 
     if (ksefRecord.pdf_base64) return ksefRecord.pdf_base64;
+
+    if (ksefRecord.ksef_reference_number) {
+      try {
+        const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
+        const pdfParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefRecord.ksef_reference_number)}/pdf`,
+        });
+        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        });
+        if (pdfResponse.ok) {
+          const pdfBlob = await pdfResponse.blob();
+          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`PDF downloaded from KSEF API (${pdfBlob.size} bytes)`);
+          await supabase
+            .from('ksef_invoices')
+            .update({ pdf_base64: pdfBase64 })
+            .eq('transferred_to_invoice_id', invoice.id);
+          return pdfBase64;
+        } else {
+          console.warn(`PDF download from KSEF API failed (${pdfResponse.status}), trying XML generation`);
+        }
+      } catch (e) {
+        console.error('PDF fetch from KSEF API failed:', e);
+      }
+    }
 
     if (ksefRecord.xml_content && ksefRecord.ksef_reference_number) {
       try {
@@ -171,30 +198,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         );
         if (genResponse.ok) {
           const pdfArrayBuffer = await genResponse.arrayBuffer();
-          return btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`PDF generated from XML (${pdfArrayBuffer.byteLength} bytes)`);
+          await supabase
+            .from('ksef_invoices')
+            .update({ pdf_base64: pdfBase64 })
+            .eq('transferred_to_invoice_id', invoice.id);
+          return pdfBase64;
+        } else {
+          console.warn(`PDF generation from XML failed (${genResponse.status})`);
         }
       } catch (e) {
         console.error('PDF generation from XML failed:', e);
-      }
-    }
-
-    if (ksefRecord.ksef_reference_number) {
-      try {
-        const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
-        const pdfParams = new URLSearchParams({
-          path: `/api/external/invoices/${encodeURIComponent(ksefRecord.ksef_reference_number)}/pdf`,
-        });
-        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
-        });
-        if (pdfResponse.ok) {
-          const pdfBlob = await pdfResponse.blob();
-          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-          return btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-        }
-      } catch (e) {
-        console.error('PDF fetch from KSEF API failed:', e);
       }
     }
 
