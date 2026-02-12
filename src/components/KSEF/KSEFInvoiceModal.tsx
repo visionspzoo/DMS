@@ -54,6 +54,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
   const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
@@ -131,17 +132,27 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     setShowUnassignConfirm(false);
   };
 
-  const loadPdfContent = async () => {
-    if (pdfUrl) return;
+  const loadPdfContent = async (forceRetry = false) => {
+    if (pdfUrl && !forceRetry) return;
+
+    if (forceRetry && pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
+    }
 
     setLoadingPdf(true);
+    setPdfError(null);
+
     try {
       console.log('=== LOADING PDF FOR KSEF INVOICE ===');
       console.log('KSEF Reference Number:', invoice.ksef_reference_number);
+      console.log('Has invoice_xml:', !!invoice.invoice_xml);
+      console.log('Has xml_content:', !!invoice.xml_content);
+      console.log('Has transferred_to_invoice_id:', !!invoice.transferred_to_invoice_id);
 
       // Strategy 1: If invoice was transferred, try loading PDF from invoices table
       if (invoice.transferred_to_invoice_id) {
-        console.log('Trying to load from transferred invoice...');
+        console.log('Strategy 1: Loading from transferred invoice...');
         const { data: transferredInvoice, error } = await supabase
           .from('invoices')
           .select('pdf_base64')
@@ -161,11 +172,15 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
           setPdfUrl(url);
           return;
         }
+        console.log('Strategy 1 failed:', error?.message || 'No PDF data');
       }
 
       // Strategy 2: Generate PDF from XML if available
-      if (invoice.xml_content) {
-        console.log('Generating PDF from XML...');
+      const xmlData = invoice.xml_content || invoice.invoice_xml;
+      if (xmlData) {
+        console.log('Strategy 2: Generating PDF from XML...');
+        console.log('XML length:', xmlData.length, 'characters');
+
         const generateResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
           {
@@ -175,11 +190,13 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              xml: invoice.xml_content,
+              xml: xmlData,
               ksefNumber: invoice.ksef_reference_number,
             }),
           }
         );
+
+        console.log('PDF generation response status:', generateResponse.status);
 
         if (generateResponse.ok) {
           const pdfBlob = await generateResponse.blob();
@@ -189,26 +206,30 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
           return;
         } else {
           const errorText = await generateResponse.text();
-          console.error('PDF generation from XML failed:', errorText);
+          console.error('Strategy 2 failed:', errorText);
         }
+      } else {
+        console.log('Strategy 2 skipped: No XML data available');
       }
 
       // Strategy 3: Try downloading PDF from external KSEF API
-      console.log('Trying to download from external API...');
+      console.log('Strategy 3: Downloading from external API...');
       const path = `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`;
+      console.log('API path:', path);
+
       const proxyParams = new URLSearchParams({ path });
+      const fetchUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`;
+      console.log('Fetch URL:', fetchUrl);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        }
-      );
+      const response = await fetch(fetchUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      });
 
-      console.log('External API response:', response.status);
+      console.log('External API response status:', response.status);
+      console.log('External API response content-type:', response.headers.get('content-type'));
 
       if (response.ok) {
         const contentType = response.headers.get('content-type') || '';
@@ -218,12 +239,27 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
           const url = URL.createObjectURL(pdfBlob);
           setPdfUrl(url);
           return;
+        } else {
+          const responseText = await response.text();
+          console.error('Strategy 3 failed: Expected PDF but got:', contentType);
+          console.error('Response body:', responseText.substring(0, 500));
         }
+      } else {
+        const errorText = await response.text();
+        console.error('Strategy 3 failed: HTTP', response.status);
+        console.error('Error response:', errorText);
       }
 
-      throw new Error('Nie udało się pobrać PDF z żadnego źródła');
+      const errorMsg = xmlData
+        ? 'Nie udało się wygenerować PDF. Spróbuj ponownie lub sprawdź konsolę przeglądarki (F12).'
+        : 'Brak danych XML dla tej faktury. Spróbuj ponownie pobrać faktury z KSEF.';
+      setPdfError(errorMsg);
+      throw new Error(errorMsg);
     } catch (error) {
       console.error('Error loading PDF:', error);
+      if (!pdfError) {
+        setPdfError(error instanceof Error ? error.message : 'Nieznany błąd');
+      }
     } finally {
       setLoadingPdf(false);
     }
@@ -258,6 +294,9 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                     <p className="text-text-primary-light dark:text-text-primary-dark">
                       Pobieranie PDF...
                     </p>
+                    <p className="text-text-secondary-light dark:text-text-secondary-dark text-xs mt-2">
+                      Próba generowania z XML...
+                    </p>
                   </div>
                 ) : pdfUrl ? (
                   <iframe
@@ -265,11 +304,25 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                     className="w-full h-full"
                     title="Faktura PDF"
                   />
+                ) : pdfError ? (
+                  <div className="flex flex-col items-center justify-center h-full p-8">
+                    <AlertTriangle className="w-16 h-16 text-orange-500 mb-4" />
+                    <p className="text-text-primary-light dark:text-text-primary-dark text-sm text-center mb-4 max-w-md">
+                      {pdfError}
+                    </p>
+                    <button
+                      onClick={() => loadPdfContent(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition text-sm"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Spróbuj ponownie
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full p-8">
                     <FileText className="w-16 h-16 text-slate-400 mb-4" />
                     <p className="text-text-secondary-light dark:text-text-secondary-dark text-sm">
-                      Nie udało się pobrać PDF faktury
+                      Ładowanie PDF...
                     </p>
                   </div>
                 )}
