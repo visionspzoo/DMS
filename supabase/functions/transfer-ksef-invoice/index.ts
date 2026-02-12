@@ -97,13 +97,49 @@ Deno.serve(async (req: Request) => {
             .update({ pdf_base64: pdfBase64 })
             .eq("id", ksefInvoice.id);
         } else {
-          console.warn(`PDF download failed (${pdfResponse.status}), proceeding without PDF`);
+          console.warn(`PDF download failed (${pdfResponse.status}), trying XML generation`);
         }
       } catch (pdfError: any) {
-        console.warn("PDF download failed, proceeding without PDF:", pdfError.message);
+        console.warn("PDF download failed, trying XML generation:", pdfError.message);
       }
     } else {
       console.log(`Using existing PDF from database`);
+    }
+
+    // 4. If still no PDF, try generating from XML content
+    if (!pdfBase64 && ksefInvoice.xml_content) {
+      console.log("Generating PDF from XML content...");
+      try {
+        const genResponse = await fetch(
+          `${supabaseUrl}/functions/v1/generate-ksef-pdf`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              xml: ksefInvoice.xml_content,
+              ksefNumber: ksefInvoice.ksef_reference_number,
+            }),
+          }
+        );
+
+        if (genResponse.ok) {
+          const pdfArrayBuffer = await genResponse.arrayBuffer();
+          pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`PDF generated from XML (${pdfArrayBuffer.byteLength} bytes)`);
+
+          await supabase
+            .from("ksef_invoices")
+            .update({ pdf_base64: pdfBase64 })
+            .eq("id", ksefInvoice.id);
+        } else {
+          console.warn(`PDF generation from XML failed (${genResponse.status})`);
+        }
+      } catch (genError: any) {
+        console.warn("PDF generation from XML failed:", genError.message);
+      }
     }
 
     // 5. Upload PDF to Google Drive (if configured and PDF available)

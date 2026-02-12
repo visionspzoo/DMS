@@ -138,36 +138,68 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const loadKsefPdfIfNeeded = async () => {
-    const ksefReferenceNumber = (invoice as any).ksef_reference_number;
-
-    if (!ksefReferenceNumber || invoice.pdf_base64 || invoice.file_url) {
-      return;
-    }
+    if (invoice.pdf_base64 || invoice.file_url) return;
+    if (invoice.source !== 'ksef') return;
 
     setLoadingKsefPdf(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
-      const pdfParams = new URLSearchParams({
-        path: `/api/external/invoices/${encodeURIComponent(ksefReferenceNumber)}/pdf`,
-      });
+      const { data: ksefRecord } = await supabase
+        .from('ksef_invoices')
+        .select('xml_content, ksef_reference_number, pdf_base64')
+        .eq('transferred_to_invoice_id', invoice.id)
+        .maybeSingle();
 
-      const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
+      if (!ksefRecord) return;
 
-      if (pdfResponse.ok) {
-        const pdfBlob = await pdfResponse.blob();
-        const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-        const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-        setKsefPdfBase64(pdfBase64);
-      } else {
-        console.error('Failed to load KSEF PDF');
+      if (ksefRecord.pdf_base64) {
+        setKsefPdfBase64(ksefRecord.pdf_base64);
+        return;
+      }
+
+      if (ksefRecord.xml_content && ksefRecord.ksef_reference_number) {
+        const genResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              xml: ksefRecord.xml_content,
+              ksefNumber: ksefRecord.ksef_reference_number,
+            }),
+          }
+        );
+
+        if (genResponse.ok) {
+          const pdfArrayBuffer = await genResponse.arrayBuffer();
+          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          setKsefPdfBase64(pdfBase64);
+          return;
+        }
+      }
+
+      if (ksefRecord.ksef_reference_number) {
+        const ksefProxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy`;
+        const pdfParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefRecord.ksef_reference_number)}/pdf`,
+        });
+
+        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+
+        if (pdfResponse.ok) {
+          const pdfBlob = await pdfResponse.blob();
+          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+          const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          setKsefPdfBase64(pdfBase64);
+        }
       }
     } catch (error) {
       console.error('Error loading KSEF PDF:', error);
