@@ -627,13 +627,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const handleReprocessOCR = async () => {
-    if (!invoice.file_url) {
+    if (!invoice.file_url && !invoice.pdf_base64) {
       alert('Brak pliku do przetworzenia');
       return;
     }
 
     setIsReprocessing(true);
     try {
+      const requestBody: any = {
+        invoiceId: invoice.id,
+      };
+
+      if (invoice.file_url) {
+        requestBody.fileUrl = invoice.file_url;
+      } else if (invoice.pdf_base64) {
+        requestBody.pdfBase64 = invoice.pdf_base64;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
         {
@@ -642,10 +652,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            fileUrl: invoice.file_url,
-            invoiceId: invoice.id,
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
 
@@ -860,19 +867,21 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         <div className="flex-1 overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 h-full">
-            {invoice.file_url && (
+            {(invoice.file_url || invoice.pdf_base64) && (
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Podgląd dokumentu</h3>
-                  <a
-                    href={invoice.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-2 text-brand-primary hover:text-brand-primary/80 font-medium text-sm"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Otwórz w nowej karcie</span>
-                  </a>
+                  {invoice.file_url && (
+                    <a
+                      href={invoice.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 text-brand-primary hover:text-brand-primary/80 font-medium text-sm"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Otwórz w nowej karcie</span>
+                    </a>
+                  )}
                 </div>
                 <div className="flex-1 border-2 border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800">
                   {invoice.pdf_base64 ? (
@@ -882,7 +891,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       title="Podgląd faktury PDF"
                       style={{ border: 'none', minHeight: '600px' }}
                     />
-                  ) : invoice.file_url.toLowerCase().endsWith('.pdf') ? (
+                  ) : invoice.file_url && invoice.file_url.toLowerCase().endsWith('.pdf') ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileText className="w-24 h-24 text-slate-400" />
                       <div className="text-center">
