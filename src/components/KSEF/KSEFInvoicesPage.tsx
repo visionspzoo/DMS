@@ -434,7 +434,16 @@ export function KSEFInvoicesPage() {
         reader.readAsDataURL(pdfBlob);
       });
 
-      // Step 3: Get department info
+      // Step 3: Download XML from KSEF API
+      let xmlContent = null;
+      try {
+        xmlContent = await fetchKSEFInvoiceXML(selectedInvoice.ksef_reference_number);
+        console.log('✓ Pobrano XML dla faktury', selectedInvoice.invoice_number);
+      } catch (xmlError) {
+        console.error('Nie udało się pobrać XML (non-blocking):', xmlError);
+      }
+
+      // Step 4: Get department info
       const { data: department, error: folderError } = await supabase
         .from('departments')
         .select('name, google_drive_draft_folder_id')
@@ -442,38 +451,47 @@ export function KSEFInvoicesPage() {
         .maybeSingle();
 
       if (folderError) throw folderError;
-      if (!department?.google_drive_draft_folder_id) {
-        throw new Error('Brak folderu roboczego Google Drive dla wybranego działu');
+      if (!department) {
+        throw new Error('Nie znaleziono działu');
       }
 
-      // Step 4: Upload PDF to Google Drive
-      const uploadResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileName: `${selectedInvoice.invoice_number}.pdf`,
-            fileBase64: base64Pdf,
-            folderId: department.google_drive_draft_folder_id,
-            mimeType: 'application/pdf',
-          }),
+      // Step 5: Upload PDF to Google Drive (optional, if configured)
+      let driveFileUrl = null;
+      let googleDriveId = null;
+
+      if (department.google_drive_draft_folder_id) {
+        try {
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileName: `${selectedInvoice.invoice_number}.pdf`,
+                fileBase64: base64Pdf,
+                folderId: department.google_drive_draft_folder_id,
+                mimeType: 'application/pdf',
+              }),
+            }
+          );
+
+          if (uploadResponse.ok) {
+            const uploadResult = await uploadResponse.json();
+            googleDriveId = uploadResult.fileId;
+            driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
+            console.log('✓ PDF przesłany na Google Drive');
+          } else {
+            console.warn('Nie udało się przesłać PDF na Google Drive (non-blocking)');
+          }
+        } catch (uploadError) {
+          console.error('Google Drive upload failed (non-blocking):', uploadError);
         }
-      );
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error('Google Drive upload failed:', errorText);
-        throw new Error('Nie udało się przesłać PDF na Google Drive');
       }
 
-      const uploadResult = await uploadResponse.json();
-      const driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
-
-      // Step 5: Get exchange rate if needed
+      // Step 6: Get exchange rate if needed
       let exchangeRate = 1;
       let plnGrossAmount = selectedInvoice.gross_amount;
 
@@ -504,7 +522,7 @@ export function KSEFInvoicesPage() {
         }
       }
 
-      // Step 6: Create invoice record with file URL and base64
+      // Step 7: Create invoice record with file URL and base64
       const taxAmount = selectedInvoice.tax_amount || (selectedInvoice.gross_amount - selectedInvoice.net_amount);
 
       const invoiceData: any = {
@@ -520,6 +538,7 @@ export function KSEFInvoicesPage() {
         uploaded_by: profile?.id,
         department_id: departmentId,
         file_url: driveFileUrl,
+        google_drive_id: googleDriveId,
         pdf_base64: base64Pdf,
         description: `Faktura z KSEF - dodana jako wersja robocza`,
         pln_gross_amount: plnGrossAmount,
@@ -539,50 +558,58 @@ export function KSEFInvoicesPage() {
 
       if (insertError) throw insertError;
 
-      // Step 7: Update KSEF invoice record
+      // Step 8: Update KSEF invoice record with XML content
+      const updateData: any = {
+        transferred_to_invoice_id: newInvoice.id,
+        transferred_to_department_id: departmentId,
+        transferred_at: new Date().toISOString(),
+      };
+
+      if (xmlContent) {
+        updateData.xml_content = xmlContent;
+      }
+
       const { error: updateError } = await supabase
         .from('ksef_invoices')
-        .update({
-          transferred_to_invoice_id: newInvoice.id,
-          transferred_to_department_id: departmentId,
-          transferred_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', selectedInvoice.id);
 
       if (updateError) throw updateError;
 
-      // Step 8: Run OCR on the transferred invoice
-      try {
-        console.log('=== STARTING OCR FOR KSEF INVOICE ===');
-        console.log('Invoice ID:', newInvoice.id);
-        console.log('File URL:', driveFileUrl);
+      // Step 9: Run OCR on the transferred invoice (only if uploaded to Google Drive)
+      if (driveFileUrl) {
+        try {
+          console.log('=== STARTING OCR FOR KSEF INVOICE ===');
+          console.log('Invoice ID:', newInvoice.id);
+          console.log('File URL:', driveFileUrl);
 
-        const ocrResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileUrl: driveFileUrl,
-              invoiceId: newInvoice.id,
-            }),
+          const ocrResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileUrl: driveFileUrl,
+                invoiceId: newInvoice.id,
+              }),
+            }
+          );
+
+          if (ocrResponse.ok) {
+            const ocrData = await ocrResponse.json();
+            console.log('✓ OCR completed successfully:', ocrData);
+          } else {
+            console.error('OCR failed:', await ocrResponse.text());
           }
-        );
-
-        if (ocrResponse.ok) {
-          const ocrData = await ocrResponse.json();
-          console.log('✓ OCR completed successfully:', ocrData);
-        } else {
-          console.error('OCR failed:', await ocrResponse.text());
+        } catch (ocrError) {
+          console.error('OCR error (non-blocking):', ocrError);
         }
-      } catch (ocrError) {
-        console.error('OCR error (non-blocking):', ocrError);
       }
 
-      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF i przetworzona przez OCR.');
+      setSuccessMessage('Faktura została dodana do Moich Faktur z PDF' + (xmlContent ? ' i XML' : '') + (driveFileUrl ? ' i przetworzona przez OCR' : '') + '.');
       setSelectedInvoice(null);
       await loadInvoices();
     } catch (err: any) {
