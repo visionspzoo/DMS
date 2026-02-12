@@ -837,14 +837,6 @@ export function KSEFInvoicesPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="mb-4">
@@ -931,10 +923,7 @@ export function KSEFInvoicesPage() {
         {mainTab === 'invoices' && (
           <div className="flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
             <button
-              onClick={() => {
-                setLoading(true);
-                setInvoiceTab('unassigned');
-              }}
+              onClick={() => setInvoiceTab('unassigned')}
               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 invoiceTab === 'unassigned'
                   ? 'bg-brand-primary text-white shadow-sm'
@@ -944,10 +933,7 @@ export function KSEFInvoicesPage() {
               Nieprzypisane ({unassignedCount})
             </button>
             <button
-              onClick={() => {
-                setLoading(true);
-                setInvoiceTab('assigned');
-              }}
+              onClick={() => setInvoiceTab('assigned')}
               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
                 invoiceTab === 'assigned'
                   ? 'bg-brand-primary text-white shadow-sm'
@@ -987,7 +973,11 @@ export function KSEFInvoicesPage() {
         </div>
       ) : (
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-        {invoices.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+          </div>
+        ) : invoices.length === 0 ? (
           <div className="p-6 text-center">
             <FileText className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
             <p className="text-text-secondary-light dark:text-text-secondary-dark text-base">
