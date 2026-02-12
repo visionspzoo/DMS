@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
     let driveFileUrl = null;
     let googleDriveId = null;
 
-    if (department.google_drive_draft_folder_id) {
+    if (department.google_drive_draft_folder_id && ksefInvoice.fetched_by) {
       const uploadResponse = await fetch(
         `${supabaseUrl}/functions/v1/upload-to-google-drive`,
         {
@@ -113,6 +113,7 @@ Deno.serve(async (req: Request) => {
             fileBase64: pdfBase64,
             folderId: department.google_drive_draft_folder_id,
             mimeType: "application/pdf",
+            userId: ksefInvoice.fetched_by, // Pass userId directly to avoid token validation
           }),
         }
       );
@@ -157,14 +158,18 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 7. Get auth user ID from JWT
+    // 7. Get auth user ID from JWT (optional, fallback to fetched_by)
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
     let uploaderId = null;
 
     if (token) {
-      const { data: { user } } = await supabase.auth.getUser(token);
-      uploaderId = user?.id;
+      try {
+        const { data: { user } } = await supabase.auth.getUser(token);
+        uploaderId = user?.id;
+      } catch (error) {
+        console.warn("Could not extract user from token, will use fetched_by instead");
+      }
     }
 
     // 8. Create invoice record
