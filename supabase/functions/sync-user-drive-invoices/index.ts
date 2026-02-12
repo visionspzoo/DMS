@@ -457,6 +457,7 @@ Deno.serve(async (req: Request) => {
                         invoiceId: invoiceData.id,
                         folderId: targetFolder,
                         originalMimeType: "application/pdf",
+                        userId: user.id,
                       }),
                     }
                   );

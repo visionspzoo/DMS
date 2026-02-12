@@ -17,6 +17,7 @@ interface UploadRequest {
   mimeType?: string;
   originalMimeType?: string;
   isContract?: boolean;
+  userId?: string;
 }
 
 interface EmailConfig {
@@ -182,23 +183,31 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Authenticate user
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const { fileUrl, fileBase64, fileName, invoiceId, department, folderId, mimeType, originalMimeType, isContract, userId }: UploadRequest = await req.json();
 
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) {
-      throw new Error("Unauthorized");
+    let targetUserId: string;
+
+    // If userId is provided (internal call from service), use it
+    // Otherwise authenticate the user from the token
+    if (userId) {
+      targetUserId = userId;
+    } else {
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Unauthorized");
+      }
+      targetUserId = user.id;
     }
-
-    const { fileUrl, fileBase64, fileName, invoiceId, department, folderId, mimeType, originalMimeType, isContract }: UploadRequest = await req.json();
 
     // Get user's Google OAuth config
     const { data: emailConfigs, error: configError } = await supabase
       .from("user_email_configs")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", targetUserId)
       .eq("is_active", true)
       .eq("provider", "google_workspace");
 
