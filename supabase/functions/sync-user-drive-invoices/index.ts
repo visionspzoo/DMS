@@ -130,12 +130,21 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("=== SYNC DRIVE INVOICES START ===");
+    console.log("Request method:", req.method);
+    console.log("Request URL:", req.url);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+    console.log("Environment variables loaded");
+
     const authHeader = req.headers.get("Authorization");
+    console.log("Auth header present:", !!authHeader);
+
     if (!authHeader) {
+      console.log("ERROR: Missing auth header");
       return new Response(
         JSON.stringify({ error: "Brak naglowka autoryzacji" }),
         {
@@ -145,9 +154,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log("Importing Supabase client...");
     const { createClient } = await import("npm:@supabase/supabase-js@2");
+    console.log("Supabase client imported");
 
     // Create client with anon key for user authentication
+    console.log("Creating Supabase client for user auth...");
     const token = authHeader.replace("Bearer ", "");
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -157,12 +169,14 @@ Deno.serve(async (req: Request) => {
       },
     });
 
+    console.log("Getting user from token...");
     const {
       data: { user },
       error: userError,
     } = await supabaseClient.auth.getUser();
 
     if (userError || !user) {
+      console.log("ERROR: User auth failed:", userError?.message);
       return new Response(
         JSON.stringify({
           error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika"),
@@ -174,8 +188,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log("User authenticated:", user.id);
+
     // Create service role client for database operations
+    console.log("Creating service role client...");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log("Service role client created");
 
     // Load folder mappings (new system with department assignments)
     const { data: folderMappings, error: mappingError } = await supabase
