@@ -101,16 +101,32 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const checkIfFromKSEF = async () => {
     try {
-      const { data, error } = await supabase
-        .from('ksef_invoices')
-        .select('id')
-        .eq('transferred_to_invoice_id', invoice.id)
-        .maybeSingle();
+      const ksefReferenceNumber = (invoice as any).ksef_reference_number;
 
-      if (error) throw error;
-      if (data) {
-        setIsFromKSEF(true);
-        setKsefInvoiceId(data.id);
+      if (ksefReferenceNumber) {
+        const { data, error } = await supabase
+          .from('ksef_invoices')
+          .select('id')
+          .eq('ksef_reference_number', ksefReferenceNumber)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+          setIsFromKSEF(true);
+          setKsefInvoiceId(data.id);
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('ksef_invoices')
+          .select('id')
+          .eq('transferred_to_invoice_id', invoice.id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+          setIsFromKSEF(true);
+          setKsefInvoiceId(data.id);
+        }
       }
     } catch (error) {
       console.error('Error checking if invoice is from KSEF:', error);
@@ -650,13 +666,22 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (updateKsefError) throw updateKsefError;
 
-      const { error: deleteInvoiceError } = await supabase
+      const { data: checkInvoice } = await supabase
         .from('invoices')
-        .delete()
-        .eq('id', invoice.id);
+        .select('id')
+        .eq('id', invoice.id)
+        .maybeSingle();
 
-      if (deleteInvoiceError) throw deleteInvoiceError;
+      if (checkInvoice) {
+        const { error: deleteInvoiceError } = await supabase
+          .from('invoices')
+          .delete()
+          .eq('id', invoice.id);
 
+        if (deleteInvoiceError) throw deleteInvoiceError;
+      }
+
+      alert('Faktura została cofnięta z obiegu. Znajdziesz ją ponownie w sekcji KSEF.');
       setShowUnassignKSEFConfirm(false);
       onClose();
       onUpdate();
