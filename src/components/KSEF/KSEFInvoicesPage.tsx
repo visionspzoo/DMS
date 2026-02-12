@@ -380,44 +380,96 @@ export function KSEFInvoicesPage() {
       console.log(`Znaleziono ${missingData.length} faktur do zaktualizowania`);
 
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // Retry logic with exponential backoff for 429 errors
+      const fetchWithRetry = async (fetchFn: () => Promise<Response>, maxRetries = 3): Promise<Response> => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            const response = await fetchFn();
+
+            // If 429, wait longer and retry
+            if (response.status === 429) {
+              const waitTime = Math.pow(2, attempt) * 5000; // 5s, 10s, 20s
+              console.log(`⏳ Rate limit (429), czekam ${waitTime/1000}s przed ponowną próbą...`);
+              await delay(waitTime);
+              continue;
+            }
+
+            return response;
+          } catch (err) {
+            if (attempt === maxRetries - 1) throw err;
+            const waitTime = Math.pow(2, attempt) * 2000;
+            console.log(`⚠️ Błąd sieci, czekam ${waitTime/1000}s przed ponowną próbą...`);
+            await delay(waitTime);
+          }
+        }
+        throw new Error('Przekroczono maksymalną liczbę prób');
+      };
+
       let updated = 0;
+      let skipped = 0;
 
       for (let i = 0; i < missingData.length; i++) {
         const invoice = missingData[i];
         console.log(`\n--- Aktualizacja ${i + 1}/${missingData.length}: ${invoice.invoice_number} ---`);
 
         const updates: any = {};
+        let hasError = false;
 
         // Fetch XML if missing
         if (!invoice.xml_content) {
           try {
-            await delay(500);
-            const xml = await fetchKSEFInvoiceXML(invoice.ksef_reference_number);
-            if (xml && xml.length > 0) {
-              updates.xml_content = xml;
-              console.log(`✓ Pobrano XML (${xml.length} znaków)`);
+            await delay(3000); // Zwiększone opóźnienie: 3 sekundy między żądaniami
+            const proxyParams = new URLSearchParams({
+              path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/xml`,
+            });
+
+            const xmlResponse = await fetchWithRetry(() =>
+              fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  },
+                }
+              )
+            );
+
+            if (xmlResponse.ok) {
+              const xml = await xmlResponse.text();
+              if (xml && xml.length > 0) {
+                updates.xml_content = xml;
+                console.log(`✓ Pobrano XML (${xml.length} znaków)`);
+              }
+            } else {
+              console.warn(`⚠️ Nie udało się pobrać XML: ${xmlResponse.status}`);
+              hasError = true;
             }
           } catch (err) {
-            console.error('Nie udało się pobrać XML:', err);
+            console.error('❌ Błąd pobierania XML:', err);
+            hasError = true;
           }
         }
 
         // Fetch PDF if missing
         if (!invoice.pdf_base64) {
           try {
-            await delay(500);
+            await delay(3000); // Zwiększone opóźnienie: 3 sekundy między żądaniami
             const proxyParams = new URLSearchParams({
               path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`,
             });
 
-            const pdfResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-              {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                },
-              }
+            const pdfResponse = await fetchWithRetry(() =>
+              fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  },
+                }
+              )
             );
 
             if (pdfResponse.ok) {
@@ -430,10 +482,17 @@ export function KSEFInvoicesPage() {
               });
               updates.pdf_base64 = pdfBase64;
               console.log(`✓ Pobrano PDF (${pdfBlob.size} bytes)`);
+            } else {
+              console.warn(`⚠️ Nie udało się pobrać PDF: ${pdfResponse.status}`);
             }
           } catch (err) {
-            console.error('Nie udało się pobrać PDF:', err);
+            console.error('❌ Błąd pobierania PDF:', err);
           }
+        }
+
+        if (hasError) {
+          skipped++;
+          continue;
         }
 
         // Update invoice if we got any data
@@ -479,10 +538,14 @@ export function KSEFInvoicesPage() {
           console.log('⚠️ Brak nowych danych dla', invoice.invoice_number);
         }
 
-        setSuccessMessage(`Aktualizowanie: ${i + 1}/${missingData.length} (${updated} zaktualizowanych)`);
+        setSuccessMessage(`Aktualizowanie: ${i + 1}/${missingData.length} (${updated} OK, ${skipped} pominięto)`);
       }
 
-      setSuccessMessage(`✓ Zaktualizowano ${updated} faktur z pełnymi danymi XML i PDF`);
+      const finalMessage = skipped > 0
+        ? `✓ Zaktualizowano ${updated} faktur. Pominięto ${skipped} z powodu błędów rate limit (429)`
+        : `✓ Zaktualizowano ${updated} faktur z pełnymi danymi XML i PDF`;
+
+      setSuccessMessage(finalMessage);
       await loadInvoices();
     } catch (err: any) {
       console.error('Error refreshing PDF/XML:', err);
