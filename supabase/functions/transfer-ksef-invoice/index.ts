@@ -171,29 +171,38 @@ Deno.serve(async (req: Request) => {
     // Strategy 2: Download PDF from KSEF API (fallback)
     if (!pdfBase64) {
       console.log("Strategy 2: Downloading PDF from KSEF API...");
-      const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
-      const pdfParams = new URLSearchParams({
-        path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
-      });
+      try {
+        const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
+        const pdfParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
+        });
 
-      const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
-        method: "GET",
-        headers: {
-          "Authorization": req.headers.get("Authorization") || "",
-        },
-      });
+        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+          method: "GET",
+          headers: {
+            "Authorization": req.headers.get("Authorization") || "",
+          },
+        });
 
-      if (!pdfResponse.ok) {
-        const errorText = await pdfResponse.text();
-        console.error(`❌ Strategy 2 failed: ${pdfResponse.status}`);
-        console.error(`   Response:`, errorText);
-        throw new Error(`Cannot get PDF - both XML generation and KSEF download failed`);
+        if (pdfResponse.ok) {
+          const pdfBlob = await pdfResponse.blob();
+          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+          pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`✓ PDF downloaded from KSEF API successfully (${pdfBlob.size} bytes)`);
+        } else {
+          const errorText = await pdfResponse.text();
+          console.error(`❌ Strategy 2 failed: ${pdfResponse.status}`);
+          console.error(`   Response:`, errorText);
+        }
+      } catch (pdfError: any) {
+        console.error("❌ Strategy 2 error:", pdfError.message);
       }
+    }
 
-      const pdfBlob = await pdfResponse.blob();
-      const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-      pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-      console.log(`✓ PDF downloaded from KSEF API successfully (${pdfBlob.size} bytes)`);
+    // If all strategies failed, proceed WITHOUT PDF
+    if (!pdfBase64) {
+      console.warn("⚠️  All PDF strategies failed - will create invoice WITHOUT PDF file");
+      console.warn("   User will need to manually upload PDF or regenerate from modal");
     }
 
     // 4. Try to download XML if we don't have it yet (non-blocking)
@@ -223,11 +232,12 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 5. Upload PDF to Google Drive (if configured)
+    // 5. Upload PDF to Google Drive (if configured and PDF available)
     let driveFileUrl = null;
     let googleDriveId = null;
 
-    if (department.google_drive_draft_folder_id && ksefInvoice.fetched_by) {
+    if (pdfBase64 && department.google_drive_draft_folder_id && ksefInvoice.fetched_by) {
+      console.log("Uploading PDF to Google Drive...");
       const uploadResponse = await fetch(
         `${supabaseUrl}/functions/v1/upload-to-google-drive`,
         {
@@ -241,7 +251,7 @@ Deno.serve(async (req: Request) => {
             fileBase64: pdfBase64,
             folderId: department.google_drive_draft_folder_id,
             mimeType: "application/pdf",
-            userId: ksefInvoice.fetched_by, // Pass userId directly to avoid token validation
+            userId: ksefInvoice.fetched_by,
           }),
         }
       );
@@ -250,9 +260,12 @@ Deno.serve(async (req: Request) => {
         const uploadResult = await uploadResponse.json();
         googleDriveId = uploadResult.fileId;
         driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
+        console.log("✓ PDF uploaded to Google Drive");
       } else {
         console.warn("Failed to upload to Google Drive, will store PDF in database only");
       }
+    } else if (!pdfBase64) {
+      console.log("Skipping Google Drive upload - no PDF available");
     }
 
     // 6. Get exchange rate if needed
