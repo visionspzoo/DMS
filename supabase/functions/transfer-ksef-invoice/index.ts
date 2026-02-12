@@ -24,6 +24,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { ksefInvoiceId, departmentId, userId }: TransferRequest = await req.json();
@@ -86,7 +87,7 @@ Deno.serve(async (req: Request) => {
         const xmlResponse = await fetch(`${ksefProxyUrl}?${xmlParams}`, {
           method: "GET",
           headers: {
-            "Authorization": req.headers.get("Authorization") || "",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
           },
         });
 
@@ -127,7 +128,7 @@ Deno.serve(async (req: Request) => {
           {
             method: "POST",
             headers: {
-              "Authorization": req.headers.get("Authorization") || "",
+              "Authorization": `Bearer ${supabaseAnonKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -180,7 +181,7 @@ Deno.serve(async (req: Request) => {
         const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
           method: "GET",
           headers: {
-            "Authorization": req.headers.get("Authorization") || "",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
           },
         });
 
@@ -217,7 +218,7 @@ Deno.serve(async (req: Request) => {
         const xmlResponse = await fetch(`${ksefProxyUrl}?${xmlParams}`, {
           method: "GET",
           headers: {
-            "Authorization": req.headers.get("Authorization") || "",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
           },
         });
 
@@ -243,7 +244,7 @@ Deno.serve(async (req: Request) => {
         {
           method: "POST",
           headers: {
-            "Authorization": req.headers.get("Authorization") || "",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -279,7 +280,7 @@ Deno.serve(async (req: Request) => {
           {
             method: "POST",
             headers: {
-              "Authorization": req.headers.get("Authorization") || "",
+              "Authorization": `Bearer ${supabaseAnonKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -378,7 +379,7 @@ Deno.serve(async (req: Request) => {
         await fetch(`${supabaseUrl}/functions/v1/process-invoice-ocr`, {
           method: "POST",
           headers: {
-            "Authorization": req.headers.get("Authorization") || "",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
