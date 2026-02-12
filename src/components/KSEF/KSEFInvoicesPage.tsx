@@ -866,7 +866,24 @@ export function KSEFInvoicesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {invoiceTab === 'assigned' && invoices.filter(inv => inv.transferred_to_department_id && !inv.transferred_to_invoice_id).length > 0 && (
+              <div className="m-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-1">
+                      Faktury oczekują na przeniesienie do systemu
+                    </p>
+                    <p className="text-xs text-blue-800 dark:text-blue-400">
+                      Znaleziono <strong>{invoices.filter(inv => inv.transferred_to_department_id && !inv.transferred_to_invoice_id).length}</strong> faktur(y) automatycznie przypisane do działów.
+                      Kliknij na fakturę z etykietą "Kliknij aby przenieść" aby dodać ją do systemu jako wersję roboczą z podglądem PDF.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
                 <tr>
@@ -1004,9 +1021,15 @@ export function KSEFInvoicesPage() {
                     </td>
                     {invoiceTab === 'assigned' && (
                       <td className="px-3 py-2 text-center">
-                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          Przeniesiono
-                        </span>
+                        {invoice.transferred_to_invoice_id ? (
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            Przeniesiono
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                            Kliknij aby przenieść
+                          </span>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -1015,6 +1038,7 @@ export function KSEFInvoicesPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
       )}
