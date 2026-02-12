@@ -438,17 +438,45 @@ export function KSEFInvoicesPage() {
 
         // Update invoice if we got any data
         if (Object.keys(updates).length > 0) {
+          console.log('📝 Zapisywanie do bazy:', {
+            invoice: invoice.invoice_number,
+            hasXml: !!updates.xml_content,
+            hasPdf: !!updates.pdf_base64,
+            xmlLength: updates.xml_content?.length || 0,
+            pdfLength: updates.pdf_base64?.length || 0
+          });
+
           const { error: updateError } = await supabase
             .from('ksef_invoices')
             .update(updates)
             .eq('id', invoice.id);
 
           if (updateError) {
-            console.error('Błąd aktualizacji:', updateError);
+            console.error('❌ Błąd aktualizacji:', updateError);
           } else {
             updated++;
-            console.log(`✓ Zaktualizowano fakturę`);
+            console.log(`✓ Zapisano do bazy`);
+
+            // Verify the update immediately
+            const { data: verifyData, error: verifyError } = await supabase
+              .from('ksef_invoices')
+              .select('xml_content, pdf_base64')
+              .eq('id', invoice.id)
+              .maybeSingle();
+
+            if (verifyError) {
+              console.error('⚠️ Nie udało się zweryfikować zapisu:', verifyError);
+            } else {
+              console.log('✓ Weryfikacja zapisu:', {
+                xmlInDb: !!verifyData?.xml_content,
+                pdfInDb: !!verifyData?.pdf_base64,
+                xmlLengthInDb: verifyData?.xml_content?.length || 0,
+                pdfLengthInDb: verifyData?.pdf_base64?.length || 0
+              });
+            }
           }
+        } else {
+          console.log('⚠️ Brak nowych danych dla', invoice.invoice_number);
         }
 
         setSuccessMessage(`Aktualizowanie: ${i + 1}/${missingData.length} (${updated} zaktualizowanych)`);

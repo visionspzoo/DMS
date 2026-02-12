@@ -150,6 +150,37 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
       console.log('Has xml_content:', !!invoice.xml_content);
       console.log('Has transferred_to_invoice_id:', !!invoice.transferred_to_invoice_id);
 
+      // Strategy 0: Check if PDF is already stored in ksef_invoices table
+      console.log('Strategy 0: Checking for stored PDF in ksef_invoices...');
+      const { data: ksefInvoiceData, error: ksefError } = await supabase
+        .from('ksef_invoices')
+        .select('pdf_base64, xml_content')
+        .eq('id', invoice.id)
+        .maybeSingle();
+
+      if (!ksefError && ksefInvoiceData?.pdf_base64) {
+        console.log('✓ Found PDF stored in ksef_invoices table, length:', ksefInvoiceData.pdf_base64.length);
+        try {
+          const byteCharacters = atob(ksefInvoiceData.pdf_base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
+          const url = URL.createObjectURL(pdfBlob);
+          setPdfUrl(url);
+          console.log('✓ Successfully loaded PDF from ksef_invoices storage');
+          return;
+        } catch (decodeError) {
+          console.error('Failed to decode stored PDF:', decodeError);
+        }
+      }
+      console.log('Strategy 0 failed: No PDF in ksef_invoices table');
+
+      // Update xml_content if we got fresh data from database
+      const xmlData = ksefInvoiceData?.xml_content || invoice.xml_content || invoice.invoice_xml;
+
       // Strategy 1: If invoice was transferred, try loading PDF from invoices table
       if (invoice.transferred_to_invoice_id) {
         console.log('Strategy 1: Loading from transferred invoice...');
@@ -176,7 +207,6 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
       }
 
       // Strategy 2: Generate PDF from XML if available
-      const xmlData = invoice.xml_content || invoice.invoice_xml;
       if (xmlData) {
         console.log('Strategy 2: Generating PDF from XML...');
         console.log('XML length:', xmlData.length, 'characters');
