@@ -128,34 +128,39 @@ export function InvoiceList() {
 
   const loadSyncConfigs = useCallback(async () => {
     if (!user) return;
-    const [driveRes, mappingsRes, emailRes] = await Promise.all([
-      supabase.from('user_drive_configs').select('is_active, last_sync_at').eq('user_id', user.id).maybeSingle(),
-      supabase.from('user_drive_folder_mappings').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true),
-      supabase.from('user_email_configs').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true).order('last_sync_at', { ascending: false }).limit(1).maybeSingle(),
-    ]);
+    try {
+      const [driveRes, mappingsRes, emailRes] = await Promise.all([
+        supabase.from('user_drive_configs').select('is_active, last_sync_at').eq('user_id', user.id).maybeSingle(),
+        supabase.from('user_drive_folder_mappings').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true),
+        supabase.from('user_email_configs').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true).order('last_sync_at', { ascending: false }).limit(1).maybeSingle(),
+      ]);
 
-    let driveIsActive = false;
-    let driveLastSyncDate: string | null = null;
+      let driveIsActive = false;
+      let driveLastSyncDate: string | null = null;
 
-    if (mappingsRes.data && mappingsRes.data.length > 0) {
-      driveIsActive = true;
-      const latestMapping = mappingsRes.data.reduce((latest, current) => {
-        if (!latest.last_sync_at) return current;
-        if (!current.last_sync_at) return latest;
-        return new Date(current.last_sync_at) > new Date(latest.last_sync_at) ? current : latest;
-      });
-      driveLastSyncDate = latestMapping.last_sync_at;
-    } else if (driveRes.data) {
-      driveIsActive = driveRes.data.is_active;
-      driveLastSyncDate = driveRes.data.last_sync_at;
-    }
+      if (!mappingsRes.error && mappingsRes.data && mappingsRes.data.length > 0) {
+        driveIsActive = true;
+        let latestMapping = mappingsRes.data[0];
+        for (const mapping of mappingsRes.data) {
+          if (!latestMapping.last_sync_at || (mapping.last_sync_at && new Date(mapping.last_sync_at) > new Date(latestMapping.last_sync_at))) {
+            latestMapping = mapping;
+          }
+        }
+        driveLastSyncDate = latestMapping.last_sync_at;
+      } else if (!driveRes.error && driveRes.data) {
+        driveIsActive = driveRes.data.is_active;
+        driveLastSyncDate = driveRes.data.last_sync_at;
+      }
 
-    setDriveActive(driveIsActive);
-    setDriveLastSync(driveLastSyncDate);
+      setDriveActive(driveIsActive);
+      setDriveLastSync(driveLastSyncDate);
 
-    if (emailRes.data) {
-      setEmailActive(emailRes.data.is_active);
-      setEmailLastSync(emailRes.data.last_sync_at);
+      if (!emailRes.error && emailRes.data) {
+        setEmailActive(emailRes.data.is_active);
+        setEmailLastSync(emailRes.data.last_sync_at);
+      }
+    } catch (error) {
+      console.error('Error loading sync configs:', error);
     }
   }, [user]);
 
