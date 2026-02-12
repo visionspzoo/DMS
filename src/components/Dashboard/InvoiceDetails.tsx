@@ -738,6 +738,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       let updateData: Partial<Invoice> = {
         status: 'waiting',
+        current_approver_id: null,
       };
 
       if (ksefInvoice?.pdf_base64 && !invoice.pdf_base64) {
@@ -752,7 +753,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (updateError) throw updateError;
 
       onUpdate();
-      onClose();
     } catch (error) {
       console.error('Error confirming KSEF invoice:', error);
       alert('Nie udało się potwierdzić faktury');
@@ -963,13 +963,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {!isEditing ? (
               <>
                 {isFromKSEF && invoice.status === 'draft' && (profile?.role === 'Administrator' || invoice.uploaded_by === profile?.id) && (
-                  <button
-                    onClick={() => setShowUnassignKSEFConfirm(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
-                  >
-                    <Undo2 className="w-4 h-4" />
-                    <span>Cofnij z KSEF</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowTransferModal(true)}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                      <span>Prześlij</span>
+                    </button>
+                    <button
+                      onClick={() => setShowUnassignKSEFConfirm(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
+                    >
+                      <Undo2 className="w-4 h-4" />
+                      <span>Cofnij z KSEF</span>
+                    </button>
+                  </>
                 )}
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <>
