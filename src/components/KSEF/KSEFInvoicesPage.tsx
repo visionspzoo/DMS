@@ -187,6 +187,9 @@ export function KSEFInvoicesPage() {
   };
 
   const loadInvoices = async () => {
+    setLoading(true);
+    setInvoices([]);
+
     try {
       const { count: unassigned } = await supabase
         .from('ksef_invoices')
