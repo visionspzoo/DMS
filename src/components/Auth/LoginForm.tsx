@@ -84,24 +84,24 @@ export function LoginForm() {
 
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4 transition-colors duration-200">
+    <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl p-8 border border-gray-200/50 dark:border-gray-700/50">
+        <div className="bg-dark-surface rounded-2xl shadow-2xl p-8 border border-gray-700/50">
           <div className="flex items-center justify-center mb-8">
-            <div className="bg-gradient-to-br from-brand-primary to-brand-primary-hover p-4 rounded-xl shadow-lg">
+            <div className="bg-gradient-to-br from-brand-primary to-brand-primary-hover p-4 rounded-xl shadow-lg shadow-brand-primary/20">
               <LogIn className="w-8 h-8 text-white" />
             </div>
           </div>
 
-          <h2 className="text-3xl font-bold text-center text-text-primary-light dark:text-text-primary-dark mb-2">
+          <h2 className="text-3xl font-bold text-center text-text-primary-dark mb-2">
             Aura DMS
           </h2>
-          <p className="text-center text-text-secondary-light dark:text-text-secondary-dark mb-8">
-            {showTestLogin ? 'Logowanie testowe' : 'Zaloguj się przez Google Workspace'}
+          <p className="text-center text-text-secondary-dark mb-8">
+            {showTestLogin ? 'Logowanie testowe' : 'Zaloguj sie przez Google Workspace'}
           </p>
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-6">
+            <div className="bg-red-900/20 border border-red-800 text-red-400 px-4 py-3 rounded-lg mb-6">
               {error}
             </div>
           )}
@@ -111,7 +111,7 @@ export function LoginForm() {
               <button
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full bg-light-surface dark:bg-dark-surface-variant border-2 border-gray-300 dark:border-gray-600 text-text-primary-light dark:text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-dark-surface hover:border-gray-400 dark:hover:border-gray-500 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-sm"
+                className="w-full bg-dark-surface-variant border-2 border-gray-600 text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-dark-surface hover:border-gray-500 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-sm"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
@@ -131,34 +131,34 @@ export function LoginForm() {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                {loading ? 'Przekierowywanie...' : 'Zaloguj się przez Google'}
+                {loading ? 'Przekierowywanie...' : 'Zaloguj sie przez Google'}
               </button>
 
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+                  <div className="w-full border-t border-gray-700"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-light-surface dark:bg-dark-surface text-text-secondary-light dark:text-text-secondary-dark">lub</span>
+                  <span className="px-4 bg-dark-surface text-text-secondary-dark">lub</span>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowTestLogin(true)}
-                className="w-full bg-light-surface-variant dark:bg-dark-surface-variant border border-gray-300 dark:border-gray-700 text-text-primary-light dark:text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-dark-surface transition"
+                className="w-full bg-dark-surface-variant border border-gray-700 text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-dark-surface transition"
               >
                 Logowanie testowe
               </button>
 
-              <p className="text-center text-xs text-text-secondary-light dark:text-text-secondary-dark mt-6">
-                Użyj konta Google Workspace swojej organizacji
+              <p className="text-center text-xs text-text-secondary-dark mt-6">
+                Uzyj konta Google Workspace swojej organizacji
               </p>
             </>
           ) : (
             <>
               <form onSubmit={handleTestLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  <label className="block text-sm font-medium text-text-primary-dark mb-2">
                     Email
                   </label>
                   <input
@@ -167,13 +167,13 @@ export function LoginForm() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="test@example.com"
                     required
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                    className="w-full px-4 py-3 border border-gray-700 bg-dark-surface-variant text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-dark"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                    Hasło
+                  <label className="block text-sm font-medium text-text-primary-dark mb-2">
+                    Haslo
                   </label>
                   <input
                     type="password"
@@ -181,16 +181,16 @@ export function LoginForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                    className="w-full px-4 py-3 border border-gray-700 bg-dark-surface-variant text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-dark"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white py-3 px-4 rounded-lg font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white py-3 px-4 rounded-lg font-medium hover:shadow-lg hover:shadow-brand-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Logowanie...' : 'Zaloguj się'}
+                  {loading ? 'Logowanie...' : 'Zaloguj sie'}
                 </button>
               </form>
 
@@ -201,9 +201,9 @@ export function LoginForm() {
                   setEmail('');
                   setPassword('');
                 }}
-                className="w-full mt-4 text-text-secondary-light dark:text-text-secondary-dark py-2 px-4 rounded-lg font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition"
+                className="w-full mt-4 text-text-secondary-dark py-2 px-4 rounded-lg font-medium hover:text-text-primary-dark transition"
               >
-                Powrót do logowania Google
+                Powrot do logowania Google
               </button>
             </>
           )}
