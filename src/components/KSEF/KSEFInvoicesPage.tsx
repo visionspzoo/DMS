@@ -233,6 +233,106 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const autoTransferAssignedInvoices = async () => {
+    try {
+      setTransferring(true);
+      setError('');
+      setSuccessMessage('');
+
+      console.log('🔄 Sprawdzanie faktur do automatycznego przeniesienia...');
+
+      // Get all auto-assigned invoices that haven't been transferred yet
+      const { data: assignedInvoices, error: fetchError } = await supabase
+        .from('ksef_invoices')
+        .select('*')
+        .not('transferred_to_department_id', 'is', null)
+        .is('transferred_to_invoice_id', null);
+
+      if (fetchError) {
+        console.error('Błąd podczas pobierania faktur do transferu:', fetchError);
+        setError('Nie udało się pobrać listy faktur do przeniesienia');
+        return;
+      }
+
+      if (!assignedInvoices || assignedInvoices.length === 0) {
+        console.log('✓ Brak faktur do automatycznego przeniesienia');
+        setSuccessMessage('Brak faktur do automatycznego przeniesienia');
+        return;
+      }
+
+      console.log(`📦 Znaleziono ${assignedInvoices.length} faktur do przeniesienia`);
+      setSuccessMessage(`Automatyczne przenoszenie ${assignedInvoices.length} faktur do systemu...`);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error('Brak tokena sesji - nie można wykonać auto-transferu');
+        setError('Brak autoryzacji - odśwież stronę i spróbuj ponownie');
+        return;
+      }
+
+      let transferred = 0;
+      let failed = 0;
+
+      for (const invoice of assignedInvoices) {
+        try {
+          console.log(`🔄 Przenoszenie faktury ${invoice.invoice_number}...`);
+
+          const transferResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ksefInvoiceId: invoice.id,
+                departmentId: invoice.transferred_to_department_id,
+              }),
+            }
+          );
+
+          if (transferResponse.ok) {
+            const result = await transferResponse.json();
+            console.log(`✓ Faktura ${invoice.invoice_number} przeniesiona pomyślnie`);
+            transferred++;
+          } else {
+            const errorData = await transferResponse.json();
+            console.error(`❌ Błąd przenoszenia faktury ${invoice.invoice_number}:`, errorData);
+            failed++;
+          }
+        } catch (transferError) {
+          console.error(`❌ Błąd przenoszenia faktury ${invoice.invoice_number}:`, transferError);
+          failed++;
+        }
+
+        // Update progress message
+        setSuccessMessage(
+          `Przenoszenie faktur: ${transferred + failed}/${assignedInvoices.length} (${transferred} OK, ${failed} błędów)`
+        );
+      }
+
+      // Final summary
+      if (failed === 0) {
+        setSuccessMessage(
+          `✓ Automatycznie przeniesiono ${transferred} faktur do systemu z pełnym podglądem PDF`
+        );
+      } else {
+        setError(
+          `Przeniesiono ${transferred} faktur, ${failed} nie udało się. Sprawdź konsolę dla szczegółów.`
+        );
+      }
+
+      // Reload invoices to show updated state
+      await loadInvoices();
+    } catch (error) {
+      console.error('Błąd podczas automatycznego transferu:', error);
+      setError('Nieoczekiwany błąd podczas automatycznego transferu');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   const handleFetchInvoices = async () => {
     setFetching(true);
     setError('');
@@ -334,37 +434,6 @@ export function KSEFInvoicesPage() {
         } else {
           console.log('✓ Faktura zapisana pomyślnie:', inserted);
           newInvoices++;
-
-          // Check if invoice was auto-assigned to department and auto-transfer it
-          if (inserted && inserted[0] && inserted[0].transferred_to_department_id) {
-            console.log(`🔄 Faktura automatycznie przypisana do działu ${inserted[0].transferred_to_department_id}, rozpoczynam transfer...`);
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              const transferResponse = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${session?.access_token}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    ksefInvoiceId: inserted[0].id,
-                    departmentId: inserted[0].transferred_to_department_id,
-                  }),
-                }
-              );
-
-              if (transferResponse.ok) {
-                console.log(`✓ Automatyczny transfer faktury ${invoice.invoiceNumber} zakończony sukcesem`);
-              } else {
-                const errorData = await transferResponse.json();
-                console.error(`❌ Błąd automatycznego transferu faktury ${invoice.invoiceNumber}:`, errorData);
-              }
-            } catch (autoTransferError) {
-              console.error(`❌ Błąd automatycznego transferu faktury ${invoice.invoiceNumber}:`, autoTransferError);
-            }
-          }
         }
       }
 
@@ -383,6 +452,9 @@ export function KSEFInvoicesPage() {
       }
 
       await loadInvoices();
+
+      // Auto-transfer any newly assigned invoices
+      await autoTransferAssignedInvoices();
       const syncTime = new Date().toISOString();
       setLastSync(syncTime);
       localStorage.setItem('ksef_last_sync', syncTime);
@@ -748,6 +820,24 @@ export function KSEFInvoicesPage() {
                   </div>
                 )}
                 <button
+                  onClick={autoTransferAssignedInvoices}
+                  disabled={fetching || transferring}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 text-sm"
+                  title="Automatycznie przenieś wszystkie faktury przypisane do działów"
+                >
+                  {transferring ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Przenoszę...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="w-4 h-4" />
+                      Przenieś auto-przypisane
+                    </>
+                  )}
+                </button>
+                <button
                   onClick={handleFetchInvoices}
                   disabled={fetching}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
@@ -875,10 +965,16 @@ export function KSEFInvoicesPage() {
                     <p className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-1">
                       Faktury oczekują na przeniesienie do systemu
                     </p>
-                    <p className="text-xs text-blue-800 dark:text-blue-400">
+                    <p className="text-xs text-blue-800 dark:text-blue-400 mb-2">
                       Znaleziono <strong>{invoices.filter(inv => inv.transferred_to_department_id && !inv.transferred_to_invoice_id).length}</strong> faktur(y) automatycznie przypisane do działów.
-                      Kliknij na fakturę z etykietą "Kliknij aby przenieść" aby dodać ją do systemu jako wersję roboczą z podglądem PDF.
                     </p>
+                    <p className="text-xs text-blue-800 dark:text-blue-400">
+                      <strong>Opcje przeniesienia:</strong>
+                    </p>
+                    <ul className="text-xs text-blue-800 dark:text-blue-400 list-disc list-inside mt-1 space-y-0.5">
+                      <li>Kliknij przycisk <strong>"Przenieś auto-przypisane"</strong> u góry aby przenieść wszystkie faktury automatycznie</li>
+                      <li>Lub kliknij na pojedynczą fakturę z etykietą "Kliknij aby przenieść" aby przenieść tylko ją</li>
+                    </ul>
                   </div>
                 </div>
               </div>
