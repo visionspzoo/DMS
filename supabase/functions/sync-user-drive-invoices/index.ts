@@ -236,7 +236,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const oauthConfig = emailConfigs[0] as EmailConfig;
+
+    console.log("OAuth config loaded:", {
+      email: oauthConfig.email_address,
+      hasAccessToken: !!oauthConfig.oauth_access_token,
+      hasRefreshToken: !!oauthConfig.oauth_refresh_token,
+      tokenExpiry: oauthConfig.oauth_token_expiry,
+    });
+
     const accessToken = await getValidAccessToken(supabase, oauthConfig);
+    console.log("Access token obtained, length:", accessToken?.length);
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -274,22 +283,32 @@ Deno.serve(async (req: Request) => {
         const filesUrl =
           `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType='application/pdf'+and+trashed=false&fields=files(id,name,modifiedTime)&pageSize=50`;
 
+        console.log("Fetching files from Drive folder:", folderId);
+        console.log("Using access token (first 20 chars):", accessToken.substring(0, 20) + "...");
+
         const filesResponse = await fetch(filesUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
 
+        console.log("Drive API response status:", filesResponse.status);
+
         if (!filesResponse.ok) {
           const errBody = await filesResponse.text();
-          console.error("Drive API error:", errBody);
+          console.error("Drive API error response:", errBody);
+          console.error("Drive API status:", filesResponse.status);
+          console.error("Folder ID attempted:", folderId);
+
           if (filesResponse.status === 403 || filesResponse.status === 401) {
             errors.push(
-              "Brak dostepu do folderu Drive. Odlacz i polacz ponownie konto Google, aby przyznac uprawnienia do Drive."
+              `Brak dostepu do folderu Drive (${filesResponse.status}). Szczegoly: ${errBody.substring(0, 200)}`
             );
           } else {
             errors.push(`Blad Google Drive API: ${filesResponse.status}`);
           }
           continue;
         }
+
+        console.log("Successfully fetched files list from Drive");
 
         const filesData = await filesResponse.json();
         const files = filesData.files || [];
