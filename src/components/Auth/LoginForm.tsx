@@ -84,24 +84,24 @@ export function LoginForm() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4 transition-colors duration-200">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl p-8 border border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center justify-center mb-8">
-            <div className="bg-slate-900 p-3 rounded-xl">
+            <div className="bg-gradient-to-br from-brand-primary to-brand-primary-hover p-4 rounded-xl shadow-lg">
               <LogIn className="w-8 h-8 text-white" />
             </div>
           </div>
 
-          <h2 className="text-3xl font-bold text-center text-slate-900 mb-2">
+          <h2 className="text-3xl font-bold text-center text-text-primary-light dark:text-text-primary-dark mb-2">
             Aura DMS
           </h2>
-          <p className="text-center text-slate-600 mb-8">
+          <p className="text-center text-text-secondary-light dark:text-text-secondary-dark mb-8">
             {showTestLogin ? 'Logowanie testowe' : 'Zaloguj się przez Google Workspace'}
           </p>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-6">
               {error}
             </div>
           )}
@@ -111,7 +111,7 @@ export function LoginForm() {
               <button
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full bg-white border-2 border-slate-300 text-slate-700 py-3 px-4 rounded-lg font-medium hover:bg-slate-50 hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-sm"
+                className="w-full bg-light-surface dark:bg-dark-surface-variant border-2 border-gray-300 dark:border-gray-600 text-text-primary-light dark:text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-dark-surface hover:border-gray-400 dark:hover:border-gray-500 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-sm"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
@@ -136,21 +136,21 @@ export function LoginForm() {
 
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-300"></div>
+                  <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white text-slate-500">lub</span>
+                  <span className="px-4 bg-light-surface dark:bg-dark-surface text-text-secondary-light dark:text-text-secondary-dark">lub</span>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowTestLogin(true)}
-                className="w-full bg-slate-100 border border-slate-300 text-slate-700 py-3 px-4 rounded-lg font-medium hover:bg-slate-200 transition"
+                className="w-full bg-light-surface-variant dark:bg-dark-surface-variant border border-gray-300 dark:border-gray-700 text-text-primary-light dark:text-text-primary-dark py-3 px-4 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-dark-surface transition"
               >
                 Logowanie testowe
               </button>
 
-              <p className="text-center text-xs text-slate-500 mt-6">
+              <p className="text-center text-xs text-text-secondary-light dark:text-text-secondary-dark mt-6">
                 Użyj konta Google Workspace swojej organizacji
               </p>
             </>
@@ -158,7 +158,7 @@ export function LoginForm() {
             <>
               <form onSubmit={handleTestLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                     Email
                   </label>
                   <input
@@ -167,12 +167,12 @@ export function LoginForm() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="test@example.com"
                     required
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                     Hasło
                   </label>
                   <input
@@ -181,14 +181,14 @@ export function LoginForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-slate-900 text-white py-3 px-4 rounded-lg font-medium hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white py-3 px-4 rounded-lg font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Logowanie...' : 'Zaloguj się'}
                 </button>
@@ -201,7 +201,7 @@ export function LoginForm() {
                   setEmail('');
                   setPassword('');
                 }}
-                className="w-full mt-4 text-slate-600 py-2 px-4 rounded-lg font-medium hover:text-slate-900 transition"
+                className="w-full mt-4 text-text-secondary-light dark:text-text-secondary-dark py-2 px-4 rounded-lg font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition"
               >
                 Powrót do logowania Google
               </button>

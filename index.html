@@ -5,9 +5,139 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aura DMS - Elektroniczny Obieg Dokumentów</title>
+    <style>
+      /* Loading screen styles */
+      #loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease-out;
+      }
+
+      /* Light mode */
+      #loading-screen {
+        background: hsl(220, 15%, 98%);
+      }
+
+      /* Dark mode detection */
+      @media (prefers-color-scheme: dark) {
+        #loading-screen {
+          background: hsl(220, 15%, 8%);
+        }
+        #loading-screen .loading-text {
+          color: hsl(220, 10%, 95%);
+        }
+        #loading-screen .loading-subtext {
+          color: hsl(220, 8%, 70%);
+        }
+      }
+
+      .loading-content {
+        text-align: center;
+      }
+
+      .loading-logo {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 24px;
+        position: relative;
+      }
+
+      .loading-logo-inner {
+        width: 100%;
+        height: 100%;
+        border-radius: 20px;
+        background: linear-gradient(135deg, hsl(210, 85%, 58%), hsl(210, 85%, 48%));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+      }
+
+      .loading-logo-icon {
+        width: 40px;
+        height: 40px;
+        stroke: white;
+        stroke-width: 2;
+        fill: none;
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      .loading-text {
+        font-size: 28px;
+        font-weight: 700;
+        color: hsl(220, 10%, 10%);
+        margin-bottom: 8px;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+
+      .loading-subtext {
+        font-size: 14px;
+        color: hsl(220, 8%, 40%);
+        margin-bottom: 32px;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        margin: 0 auto;
+        border: 3px solid transparent;
+        border-top-color: hsl(210, 85%, 58%);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.8; transform: scale(0.95); }
+      }
+
+      /* Hide loading screen when app is ready */
+      #loading-screen.loaded {
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
   </head>
   <body>
+    <div id="loading-screen">
+      <div class="loading-content">
+        <div class="loading-logo">
+          <div class="loading-logo-inner">
+            <svg class="loading-logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 3H5C3.89543 3 3 3.89543 3 5V9M9 3H15M9 3V9M15 3H19C20.1046 3 21 3.89543 21 5V9M15 3V9M21 9V15M21 15V19C21 20.1046 20.1046 21 19 21H15M21 15H15M15 21H9M15 21V15M9 21H5C3.89543 21 3 20.1046 3 19V15M9 21V15M3 15V9M3 9H9M9 9H15M15 9V15M15 15H9M9 15V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+        <div class="loading-text">Aura DMS</div>
+        <div class="loading-subtext">Ładowanie aplikacji...</div>
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Remove loading screen when app is ready
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) {
+            loadingScreen.classList.add('loaded');
+            setTimeout(() => loadingScreen.remove(), 300);
+          }
+        }, 500);
+      });
+    </script>
   </body>
 </html>
