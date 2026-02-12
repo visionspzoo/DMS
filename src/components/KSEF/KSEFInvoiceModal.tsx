@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -41,10 +41,11 @@ interface KSEFInvoiceModalProps {
   onClose: () => void;
   onTransfer: (departmentId: string, userId?: string) => Promise<void>;
   onUnassign: (ksefInvoiceId: string) => Promise<void>;
+  onDelete: (ksefInvoiceId: string) => Promise<void>;
   transferring: boolean;
 }
 
-export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, transferring }: KSEFInvoiceModalProps) {
+export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
   const [selectedDepartment, setSelectedDepartment] = useState(invoice.transferred_to_department_id || '');
   const [selectedUser, setSelectedUser] = useState('');
@@ -52,6 +53,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
@@ -128,6 +130,11 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const handleUnassign = async () => {
     await onUnassign(invoice.id);
     setShowUnassignConfirm(false);
+  };
+
+  const handleDelete = async () => {
+    await onDelete(invoice.id);
+    setShowDeleteConfirm(false);
   };
 
   const decodeBase64ToPdfUrl = (base64: string): string => {
@@ -496,6 +503,16 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                   )}
                 </div>
               )}
+
+              <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Usuń fakturę z KSEF
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -545,6 +562,62 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                   <>
                     <Undo2 className="w-4 h-4" />
                     Cofnij przypisanie
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600 dark:text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Usuń fakturę z KSEF
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tej operacji nie można cofnąć
+                </p>
+              </div>
+            </div>
+
+            <p className="text-slate-700 dark:text-slate-300 mb-6">
+              Czy na pewno chcesz usunąć fakturę <strong>{invoice.invoice_number}</strong>?
+              {invoice.transferred_to_invoice_id && (
+                <span className="block mt-2 text-sm text-orange-600 dark:text-orange-400">
+                  Uwaga: Ta faktura została już przeniesiona do systemu. Usunięcie jej z KSEF nie usunie jej z obiegu dokumentów.
+                </span>
+              )}
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {transferring ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Usuwanie...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Usuń fakturę
                   </>
                 )}
               </button>

@@ -639,6 +639,30 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const handleDeleteInvoice = async (ksefInvoiceId: string) => {
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('ksef_invoices')
+        .delete()
+        .eq('id', ksefInvoiceId);
+
+      if (deleteError) throw deleteError;
+
+      setSuccessMessage('Faktura została usunięta z systemu KSEF');
+      setSelectedInvoice(null);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Error deleting KSEF invoice:', err);
+      setError(err.message || 'Nie udało się usunąć faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTransferInvoice = async (departmentId: string, userId?: string) => {
     if (!selectedInvoice || !departmentId) {
       setError('Proszę wybrać dział');
@@ -1152,6 +1176,7 @@ export function KSEFInvoicesPage() {
           onClose={() => setSelectedInvoice(null)}
           onTransfer={handleTransferInvoice}
           onUnassign={handleUnassignInvoice}
+          onDelete={handleDeleteInvoice}
           transferring={transferring}
         />
       )}
