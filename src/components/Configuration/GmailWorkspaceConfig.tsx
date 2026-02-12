@@ -324,6 +324,14 @@ export default function GmailWorkspaceConfig() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji uzytkownika');
 
+      console.log('Session check:', {
+        hasSession: !!session,
+        tokenStart: session.access_token.substring(0, 20),
+        expiresAt: session.expires_at,
+        now: Math.floor(Date.now() / 1000),
+        isExpired: session.expires_at ? session.expires_at < Math.floor(Date.now() / 1000) : 'unknown'
+      });
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`,
         {
