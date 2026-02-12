@@ -357,6 +357,7 @@ export default function GmailWorkspaceConfig() {
         });
       }
       await loadDriveConfig();
+      await loadFolderMappings();
     } catch (error: any) {
       console.error('Error syncing Drive:', error);
       setDriveMessage({ type: 'error', text: 'Blad: ' + error.message });
