@@ -63,7 +63,7 @@ function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string 
 }
 
 export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsProps) {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [currentInvoice, setCurrentInvoice] = useState<Invoice>(invoice);
   const [approvals, setApprovals] = useState<ApprovalWithProfile[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogWithUser[]>([]);
@@ -770,9 +770,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           console.log('☁️ Przesyłanie PDF na Google Drive...');
           console.log('Folder ID:', department.google_drive_draft_folder_id);
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('Brak sesji użytkownika');
+          if (!user) {
+            throw new Error('Brak zalogowanego użytkownika');
           }
 
           const uploadResponse = await fetch(
@@ -780,7 +779,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -788,6 +787,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 fileName: `${ksefInvoice.invoice_number.replace(/\//g, '_')}.pdf`,
                 folderId: department.google_drive_draft_folder_id,
                 mimeType: 'application/pdf',
+                userId: user.id,
               }),
             }
           );

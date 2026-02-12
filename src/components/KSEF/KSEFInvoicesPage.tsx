@@ -41,7 +41,7 @@ type SortColumn = 'issue_date' | 'gross_amount' | 'supplier_name' | 'department'
 type SortDirection = 'asc' | 'desc';
 
 export function KSEFInvoicesPage() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [mainTab, setMainTab] = useState<MainTabType>('invoices');
   const [invoiceTab, setInvoiceTab] = useState<InvoiceTabType>('unassigned');
   const [invoices, setInvoices] = useState<KSEFInvoice[]>([]);
@@ -727,9 +727,8 @@ export function KSEFInvoicesPage() {
           console.log('File name:', `${selectedInvoice.invoice_number}.pdf`);
           console.log('Base64 length:', base64Pdf.length);
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('Brak sesji użytkownika');
+          if (!user) {
+            throw new Error('Brak zalogowanego użytkownika');
           }
 
           const uploadResponse = await fetch(
@@ -737,7 +736,7 @@ export function KSEFInvoicesPage() {
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -745,6 +744,7 @@ export function KSEFInvoicesPage() {
                 fileBase64: base64Pdf,
                 folderId: department.google_drive_draft_folder_id,
                 mimeType: 'application/pdf',
+                userId: user.id,
               }),
             }
           );

@@ -66,9 +66,8 @@ export function UploadContract({ onClose, onSuccess }: UploadContractProps) {
 
       if (isDocx) {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('Brak sesji użytkownika');
+          if (!user) {
+            throw new Error('Brak zalogowanego użytkownika');
           }
 
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -76,7 +75,7 @@ export function UploadContract({ onClose, onSuccess }: UploadContractProps) {
           const uploadResponse = await fetch(`${supabaseUrl}/functions/v1/upload-to-google-drive`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -85,6 +84,7 @@ export function UploadContract({ onClose, onSuccess }: UploadContractProps) {
               mimeType: 'application/vnd.google-apps.document',
               originalMimeType: file.type,
               isContract: true,
+              userId: user.id,
             }),
           });
 

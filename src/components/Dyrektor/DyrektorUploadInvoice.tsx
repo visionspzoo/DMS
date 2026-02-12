@@ -60,17 +60,12 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
 
       if (insertError) throw insertError;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Brak sesji użytkownika');
-      }
-
       const driveResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -78,6 +73,7 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
             fileName: file.name,
             invoiceId: invoiceData.id,
             department: department.trim(),
+            userId: userId,
           }),
         }
       );
