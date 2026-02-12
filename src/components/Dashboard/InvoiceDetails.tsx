@@ -723,6 +723,44 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleConfirmAndTransferKSEF = async () => {
+    if (!ksefInvoiceId || !profile) return;
+
+    setLoading(true);
+    try {
+      const { data: ksefInvoice, error: ksefError } = await supabase
+        .from('ksef_invoices')
+        .select('pdf_base64')
+        .eq('id', ksefInvoiceId)
+        .maybeSingle();
+
+      if (ksefError) throw ksefError;
+
+      let updateData: Partial<Invoice> = {
+        status: 'waiting',
+      };
+
+      if (ksefInvoice?.pdf_base64 && !invoice.pdf_base64) {
+        updateData.pdf_base64 = ksefInvoice.pdf_base64;
+      }
+
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update(updateData)
+        .eq('id', invoice.id);
+
+      if (updateError) throw updateError;
+
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error confirming KSEF invoice:', error);
+      alert('Nie udało się potwierdzić faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUnassignFromKSEF = async () => {
     if (!ksefInvoiceId) return;
 
@@ -925,15 +963,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {!isEditing ? (
               <>
                 {isFromKSEF && invoice.status === 'draft' && (profile?.role === 'Administrator' || invoice.uploaded_by === profile?.id) && (
-                  <button
-                    onClick={() => setShowUnassignKSEFConfirm(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
-                  >
-                    <Undo2 className="w-4 h-4" />
-                    <span>Cofnij z KSEF</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleConfirmAndTransferKSEF}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FileCheck className="w-4 h-4" />
+                      <span>Potwierdź i przenieś</span>
+                    </button>
+                    <button
+                      onClick={() => setShowUnassignKSEFConfirm(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
+                    >
+                      <Undo2 className="w-4 h-4" />
+                      <span>Cofnij z KSEF</span>
+                    </button>
+                  </>
                 )}
-                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
+                {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
@@ -1142,6 +1190,26 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             )}
 
             <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2">
+              {isFromKSEF && invoice.status === 'draft' && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-300 dark:border-blue-700 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <FileCheck className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-1">
+                        Faktura z systemu KSEF
+                      </h3>
+                      <p className="text-xs text-blue-800 dark:text-blue-400 mb-2">
+                        Ta faktura została automatycznie pobrana z Krajowego Systemu e-Faktur i przypisana do Ciebie.
+                        Sprawdź szczegóły i potwierdź, aby przenieść ją do obiegu dokumentów.
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-500">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Oczekuje na potwierdzenie</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center gap-2">
