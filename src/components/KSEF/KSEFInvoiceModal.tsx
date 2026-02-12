@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -31,11 +31,17 @@ interface Department {
   name: string;
 }
 
+interface DepartmentUser {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 interface KSEFInvoiceModalProps {
   invoice: KSEFInvoice;
   departments: Department[];
   onClose: () => void;
-  onTransfer: (departmentId: string) => Promise<void>;
+  onTransfer: (departmentId: string, userId?: string) => Promise<void>;
   onUnassign: (ksefInvoiceId: string) => Promise<void>;
   transferring: boolean;
 }
@@ -43,6 +49,8 @@ interface KSEFInvoiceModalProps {
 export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
   const [selectedDepartment, setSelectedDepartment] = useState(invoice.transferred_to_department_id || '');
+  const [selectedUser, setSelectedUser] = useState('');
+  const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
@@ -61,10 +69,61 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedDepartment) {
+      loadDepartmentUsers(selectedDepartment);
+    } else {
+      setDepartmentUsers([]);
+      setSelectedUser('');
+    }
+  }, [selectedDepartment]);
+
+  async function loadDepartmentUsers(departmentId: string) {
+    try {
+      const [primaryResult, membersResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('department_id', departmentId)
+          .order('full_name'),
+        supabase
+          .from('department_members')
+          .select(`
+            user_id,
+            profiles:user_id (
+              id,
+              full_name,
+              email
+            )
+          `)
+          .eq('department_id', departmentId)
+      ]);
+
+      if (primaryResult.error) throw primaryResult.error;
+
+      const users: DepartmentUser[] = [...(primaryResult.data || [])];
+
+      if (!membersResult.error && membersResult.data) {
+        membersResult.data.forEach((member: any) => {
+          if (member.profiles && !users.find(u => u.id === member.profiles.id)) {
+            users.push(member.profiles);
+          }
+        });
+      }
+
+      users.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setDepartmentUsers(users);
+    } catch (err) {
+      console.error('Error loading department users:', err);
+      setDepartmentUsers([]);
+    }
+  }
+
   const handleTransfer = async () => {
     if (!selectedDepartment) return;
-    await onTransfer(selectedDepartment);
+    await onTransfer(selectedDepartment, selectedUser || undefined);
     setSelectedDepartment('');
+    setSelectedUser('');
   };
 
   const handleUnassign = async () => {
@@ -356,6 +415,32 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                         ))}
                       </select>
                     </div>
+                    {selectedDepartment && (
+                      <div>
+                        <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2 flex items-center gap-2">
+                          <User className="w-4 h-4" />
+                          Przypisz do osoby (opcjonalnie)
+                        </label>
+                        <select
+                          value={selectedUser}
+                          onChange={(e) => setSelectedUser(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent text-sm"
+                          disabled={transferring}
+                        >
+                          <option value="">Kierownik działu</option>
+                          {departmentUsers.map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.full_name}
+                            </option>
+                          ))}
+                        </select>
+                        {!selectedUser && (
+                          <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
+                            Faktura zostanie przypisana do kierownika działu
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <button
                       onClick={handleTransfer}
                       disabled={transferring || !selectedDepartment}
