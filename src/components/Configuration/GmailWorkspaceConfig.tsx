@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import DriveFolderMappings from './DriveFolderMappings';
 
 interface EmailConfig {
   id: string;
@@ -648,6 +649,8 @@ export default function GmailWorkspaceConfig() {
           </div>
         </div>
       </div>
+
+      <DriveFolderMappings />
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-4">
         <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">

@@ -25,6 +25,16 @@ interface DriveConfig {
   last_sync_at: string | null;
 }
 
+interface FolderMapping {
+  id: string;
+  user_id: string;
+  folder_name: string;
+  google_drive_folder_id: string;
+  department_id: string;
+  is_active: boolean;
+  last_sync_at: string | null;
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 8192;
@@ -155,6 +165,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Load folder mappings (new system with department assignments)
+    const { data: folderMappings, error: mappingError } = await supabase
+      .from("user_drive_folder_mappings")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("is_active", true);
+
+    if (mappingError) {
+      throw new Error(`Blad ladowania mapowania folderow: ${mappingError.message}`);
+    }
+
+    // Fallback: Load legacy drive configs if no folder mappings exist
     const { data: driveConfigs, error: driveConfigError } = await supabase
       .from("user_drive_configs")
       .select("*")
@@ -165,7 +187,12 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Blad ladowania konfiguracji Drive: ${driveConfigError.message}`);
     }
 
-    if (!driveConfigs || driveConfigs.length === 0) {
+    // Prioritize folder mappings, fallback to legacy configs
+    const foldersToSync = folderMappings && folderMappings.length > 0
+      ? folderMappings
+      : driveConfigs;
+
+    if (!foldersToSync || foldersToSync.length === 0) {
       return new Response(
         JSON.stringify({
           message: "Brak aktywnych konfiguracji Google Drive",
@@ -216,13 +243,21 @@ Deno.serve(async (req: Request) => {
       warnings.push("UWAGA: Brak kluczy API (ANTHROPIC_API_KEY lub MISTRAL_API_KEY) w Supabase. Faktury zostana zaimportowane, ale dane nie zostana automatycznie wyekstraktowane. Skonfiguruj klucze API w Dashboard Supabase -> Project Settings -> Edge Functions -> Secrets.");
     }
 
-    for (const driveConfig of driveConfigs as DriveConfig[]) {
+    // Determine if we're using folder mappings or legacy configs
+    const isUsingMappings = folderMappings && folderMappings.length > 0;
+
+    for (const folderConfig of foldersToSync) {
       try {
-        const folderId = driveConfig.google_drive_folder_id;
+        const folderId = folderConfig.google_drive_folder_id;
         if (!folderId) {
           errors.push("Brak ID folderu Google Drive");
           continue;
         }
+
+        // Get department ID from mapping or fallback to user's default department
+        const mappedDepartmentId = isUsingMappings
+          ? (folderConfig as FolderMapping).department_id
+          : profile?.department_id;
 
         const filesUrl =
           `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType='application/pdf'+and+trashed=false&fields=files(id,name,modifiedTime)&pageSize=50`;
@@ -304,7 +339,7 @@ Deno.serve(async (req: Request) => {
               supplier_name: "Przetwarzanie...",
               gross_amount: 0,
               uploaded_by: user.id,
-              department_id: profile?.department_id || null,
+              department_id: mappedDepartmentId || null,
               status: "draft",
               pdf_base64: base64,
               file_url: publicUrl,
@@ -423,10 +458,18 @@ Deno.serve(async (req: Request) => {
           totalSynced++;
         }
 
-        await supabase
-          .from("user_drive_configs")
-          .update({ last_sync_at: new Date().toISOString() })
-          .eq("id", driveConfig.id);
+        // Update last_sync_at for the appropriate table
+        if (isUsingMappings) {
+          await supabase
+            .from("user_drive_folder_mappings")
+            .update({ last_sync_at: new Date().toISOString() })
+            .eq("id", folderConfig.id);
+        } else {
+          await supabase
+            .from("user_drive_configs")
+            .update({ last_sync_at: new Date().toISOString() })
+            .eq("id", folderConfig.id);
+        }
       } catch (error: any) {
         console.error(`Error syncing Drive folder:`, error);
         errors.push(error.message);
