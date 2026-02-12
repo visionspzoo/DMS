@@ -104,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.rpc('update_last_login');
 
         setProfile(data);
+        setLoading(false);
       } else {
         if (retryCount < MAX_RETRIES) {
           console.log(`Profile not found, retrying in ${RETRY_DELAY}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
@@ -119,13 +120,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(null);
         setProfile(null);
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
-    } finally {
-      if (retryCount >= MAX_RETRIES || profile) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
