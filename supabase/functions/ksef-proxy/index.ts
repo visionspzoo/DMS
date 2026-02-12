@@ -24,7 +24,10 @@ Deno.serve(async (req: Request) => {
 
     const targetUrl = `${KSEF_API_URL}${path}${queryParams ? '?' + queryParams : ''}`;
 
-    console.log('KSEF Proxy - Target URL:', targetUrl);
+    console.log('=== KSEF Proxy Request ===');
+    console.log('Method:', req.method);
+    console.log('Path:', path);
+    console.log('Target URL:', targetUrl);
 
     const response = await fetch(targetUrl, {
       method: req.method,
@@ -34,16 +37,26 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    console.log('KSEF Proxy - Response status:', response.status);
+    const contentType = response.headers.get('content-type') || '';
+    console.log('Response status:', response.status);
+    console.log('Content-Type:', contentType);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      let errorData;
+      try {
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = { error: 'Unknown error' };
+      }
       console.error('KSEF Proxy - Error:', errorData);
 
       return new Response(
         JSON.stringify({
           success: false,
-          error: errorData.error || `HTTP ${response.status}`,
+          error: errorData.error || errorData.message || `HTTP ${response.status}`,
+          details: errorData,
         }),
         {
           status: response.status,
@@ -52,15 +65,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const contentType = response.headers.get('content-type') || '';
-
     if (contentType.includes('application/pdf')) {
+      console.log('Returning PDF data');
       const pdfData = await response.arrayBuffer();
+      console.log('PDF size:', pdfData.byteLength, 'bytes');
       return new Response(pdfData, {
         status: 200,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/pdf',
+          'Content-Length': pdfData.byteLength.toString(),
         },
       });
     }
