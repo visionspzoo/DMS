@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
 import { KSEFConfiguration } from './KSEFConfiguration';
-import { fetchKSEFInvoices, fetchKSEFInvoiceXML, checkKSEFStatus } from '../../lib/ksefApiClient';
+import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
@@ -595,9 +595,31 @@ export function KSEFInvoicesPage() {
       // Add delay between requests to avoid rate limiting (429 errors)
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+      const fetchWithRetry = async (fetchFn: () => Promise<Response>, maxRetries = 3): Promise<Response> => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            const response = await fetchFn();
+            if (response.status === 429) {
+              const waitTime = Math.pow(2, attempt) * 5000;
+              console.log(`Rate limit (429), czekam ${waitTime / 1000}s...`);
+              await delay(waitTime);
+              continue;
+            }
+            return response;
+          } catch (err) {
+            if (attempt === maxRetries - 1) throw err;
+            const waitTime = Math.pow(2, attempt) * 3000;
+            await delay(waitTime);
+          }
+        }
+        throw new Error('Przekroczono maksymalną liczbę prób');
+      };
+
       for (let i = 0; i < ksefInvoices.length; i++) {
         const invoice = ksefInvoices[i];
         console.log(`\n--- Przetwarzanie faktury ${i + 1}/${ksefInvoices.length}: ${invoice.invoiceNumber} (${invoice.ksefNumber}) ---`);
+
+        setSuccessMessage(`Pobieranie faktur: ${i + 1}/${ksefInvoices.length} - ${invoice.invoiceNumber}...`);
 
         const { data: existing, error: checkError } = await supabase
           .from('ksef_invoices')
@@ -621,52 +643,59 @@ export function KSEFInvoicesPage() {
         const grossAmount = invoice.grossAmount || 0;
         const taxAmount = grossAmount - netAmount;
 
-        console.log('Kwoty:', { netAmount, grossAmount, taxAmount });
-
         let xmlContent = null;
         try {
-          console.log(`🔄 Pobieranie XML dla faktury ${invoice.invoiceNumber}...`);
-          await delay(500); // Wait 500ms before each XML request to avoid rate limiting
-          xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
-          if (xmlContent && xmlContent.length > 0) {
-            console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber} (length: ${xmlContent.length})`);
-          } else {
-            console.warn(`⚠️ XML dla faktury ${invoice.invoiceNumber} jest puste`);
-            xmlContent = null;
+          console.log(`Pobieranie XML dla faktury ${invoice.invoiceNumber}...`);
+          await delay(3000);
+          const proxyParams = new URLSearchParams({
+            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/xml`,
+          });
+          const xmlResponse = await fetchWithRetry(() =>
+            fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+              }
+            )
+          );
+          if (xmlResponse.ok) {
+            xmlContent = await xmlResponse.text();
+            if (xmlContent && xmlContent.length > 0) {
+              console.log(`Pobrano XML (${xmlContent.length} znaków)`);
+            } else {
+              xmlContent = null;
+            }
           }
         } catch (xmlError: any) {
-          console.error(`❌ Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
-          console.error(`   Szczegóły błędu:`, xmlError.message || xmlError);
-          // Continue even if XML fetch fails - we can still save the invoice metadata
+          console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
         }
 
-        // Download and save PDF immediately when fetching invoices
         let pdfBase64 = null;
         try {
-          console.log(`🔄 Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
-          await delay(500); // Wait 500ms before each PDF request to avoid rate limiting
+          console.log(`Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
+          await delay(3000);
 
           const proxyParams = new URLSearchParams({
             path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf`,
           });
 
-          const pdfResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
-            {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-            }
+          const pdfResponse = await fetchWithRetry(() =>
+            fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+              }
+            )
           );
-
-          console.log(`📊 PDF Response status: ${pdfResponse.status}, content-type: ${pdfResponse.headers.get('content-type')}`);
 
           if (pdfResponse.ok) {
             const pdfBlob = await pdfResponse.blob();
-            console.log(`📦 PDF Blob size: ${pdfBlob.size} bytes`);
-
-            // Use FileReader for safe base64 conversion (works with large files)
             pdfBase64 = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onloadend = () => {
@@ -676,21 +705,12 @@ export function KSEFInvoicesPage() {
               reader.onerror = reject;
               reader.readAsDataURL(pdfBlob);
             });
-
-            console.log(`✓ Pobrano PDF dla faktury ${invoice.invoiceNumber} (${pdfBlob.size} bytes, base64 length: ${pdfBase64.length})`);
+            console.log(`Pobrano PDF (${pdfBlob.size} bytes)`);
           } else {
-            const errorText = await pdfResponse.text();
-            console.warn(`❌ Nie udało się pobrać PDF dla faktury ${invoice.invoiceNumber}: ${pdfResponse.status}`);
-            console.warn(`   Error response:`, errorText.substring(0, 200));
-
-            // If we got rate limited (429) or server error, try to generate PDF from XML later
-            if (pdfResponse.status === 429 || pdfResponse.status >= 500) {
-              console.log(`⚠️ Rate limit or server error - PDF będzie wygenerowany z XML przy pierwszym otwarciu`);
-            }
+            console.warn(`Nie udało się pobrać PDF: ${pdfResponse.status}`);
           }
         } catch (pdfError) {
-          console.error(`❌ Błąd podczas pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
-          // Continue even if PDF fetch fails - we can generate it from XML later
+          console.error(`Błąd pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
         }
 
         const invoiceData = {
@@ -879,11 +899,23 @@ export function KSEFInvoicesPage() {
         reader.readAsDataURL(pdfBlob);
       });
 
-      // Step 3: Download XML from KSEF API
       let xmlContent = null;
       try {
-        xmlContent = await fetchKSEFInvoiceXML(selectedInvoice.ksef_reference_number);
-        console.log('✓ Pobrano XML dla faktury', selectedInvoice.invoice_number);
+        const xmlProxyParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(selectedInvoice.ksef_reference_number)}/xml`,
+        });
+        const xmlResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${xmlProxyParams}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        if (xmlResponse.ok) {
+          xmlContent = await xmlResponse.text();
+        }
       } catch (xmlError) {
         console.error('Nie udało się pobrać XML (non-blocking):', xmlError);
       }
