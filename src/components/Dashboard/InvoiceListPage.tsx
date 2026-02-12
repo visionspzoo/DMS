@@ -16,7 +16,7 @@ import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 
-const SYNC_INTERVAL_MS = 10 * 60 * 1000;
+const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string {
   if (invoice.status === 'draft') return 'draft';

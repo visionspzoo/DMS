@@ -686,9 +686,9 @@ export default function DepartmentManagement() {
 
       {showEditDept && editingDept && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-xl max-w-md w-full border border-slate-200 dark:border-slate-700/50 max-h-[90vh] overflow-y-auto">
-            <div className="px-3 py-2 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between sticky top-0">
-              <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-xl max-w-lg w-full border border-slate-200 dark:border-slate-700/50 max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between sticky top-0">
+              <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
                 Edytuj dział
               </h3>
               <button
@@ -702,27 +702,27 @@ export default function DepartmentManagement() {
               </button>
             </div>
 
-            <div className="p-3 space-y-2.5">
+            <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                   Nazwa działu *
                 </label>
                 <input
                   type="text"
                   value={editingDept.name}
                   onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
-                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                   Dział nadrzędny (opcjonalnie)
                 </label>
                 <select
                   value={editingDept.parent_department_id || ''}
                   onChange={(e) => setEditingDept({ ...editingDept, parent_department_id: e.target.value || null })}
-                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak (dział główny)</option>
                   {departments.filter(d => d.id !== editingDept.id).map(dept => (
@@ -732,13 +732,13 @@ export default function DepartmentManagement() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                   Kierownik (opcjonalnie)
                 </label>
                 <select
                   value={editingDept.manager_id || ''}
                   onChange={(e) => setEditingDept({ ...editingDept, manager_id: e.target.value || null })}
-                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
                   {users.filter(u => u.role === 'Kierownik').map(user => (
@@ -750,13 +750,13 @@ export default function DepartmentManagement() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                   Dyrektor (opcjonalnie)
                 </label>
                 <select
                   value={editingDept.director_id || ''}
                   onChange={(e) => setEditingDept({ ...editingDept, director_id: e.target.value || null })}
-                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
                   {users.filter(u => u.role === 'Dyrektor').map(user => (
@@ -767,17 +767,17 @@ export default function DepartmentManagement() {
                 </select>
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-2.5 mt-2.5">
-                <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-1.5">
+              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
                   Limity zatwierdzania faktur
                 </h4>
-                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-2">
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
                   Ustaw maksymalne kwoty dla automatycznego zatwierdzania faktur bez potrzeby akceptacji przez działy nadrzędne
                 </p>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                       Max kwota pojedynczej faktury (PLN)
                     </label>
                     <input
@@ -786,13 +786,13 @@ export default function DepartmentManagement() {
                       min="0"
                       value={editingDept.max_invoice_amount || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="np. 5000.00"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                       Max suma miesięcznych faktur (PLN)
                     </label>
                     <input
@@ -801,69 +801,69 @@ export default function DepartmentManagement() {
                       min="0"
                       value={editingDept.max_monthly_amount || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, max_monthly_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="np. 50000.00"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-2.5 mt-2.5">
-                <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-1.5">
+              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
                   Foldery Google Drive
                 </h4>
-                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-2">
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
                   Wprowadź ID folderów Google Drive dla automatycznego przenoszenia faktur
                 </p>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                       Folder dla faktur roboczych
                     </label>
                     <input
                       type="text"
                       value={editingDept.google_drive_draft_folder_id || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, google_drive_draft_folder_id: e.target.value || null })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="ID folderu z Google Drive"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                       Folder dla faktur nieopłaconych
                     </label>
                     <input
                       type="text"
                       value={editingDept.google_drive_unpaid_folder_id || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, google_drive_unpaid_folder_id: e.target.value || null })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="ID folderu z Google Drive"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                       Folder dla faktur opłaconych
                     </label>
                     <input
                       type="text"
                       value={editingDept.google_drive_paid_folder_id || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, google_drive_paid_folder_id: e.target.value || null })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="ID folderu z Google Drive"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2.5 border-t border-slate-200 dark:border-slate-700/50">
+              <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700/50">
                 <button
                   onClick={handleUpdateDept}
-                  className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-brand-primary text-white text-xs font-medium rounded-md hover:bg-brand-primary-hover transition-all"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-brand-primary text-white text-sm font-medium rounded-lg hover:bg-brand-primary-hover transition-all"
                 >
-                  <Save className="w-3 h-3" />
+                  <Save className="w-4 h-4" />
                   Zapisz
                 </button>
                 <button
@@ -871,7 +871,7 @@ export default function DepartmentManagement() {
                     setShowEditDept(false);
                     setEditingDept(null);
                   }}
-                  className="px-3 py-1.5 text-text-secondary-light dark:text-text-secondary-dark text-xs font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
+                  className="px-4 py-2 text-text-secondary-light dark:text-text-secondary-dark text-sm font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
                 >
                   Anuluj
                 </button>

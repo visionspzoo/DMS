@@ -420,19 +420,19 @@ export function KSEFConfiguration() {
       )}
 
       {canManageMappings && selectedMappings.size > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-3">
+        <div className="bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50 rounded-lg p-4">
+          <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark mb-3">
             Operacje masowe ({selectedMappings.size} {selectedMappings.size === 1 ? 'zaznaczony' : selectedMappings.size < 5 ? 'zaznaczone' : 'zaznaczonych'})
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1.5">
+              <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
                 Zmień dział
               </label>
               <select
                 value={bulkDepartment}
                 onChange={(e) => setBulkDepartment(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-blue-300 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Wybierz dział</option>
                 {departments.map((dept) => (
@@ -443,14 +443,14 @@ export function KSEFConfiguration() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1.5">
+              <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
                 Zmień osobę
               </label>
               <select
                 value={bulkUser}
                 onChange={(e) => setBulkUser(e.target.value)}
                 disabled={!bulkDepartment}
-                className="w-full px-3 py-2 text-sm border border-blue-300 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Kierownik działu</option>
                 {bulkDepartmentUsers.map((user) => (
@@ -593,8 +593,8 @@ export function KSEFConfiguration() {
       </div>
 
       {!canManageMappings && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <p className="text-sm text-blue-800 dark:text-blue-200">
+        <div className="bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50 rounded-lg p-4">
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
             Jako specjalista nie możesz zarządzać mapowaniami NIP. Skontaktuj się z kierownikiem lub dyrektorem.
           </p>
         </div>
