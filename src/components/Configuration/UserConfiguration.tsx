@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { Mail, Key } from 'lucide-react';
+import { Mail, Key, User } from 'lucide-react';
 import GmailWorkspaceConfig from './GmailWorkspaceConfig';
 import AliceIntegration from './AliceIntegration';
+import AccountInfo from './AccountInfo';
 
-type ConfigTab = 'google' | 'alice';
+type ConfigTab = 'account' | 'google' | 'alice';
 
 const tabs: { id: ConfigTab; label: string; icon: typeof Mail }[] = [
+  { id: 'account', label: 'Informacje o koncie', icon: User },
   { id: 'google', label: 'Google Workspace', icon: Mail },
   { id: 'alice', label: 'Alice API', icon: Key },
 ];
 
 export default function UserConfiguration() {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('google');
+  const [activeTab, setActiveTab] = useState<ConfigTab>('account');
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
@@ -44,6 +46,7 @@ export default function UserConfiguration() {
         })}
       </div>
 
+      {activeTab === 'account' && <AccountInfo />}
       {activeTab === 'google' && <GmailWorkspaceConfig />}
       {activeTab === 'alice' && <AliceIntegration />}
     </div>
