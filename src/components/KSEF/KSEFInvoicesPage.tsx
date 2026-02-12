@@ -356,6 +356,114 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const handleRefreshPdfXml = async () => {
+    setFetching(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      console.log('=== AKTUALIZACJA XML I PDF DLA ISTNIEJĄCYCH FAKTUR ===');
+
+      // Get all invoices that don't have XML or PDF
+      const { data: missingData, error: fetchError } = await supabase
+        .from('ksef_invoices')
+        .select('id, ksef_reference_number, invoice_number, xml_content, pdf_base64')
+        .or('xml_content.is.null,pdf_base64.is.null');
+
+      if (fetchError) throw fetchError;
+
+      if (!missingData || missingData.length === 0) {
+        setSuccessMessage('Wszystkie faktury mają już pobrane XML i PDF');
+        return;
+      }
+
+      console.log(`Znaleziono ${missingData.length} faktur do zaktualizowania`);
+
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      let updated = 0;
+
+      for (let i = 0; i < missingData.length; i++) {
+        const invoice = missingData[i];
+        console.log(`\n--- Aktualizacja ${i + 1}/${missingData.length}: ${invoice.invoice_number} ---`);
+
+        const updates: any = {};
+
+        // Fetch XML if missing
+        if (!invoice.xml_content) {
+          try {
+            await delay(500);
+            const xml = await fetchKSEFInvoiceXML(invoice.ksef_reference_number);
+            if (xml && xml.length > 0) {
+              updates.xml_content = xml;
+              console.log(`✓ Pobrano XML (${xml.length} znaków)`);
+            }
+          } catch (err) {
+            console.error('Nie udało się pobrać XML:', err);
+          }
+        }
+
+        // Fetch PDF if missing
+        if (!invoice.pdf_base64) {
+          try {
+            await delay(500);
+            const proxyParams = new URLSearchParams({
+              path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`,
+            });
+
+            const pdfResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+              }
+            );
+
+            if (pdfResponse.ok) {
+              const pdfBlob = await pdfResponse.blob();
+              const pdfBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(pdfBlob);
+              });
+              updates.pdf_base64 = pdfBase64;
+              console.log(`✓ Pobrano PDF (${pdfBlob.size} bytes)`);
+            }
+          } catch (err) {
+            console.error('Nie udało się pobrać PDF:', err);
+          }
+        }
+
+        // Update invoice if we got any data
+        if (Object.keys(updates).length > 0) {
+          const { error: updateError } = await supabase
+            .from('ksef_invoices')
+            .update(updates)
+            .eq('id', invoice.id);
+
+          if (updateError) {
+            console.error('Błąd aktualizacji:', updateError);
+          } else {
+            updated++;
+            console.log(`✓ Zaktualizowano fakturę`);
+          }
+        }
+
+        setSuccessMessage(`Aktualizowanie: ${i + 1}/${missingData.length} (${updated} zaktualizowanych)`);
+      }
+
+      setSuccessMessage(`✓ Zaktualizowano ${updated} faktur z pełnymi danymi XML i PDF`);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Error refreshing PDF/XML:', err);
+      setError(err.message || 'Nie udało się zaktualizować faktur');
+    } finally {
+      setFetching(false);
+    }
+  };
+
   const handleFetchInvoices = async () => {
     setFetching(true);
     setError('');
@@ -393,8 +501,12 @@ export function KSEFInvoicesPage() {
       let skippedInvoices = 0;
       let errorInvoices = 0;
 
-      for (const invoice of ksefInvoices) {
-        console.log(`\n--- Przetwarzanie faktury: ${invoice.invoiceNumber} (${invoice.ksefNumber}) ---`);
+      // Add delay between requests to avoid rate limiting (429 errors)
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      for (let i = 0; i < ksefInvoices.length; i++) {
+        const invoice = ksefInvoices[i];
+        console.log(`\n--- Przetwarzanie faktury ${i + 1}/${ksefInvoices.length}: ${invoice.invoiceNumber} (${invoice.ksefNumber}) ---`);
 
         const { data: existing, error: checkError } = await supabase
           .from('ksef_invoices')
@@ -423,6 +535,7 @@ export function KSEFInvoicesPage() {
         let xmlContent = null;
         try {
           console.log(`🔄 Pobieranie XML dla faktury ${invoice.invoiceNumber}...`);
+          await delay(500); // Wait 500ms before each XML request to avoid rate limiting
           xmlContent = await fetchKSEFInvoiceXML(invoice.ksefNumber);
           if (xmlContent && xmlContent.length > 0) {
             console.log(`✓ Pobrano XML dla faktury ${invoice.invoiceNumber} (length: ${xmlContent.length})`);
@@ -433,12 +546,15 @@ export function KSEFInvoicesPage() {
         } catch (xmlError: any) {
           console.error(`❌ Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
           console.error(`   Szczegóły błędu:`, xmlError.message || xmlError);
+          // Continue even if XML fetch fails - we can still save the invoice metadata
         }
 
         // Download and save PDF immediately when fetching invoices
         let pdfBase64 = null;
         try {
           console.log(`🔄 Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
+          await delay(500); // Wait 500ms before each PDF request to avoid rate limiting
+
           const proxyParams = new URLSearchParams({
             path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf`,
           });
@@ -475,9 +591,15 @@ export function KSEFInvoicesPage() {
             const errorText = await pdfResponse.text();
             console.warn(`❌ Nie udało się pobrać PDF dla faktury ${invoice.invoiceNumber}: ${pdfResponse.status}`);
             console.warn(`   Error response:`, errorText.substring(0, 200));
+
+            // If we got rate limited (429) or server error, try to generate PDF from XML later
+            if (pdfResponse.status === 429 || pdfResponse.status >= 500) {
+              console.log(`⚠️ Rate limit or server error - PDF będzie wygenerowany z XML przy pierwszym otwarciu`);
+            }
           }
         } catch (pdfError) {
           console.error(`❌ Błąd podczas pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
+          // Continue even if PDF fetch fails - we can generate it from XML later
         }
 
         const invoiceData = {
@@ -914,6 +1036,24 @@ export function KSEFInvoicesPage() {
                   )}
                 </button>
                 <button
+                  onClick={handleRefreshPdfXml}
+                  disabled={fetching}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 text-sm"
+                  title="Pobierz brakujące XML i PDF dla istniejących faktur"
+                >
+                  {fetching ? (
+                    <>
+                      <Download className="w-4 h-4 animate-spin" />
+                      Pobieranie...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Pobierz XML/PDF
+                    </>
+                  )}
+                </button>
+                <button
                   onClick={handleFetchInvoices}
                   disabled={fetching}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
@@ -926,7 +1066,7 @@ export function KSEFInvoicesPage() {
                   ) : (
                     <>
                       <RefreshCw className="w-4 h-4" />
-                      Pobierz faktury
+                      Pobierz nowe faktury
                     </>
                   )}
                 </button>

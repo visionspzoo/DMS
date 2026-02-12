@@ -252,7 +252,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
 
       const errorMsg = xmlData
         ? 'Nie udało się wygenerować PDF. Spróbuj ponownie lub sprawdź konsolę przeglądarki (F12).'
-        : 'Brak danych XML dla tej faktury. Spróbuj ponownie pobrać faktury z KSEF.';
+        : 'Brak danych XML i PDF dla tej faktury. Kliknij przycisk "Pobierz XML/PDF" na stronie Faktury KSEF aby pobrać brakujące dane.';
       setPdfError(errorMsg);
       throw new Error(errorMsg);
     } catch (error) {
