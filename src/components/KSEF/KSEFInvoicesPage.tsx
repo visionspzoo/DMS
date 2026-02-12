@@ -118,6 +118,14 @@ export function KSEFInvoicesPage() {
     loadDepartments();
     checkKSEFConnection();
 
+    const savedLastSync = localStorage.getItem('ksef_last_sync');
+    if (savedLastSync) {
+      setLastSync(savedLastSync);
+      const timeSinceLastSync = Date.now() - new Date(savedLastSync).getTime();
+      const timeUntilNextSync = Math.max(0, SYNC_INTERVAL_MS - timeSinceLastSync);
+      setNextSyncIn(timeUntilNextSync);
+    }
+
     const subscription = supabase
       .channel('ksef-invoices-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ksef_invoices' }, () => {
@@ -133,15 +141,28 @@ export function KSEFInvoicesPage() {
   useEffect(() => {
     if (!canAccessKSEFConfig) return;
 
-    syncTimerRef.current = setInterval(() => {
+    const savedLastSync = localStorage.getItem('ksef_last_sync');
+    let initialDelay = SYNC_INTERVAL_MS;
+
+    if (savedLastSync) {
+      const timeSinceLastSync = Date.now() - new Date(savedLastSync).getTime();
+      initialDelay = Math.max(0, SYNC_INTERVAL_MS - timeSinceLastSync);
+    }
+
+    const initialTimeout = setTimeout(() => {
       handleFetchInvoices();
-    }, SYNC_INTERVAL_MS);
+
+      syncTimerRef.current = setInterval(() => {
+        handleFetchInvoices();
+      }, SYNC_INTERVAL_MS);
+    }, initialDelay);
 
     countdownRef.current = setInterval(() => {
       setNextSyncIn(prev => Math.max(0, prev - 1000));
     }, 1000);
 
     return () => {
+      clearTimeout(initialTimeout);
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
@@ -362,7 +383,9 @@ export function KSEFInvoicesPage() {
       }
 
       await loadInvoices();
-      setLastSync(new Date().toISOString());
+      const syncTime = new Date().toISOString();
+      setLastSync(syncTime);
+      localStorage.setItem('ksef_last_sync', syncTime);
       setNextSyncIn(SYNC_INTERVAL_MS);
     } catch (err: any) {
       console.error('KSEF fetch error:', err);

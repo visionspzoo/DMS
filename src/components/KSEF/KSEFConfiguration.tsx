@@ -347,72 +347,74 @@ export function KSEFConfiguration() {
       )}
 
       {canManageMappings && (
-        <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-6">
+        <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-5">
           <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark mb-4">Dodaj nowe mapowanie</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Numer NIP
-              </label>
-              <input
-                type="text"
-                value={newNIP}
-                onChange={(e) => setNewNIP(e.target.value)}
-                placeholder="1234567890 lub 123,456,789 (po przecinku)"
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                Możesz dodać wiele NIPów oddzielonych przecinkami
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Dział
-              </label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              >
-                <option value="">Wybierz dział</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Osoba (opcjonalnie)
-              </label>
-              <select
-                value={selectedUser}
-                onChange={(e) => setSelectedUser(e.target.value)}
-                disabled={!selectedDepartment}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">Kierownik działu</option>
-                {departmentUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.full_name}
-                  </option>
-                ))}
-              </select>
-              {selectedDepartment && !selectedUser && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Numer NIP
+                </label>
+                <input
+                  type="text"
+                  value={newNIP}
+                  onChange={(e) => setNewNIP(e.target.value)}
+                  placeholder="1234567890"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                />
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                  Faktury zostaną przypisane do kierownika działu
+                  Możesz dodać wiele NIPów oddzielonych przecinkami
                 </p>
-              )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Dział
+                </label>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                >
+                  <option value="">Wybierz dział</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Osoba (opcjonalnie)
+                </label>
+                <select
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  disabled={!selectedDepartment}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Kierownik działu</option>
+                  {departmentUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name}
+                    </option>
+                  ))}
+                </select>
+                {selectedDepartment && !selectedUser && (
+                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                    Faktury zostaną przypisane do kierownika działu
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="flex items-end">
+            <div className="flex justify-end">
               <button
                 onClick={handleAddMapping}
                 disabled={adding || !newNIP || !selectedDepartment}
-                className="w-full px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition font-medium"
+                className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition font-medium text-sm"
               >
-                <Plus className="w-5 h-5" />
-                {adding ? 'Dodawanie...' : 'Dodaj'}
+                <Plus className="w-4 h-4" />
+                {adding ? 'Dodawanie...' : 'Dodaj mapowanie'}
               </button>
             </div>
           </div>
