@@ -1040,28 +1040,6 @@ export default function GmailWorkspaceConfig() {
           </div>
         )}
       </div>
-
-      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-4">
-        <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Informacje o koncie
-        </h3>
-        <div className="space-y-2">
-          <div className="flex justify-between p-2 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
-            <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Email:</span>
-            <span className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark">
-              {profile?.email}
-            </span>
-          </div>
-          {profile?.department_id && (
-            <div className="flex justify-between p-2 bg-light-surface-variant dark:bg-dark-surface-variant rounded-lg">
-              <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Status:</span>
-              <span className="text-xs font-medium text-text-primary-light dark:text-text-primary-dark">
-                Przypisany do dzialu
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
