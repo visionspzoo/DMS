@@ -68,9 +68,27 @@ export function CostCentersManagement() {
       return;
     }
 
-    const parsed = parseEntry(newEntry);
-    if (!parsed) {
-      setError('Nieprawidłowy format. Użyj formatu: KOD Opis (np. "010-1 Grunty i prawa użytkowania")');
+    const lines = newEntry.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+    if (lines.length === 0) {
+      setError('Wprowadź przynajmniej jeden kod MPK');
+      return;
+    }
+
+    const parsedEntries: Array<{ code: string; description: string }> = [];
+    const failedLines: string[] = [];
+
+    for (const line of lines) {
+      const parsed = parseEntry(line);
+      if (parsed) {
+        parsedEntries.push(parsed);
+      } else {
+        failedLines.push(line);
+      }
+    }
+
+    if (parsedEntries.length === 0) {
+      setError('Nie znaleziono żadnych poprawnych kodów MPK. Użyj formatu: KOD Opis (np. "010-1 Grunty i prawa użytkowania")');
       return;
     }
 
@@ -82,24 +100,31 @@ export function CostCentersManagement() {
         ? Math.max(...costCenters.map(cc => cc.display_order))
         : 0;
 
+      const recordsToInsert = parsedEntries.map((entry, index) => ({
+        code: entry.code,
+        description: entry.description,
+        display_order: maxOrder + index + 1,
+        is_active: true,
+      }));
+
       const { error: insertError } = await supabase
         .from('cost_centers')
-        .insert({
-          code: parsed.code,
-          description: parsed.description,
-          display_order: maxOrder + 1,
-          is_active: true,
-        });
+        .insert(recordsToInsert);
 
       if (insertError) throw insertError;
 
-      setSuccess('Dodano nowy kod MPK');
+      let successMessage = `Dodano ${parsedEntries.length} ${parsedEntries.length === 1 ? 'kod' : parsedEntries.length < 5 ? 'kody' : 'kodów'} MPK`;
+      if (failedLines.length > 0) {
+        successMessage += `. Pominięto ${failedLines.length} niepoprawnych linii.`;
+      }
+
+      setSuccess(successMessage);
       setNewEntry('');
       await loadCostCenters();
 
-      setTimeout(() => setSuccess(''), 3000);
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err: any) {
-      console.error('Error adding cost center:', err);
+      console.error('Error adding cost centers:', err);
       setError(err.message);
     } finally {
       setAdding(false);
@@ -220,7 +245,7 @@ export function CostCentersManagement() {
           Miejsca Powstawania Kosztów (MPK)
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Zarządzaj kodami MPK dostępnymi dla wszystkich działów. Kody są używane przy klasyfikacji faktur.
+          Zarządzaj kodami MPK dostępnymi dla wszystkich działów. Kody są używane przy klasyfikacji faktur. Możesz dodać wiele kodów jednocześnie - każdy w osobnej linii.
         </p>
       </div>
 
@@ -239,22 +264,22 @@ export function CostCentersManagement() {
 
       <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-5">
         <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark mb-4">
-          Dodaj nowy kod MPK
+          Dodaj kody MPK (import masowy)
         </h4>
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-              Kod i opis
+              Kody i opisy (jeden kod na linię)
             </label>
             <textarea
               value={newEntry}
               onChange={(e) => setNewEntry(e.target.value)}
-              placeholder="Wpisz kody w formacie: KOD Opis&#10;Przykład:&#10;010-1 Grunty i prawa użytkowania&#10;010-2 Budynki i lokale&#10;010-3 Urządzenia techniczne i maszyny"
-              rows={6}
+              placeholder="Wpisz kody w formacie: KOD Opis (jeden kod na linię)&#10;Przykład:&#10;010-1 Grunty i prawa użytkowania&#10;010-2 Budynki i lokale&#10;010-3 Urządzenia techniczne i maszyny"
+              rows={8}
               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent font-mono"
             />
             <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-              Format: KOD Opis (np. "010-1 Grunty i prawa użytkowania")
+              Format: KOD Opis (jeden kod na linię). Możesz wkleić wiele kodów jednocześnie - każdy zostanie dodany jako osobny rekord.
             </p>
           </div>
           <div className="flex justify-end">
@@ -264,7 +289,7 @@ export function CostCentersManagement() {
               className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition font-medium text-sm"
             >
               <Plus className="w-4 h-4" />
-              {adding ? 'Dodawanie...' : 'Dodaj kod MPK'}
+              {adding ? 'Dodawanie...' : 'Dodaj kody MPK'}
             </button>
           </div>
         </div>
