@@ -153,9 +153,9 @@ Deno.serve(async (req: Request) => {
           console.log(`✓ PDF generated from XML successfully (${pdfBlob.size} bytes)`);
         } else {
           const errorText = await generateResponse.text();
-          console.error(`❌ Strategy 1 failed with status ${generateResponse.status}`);
-          console.error(`   Error response: ${errorText}`);
-          throw new Error(`PDF generation from XML failed: ${errorText}`);
+          console.warn(`Strategy 1 failed with status ${generateResponse.status}`);
+          console.warn(`   Error response: ${errorText}`);
+          pdfBase64 = null as any; // Continue to Strategy 2
         }
       } catch (genError: any) {
         console.error("❌ Strategy 1 error:", genError);
