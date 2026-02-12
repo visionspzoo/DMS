@@ -68,11 +68,11 @@ Deno.serve(async (req: Request) => {
 
     console.log(`✓ Found department: ${department.name}`);
 
-    // 3. Get PDF - use existing from database, or download if not available (for old invoices)
+    // 3. Get PDF - use existing from database, or try to download if not available
     let pdfBase64 = ksefInvoice.pdf_base64;
 
     if (!pdfBase64) {
-      console.log("⚠️  No PDF in database, downloading from KSEF...");
+      console.log("No PDF in database, attempting download from KSEF...");
       try {
         const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
         const pdfParams = new URLSearchParams({
@@ -90,23 +90,20 @@ Deno.serve(async (req: Request) => {
           const pdfBlob = await pdfResponse.blob();
           const pdfArrayBuffer = await pdfBlob.arrayBuffer();
           pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
-          console.log(`✓ PDF downloaded from KSEF (${pdfBlob.size} bytes)`);
+          console.log(`PDF downloaded from KSEF (${pdfBlob.size} bytes)`);
 
-          // Save to database for future use
           await supabase
             .from("ksef_invoices")
             .update({ pdf_base64: pdfBase64 })
             .eq("id", ksefInvoice.id);
-          console.log("✓ PDF saved to database");
         } else {
-          throw new Error(`Failed to download PDF: ${pdfResponse.status}`);
+          console.warn(`PDF download failed (${pdfResponse.status}), proceeding without PDF`);
         }
       } catch (pdfError: any) {
-        console.error("❌ Failed to download PDF:", pdfError);
-        throw new Error("Nie udało się pobrać PDF faktury");
+        console.warn("PDF download failed, proceeding without PDF:", pdfError.message);
       }
     } else {
-      console.log(`✓ Using existing PDF from database (${pdfBase64.length} chars base64)`);
+      console.log(`Using existing PDF from database`);
     }
 
     // 5. Upload PDF to Google Drive (if configured and PDF available)
