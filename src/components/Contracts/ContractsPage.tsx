@@ -369,7 +369,7 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
         </div>
         <button
           onClick={() => setShowUpload(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg transition-colors font-medium text-sm"
+          className="flex items-center gap-2 px-3 py-1.5 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg transition-colors font-medium text-sm"
         >
           <Upload className="w-4 h-4" />
           Dodaj umowe

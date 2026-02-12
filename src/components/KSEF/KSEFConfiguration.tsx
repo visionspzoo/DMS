@@ -317,7 +317,7 @@ export function KSEFConfiguration() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
       </div>
     );
   }
@@ -341,17 +341,17 @@ export function KSEFConfiguration() {
       )}
 
       {success && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/50 rounded-lg p-4">
           <p className="text-sm text-green-800 dark:text-green-200">{success}</p>
         </div>
       )}
 
       {canManageMappings && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-          <h4 className="font-medium text-gray-900 dark:text-white mb-4">Dodaj nowe mapowanie</h4>
+        <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-6">
+          <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark mb-4">Dodaj nowe mapowanie</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                 Numer NIP
               </label>
               <input
@@ -359,20 +359,20 @@ export function KSEFConfiguration() {
                 value={newNIP}
                 onChange={(e) => setNewNIP(e.target.value)}
                 placeholder="1234567890 lub 123,456,789 (po przecinku)"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
                 Możesz dodać wiele NIPów oddzielonych przecinkami
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                 Dział
               </label>
               <select
                 value={selectedDepartment}
                 onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               >
                 <option value="">Wybierz dział</option>
                 {departments.map((dept) => (
@@ -383,14 +383,14 @@ export function KSEFConfiguration() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                 Osoba (opcjonalnie)
               </label>
               <select
                 value={selectedUser}
                 onChange={(e) => setSelectedUser(e.target.value)}
                 disabled={!selectedDepartment}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Kierownik działu</option>
                 {departmentUsers.map((user) => (
@@ -400,7 +400,7 @@ export function KSEFConfiguration() {
                 ))}
               </select>
               {selectedDepartment && !selectedUser && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
                   Faktury zostaną przypisane do kierownika działu
                 </p>
               )}
@@ -409,7 +409,7 @@ export function KSEFConfiguration() {
               <button
                 onClick={handleAddMapping}
                 disabled={adding || !newNIP || !selectedDepartment}
-                className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition font-medium"
               >
                 <Plus className="w-5 h-5" />
                 {adding ? 'Dodawanie...' : 'Dodaj'}
@@ -432,7 +432,7 @@ export function KSEFConfiguration() {
               <select
                 value={bulkDepartment}
                 onChange={(e) => setBulkDepartment(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               >
                 <option value="">Wybierz dział</option>
                 {departments.map((dept) => (
@@ -450,7 +450,7 @@ export function KSEFConfiguration() {
                 value={bulkUser}
                 onChange={(e) => setBulkUser(e.target.value)}
                 disabled={!bulkDepartment}
-                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Kierownik działu</option>
                 {bulkDepartmentUsers.map((user) => (
@@ -464,7 +464,7 @@ export function KSEFConfiguration() {
               <button
                 onClick={handleBulkUpdate}
                 disabled={bulkOperating || !bulkDepartment}
-                className="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 text-sm bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
               >
                 {bulkOperating ? 'Aktualizacja...' : 'Zaktualizuj'}
               </button>
@@ -483,10 +483,10 @@ export function KSEFConfiguration() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <thead className="bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
               <tr>
                 {canManageMappings && (
                   <th className="px-4 py-3 text-center w-12">
@@ -494,37 +494,37 @@ export function KSEFConfiguration() {
                       type="checkbox"
                       checked={mappings.length > 0 && selectedMappings.size === mappings.length}
                       onChange={toggleSelectAll}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                      className="w-4 h-4 text-brand-primary bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-brand-primary focus:ring-2"
                     />
                   </th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   NIP
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Dział
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Przypisana osoba
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Data dodania
                 </th>
                 {canManageMappings && (
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                     Akcje
                   </th>
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
               {mappings.length === 0 ? (
                 <tr>
                   <td colSpan={canManageMappings ? 6 : 4} className="px-6 py-8 text-center">
-                    <Building2 className="w-12 h-12 text-gray-400 dark:text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">Brak mapowań NIP</p>
+                    <Building2 className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
+                    <p className="text-text-secondary-light dark:text-text-secondary-dark">Brak mapowań NIP</p>
                     {canManageMappings && (
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                      <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
                         Dodaj pierwsze mapowanie powyżej
                       </p>
                     )}
@@ -532,26 +532,26 @@ export function KSEFConfiguration() {
                 </tr>
               ) : (
                 mappings.map((mapping) => (
-                  <tr key={mapping.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <tr key={mapping.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant/50">
                     {canManageMappings && (
                       <td className="px-4 py-4 text-center">
                         <input
                           type="checkbox"
                           checked={selectedMappings.has(mapping.id)}
                           onChange={() => toggleSelection(mapping.id)}
-                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                          className="w-4 h-4 text-brand-primary bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-brand-primary focus:ring-2"
                         />
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-mono text-sm text-gray-900 dark:text-white">
+                      <span className="font-mono text-sm text-text-primary-light dark:text-text-primary-dark">
                         {mapping.nip}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                        <span className="text-sm text-gray-900 dark:text-white">
+                        <Building2 className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                        <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
                           {mapping.department_name}
                         </span>
                       </div>
@@ -559,18 +559,18 @@ export function KSEFConfiguration() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       {mapping.assigned_user_name ? (
                         <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                          <span className="text-sm text-gray-900 dark:text-white">
+                          <User className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                          <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
                             {mapping.assigned_user_name}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-500 dark:text-gray-400 italic">
+                        <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
                           Kierownik działu
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                       {new Date(mapping.created_at).toLocaleDateString('pl-PL')}
                     </td>
                     {canManageMappings && (

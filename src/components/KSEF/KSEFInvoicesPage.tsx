@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -8,6 +8,7 @@ import { fetchKSEFInvoices, fetchKSEFInvoiceXML, checkKSEFStatus } from '../../l
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
+const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 interface KSEFInvoice {
   id: string;
@@ -58,6 +59,10 @@ export function KSEFInvoicesPage() {
   const [ksefStatus, setKsefStatus] = useState<any>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
+  const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canAccessKSEFConfig = profile?.can_access_ksef_config === true ||
                                profile?.is_admin === true ||
@@ -124,6 +129,23 @@ export function KSEFInvoicesPage() {
       subscription.unsubscribe();
     };
   }, [invoiceTab]);
+
+  useEffect(() => {
+    if (!canAccessKSEFConfig) return;
+
+    syncTimerRef.current = setInterval(() => {
+      handleFetchInvoices();
+    }, SYNC_INTERVAL_MS);
+
+    countdownRef.current = setInterval(() => {
+      setNextSyncIn(prev => Math.max(0, prev - 1000));
+    }, 1000);
+
+    return () => {
+      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [canAccessKSEFConfig]);
 
   const checkKSEFConnection = async () => {
     try {
@@ -309,6 +331,8 @@ export function KSEFInvoicesPage() {
       }
 
       await loadInvoices();
+      setLastSync(new Date().toISOString());
+      setNextSyncIn(SYNC_INTERVAL_MS);
     } catch (err: any) {
       console.error('KSEF fetch error:', err);
       setError(err.message || 'Nie udało się pobrać faktur z KSEF');
@@ -655,23 +679,38 @@ export function KSEFInvoicesPage() {
               </div>
             )}
             {mainTab === 'invoices' && (
-              <button
-                onClick={handleFetchInvoices}
-                disabled={fetching}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
-              >
-                {fetching ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Pobieranie...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Pobierz faktury
-                  </>
+              <>
+                {canAccessKSEFConfig && lastSync && (
+                  <div className="flex flex-col items-end text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span className="text-[11px] font-medium text-text-primary-light dark:text-text-primary-dark">
+                        {new Date(lastSync).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                      Kolejna: {Math.floor(nextSyncIn / 60000)}min
+                    </div>
+                  </div>
                 )}
-              </button>
+                <button
+                  onClick={handleFetchInvoices}
+                  disabled={fetching}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
+                >
+                  {fetching ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Pobieranie...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Pobierz faktury
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>

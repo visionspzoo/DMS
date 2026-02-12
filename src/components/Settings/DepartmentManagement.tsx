@@ -361,9 +361,9 @@ export default function DepartmentManagement() {
           </div>
           <button
             onClick={() => setShowAddDept(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-primary text-white text-xs font-medium rounded-md hover:bg-brand-primary-hover transition-all"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white text-sm font-medium rounded-lg hover:bg-brand-primary/90 transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             Dodaj dział
           </button>
         </div>
