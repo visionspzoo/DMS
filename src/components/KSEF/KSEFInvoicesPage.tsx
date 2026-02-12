@@ -263,12 +263,18 @@ export function KSEFInvoicesPage() {
       console.log(`📦 Znaleziono ${assignedInvoices.length} faktur do przeniesienia`);
       setSuccessMessage(`Automatyczne przenoszenie ${assignedInvoices.length} faktur do systemu...`);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        console.error('Brak tokena sesji - nie można wykonać auto-transferu');
-        setError('Brak autoryzacji - odśwież stronę i spróbuj ponownie');
+      // Refresh session to ensure valid token
+      console.log('🔄 Odświeżanie tokena przed transferem...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError || !refreshData.session) {
+        console.error('Nie udało się odświeżyć sesji:', refreshError);
+        setError('Nie można odświeżyć autoryzacji. Zaloguj się ponownie.');
         return;
       }
+
+      const session = refreshData.session;
+      console.log('✓ Token odświeżony pomyślnie');
 
       let transferred = 0;
       let failed = 0;
@@ -284,6 +290,7 @@ export function KSEFInvoicesPage() {
               headers: {
                 'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
               },
               body: JSON.stringify({
                 ksefInvoiceId: invoice.id,
