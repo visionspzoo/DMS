@@ -444,16 +444,16 @@ export function KSEFInvoicesPage() {
 
         let pdfBase64 = null;
         try {
-          console.log(`Pobieranie PDF dla faktury ${invoice.invoiceNumber}...`);
-          await delay(3000);
+          console.log(`Pobieranie XML i generowanie PDF dla faktury ${invoice.invoiceNumber}...`);
+          await delay(2000);
 
-          const proxyParams = new URLSearchParams({
-            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf-base64`,
+          const xmlProxyParams = new URLSearchParams({
+            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/xml`,
           });
 
-          const pdfResponse = await fetchWithRetry(() =>
+          const xmlResponse = await fetchWithRetry(() =>
             fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${xmlProxyParams}`,
               {
                 method: 'GET',
                 headers: {
@@ -463,19 +463,42 @@ export function KSEFInvoicesPage() {
             )
           );
 
-          if (pdfResponse.ok) {
-            const pdfData = await pdfResponse.json();
-            if (pdfData.success && pdfData.data?.base64) {
-              pdfBase64 = pdfData.data.base64;
-              console.log(`Pobrano PDF base64 (${pdfData.data.sizeBytes || 'unknown'} bytes)`);
+          if (xmlResponse.ok) {
+            const xml = await xmlResponse.text();
+            console.log(`Pobrano XML (${xml.length} znaków), generowanie PDF...`);
+
+            const pdfGenResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  xml,
+                  ksefNumber: invoice.ksefNumber,
+                  returnBase64: true,
+                }),
+              }
+            );
+
+            if (pdfGenResponse.ok) {
+              const pdfData = await pdfGenResponse.json();
+              if (pdfData.success && pdfData.base64) {
+                pdfBase64 = pdfData.base64;
+                console.log(`Wygenerowano PDF base64 (${pdfData.sizeBytes} bytes)`);
+              } else {
+                console.warn('Nieprawidlowa odpowiedz generatora PDF');
+              }
             } else {
-              console.warn(`Nieprawidłowa odpowiedź PDF base64`);
+              console.warn(`Blad generowania PDF: ${pdfGenResponse.status}`);
             }
           } else {
-            console.warn(`Nie udało się pobrać PDF: ${pdfResponse.status}`);
+            console.warn(`Nie udalo sie pobrac XML: ${xmlResponse.status}`);
           }
         } catch (pdfError) {
-          console.error(`Błąd pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
+          console.error(`Blad generowania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
         }
 
         const invoiceData = {

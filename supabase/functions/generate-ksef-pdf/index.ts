@@ -653,7 +653,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { xml, ksefNumber } = await req.json();
+    const { xml, ksefNumber, returnBase64 } = await req.json();
 
     if (!xml || !ksefNumber) {
       return new Response(
@@ -667,6 +667,22 @@ Deno.serve(async (req: Request) => {
 
     const invoiceData = parseInvoiceXml(xml, ksefNumber);
     const pdfBytes = await generateInvoicePdf(invoiceData);
+
+    if (returnBase64) {
+      let binary = '';
+      for (let i = 0; i < pdfBytes.length; i++) {
+        binary += String.fromCharCode(pdfBytes[i]);
+      }
+      const base64 = btoa(binary);
+
+      return new Response(
+        JSON.stringify({ success: true, base64, sizeBytes: pdfBytes.length }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     return new Response(pdfBytes, {
       status: 200,
