@@ -163,23 +163,29 @@ Deno.serve(async (req: Request) => {
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     console.log("Supabase client imported");
 
-    // Create service role client
-    console.log("Creating service role client...");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("Service role client created");
-
-    // Authenticate user by passing token directly to getUser
+    // Extract token from Authorization header
     const token = authHeader.replace("Bearer ", "");
+    console.log("Token (first 20 chars):", token.substring(0, 20));
+
+    // Create client with anon key and user token for authentication
+    console.log("Creating user auth client...");
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    });
+    console.log("User auth client created");
+
+    // Authenticate user
     console.log("Getting user from token...");
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser(token);
+    } = await userClient.auth.getUser();
 
     console.error("=== AUTH DEBUG ===");
     console.error("User error:", userError);
     console.error("User object:", user ? `User ID: ${user.id}` : "null");
-    console.error("Token (first 20 chars):", token.substring(0, 20));
 
     if (userError || !user) {
       console.error("ERROR: User auth failed:", userError?.message || "no user");
@@ -199,6 +205,11 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
+
+    // Create service role client for privileged operations
+    console.log("Creating service role client for admin operations...");
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log("Service role client created");
 
     console.log("User authenticated:", user.id);
 
