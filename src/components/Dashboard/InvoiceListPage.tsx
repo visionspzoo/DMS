@@ -53,6 +53,8 @@ export function InvoiceList() {
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uploadQueue, setUploadQueue] = useState<FileUploadEntry[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -68,6 +70,61 @@ export function InvoiceList() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadFilterPreferences = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('filter_preferences')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data?.filter_preferences) {
+        const prefs = data.filter_preferences;
+        if (prefs.selectedYear !== undefined) setSelectedYear(prefs.selectedYear);
+        if (prefs.selectedMonth !== undefined) setSelectedMonth(prefs.selectedMonth);
+        if (prefs.selectedStatuses !== undefined) setSelectedStatuses(prefs.selectedStatuses);
+        if (prefs.selectedDepartments !== undefined) setSelectedDepartments(prefs.selectedDepartments);
+        if (prefs.searchQuery !== undefined) setSearchQuery(prefs.searchQuery);
+      }
+    } catch (error) {
+      console.error('Error loading filter preferences:', error);
+    } finally {
+      setPreferencesLoaded(true);
+    }
+  }, [user]);
+
+  const saveFilterPreferences = useCallback(async () => {
+    if (!user || !preferencesLoaded) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const preferences = {
+          selectedYear,
+          selectedMonth,
+          selectedStatuses,
+          selectedDepartments,
+          searchQuery,
+        };
+
+        const { error } = await supabase
+          .from('profiles')
+          .update({ filter_preferences: preferences })
+          .eq('id', user.id);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Error saving filter preferences:', error);
+      }
+    }, 500);
+  }, [user, preferencesLoaded, selectedYear, selectedMonth, selectedStatuses, selectedDepartments, searchQuery]);
 
   const loadSyncConfigs = useCallback(async () => {
     if (!user) return;
@@ -174,6 +231,10 @@ export function InvoiceList() {
   }, [syncing, user, driveActive, emailActive, loadSyncConfigs]);
 
   useEffect(() => {
+    loadFilterPreferences();
+  }, [loadFilterPreferences]);
+
+  useEffect(() => {
     loadInvoices();
     loadDepartments();
     loadSyncConfigs();
@@ -189,6 +250,15 @@ export function InvoiceList() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    saveFilterPreferences();
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [saveFilterPreferences]);
 
   useEffect(() => {
     if (!driveActive && !emailActive) return;
