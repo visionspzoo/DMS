@@ -57,9 +57,10 @@ Deno.serve(async (req: Request) => {
           success: false,
           error: errorData.error || errorData.message || `HTTP ${response.status}`,
           details: errorData,
+          httpStatus: response.status,
         }),
         {
-          status: response.status,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

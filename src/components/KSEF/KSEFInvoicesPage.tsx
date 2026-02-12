@@ -398,6 +398,19 @@ export function KSEFInvoicesPage() {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           try {
             const response = await fetchFn();
+
+            if (response.ok) {
+              const jsonData = await response.json();
+              if (!jsonData.success && (jsonData.httpStatus === 429 || jsonData.error?.includes('429'))) {
+                const waitTime = Math.pow(2, attempt) * 15000;
+                console.log(`Rate limit (429), czekam ${waitTime / 1000}s... (proba ${attempt + 1}/${maxRetries})`);
+                setSuccessMessage(`Rate limit - czekam ${waitTime / 1000}s...`);
+                await delay(waitTime);
+                continue;
+              }
+              return new Response(JSON.stringify(jsonData), { status: 200, headers: response.headers });
+            }
+
             if (response.status === 429 || response.status === 500) {
               const waitTime = Math.pow(2, attempt) * 15000;
               console.log(`Rate limit (${response.status}), czekam ${waitTime / 1000}s... (proba ${attempt + 1}/${maxRetries})`);

@@ -84,13 +84,13 @@ export async function fetchKSEFInvoices(params: FetchInvoicesParams): Promise<KS
 
     console.log('KSEF API Response status:', response.status);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('KSEF API Error:', errorData);
-      throw new Error(errorData.error || `HTTP ${response.status}`);
+    const data = await response.json();
+
+    if (!data.success) {
+      console.error('KSEF API Error:', data);
+      throw new Error(data.error || 'Unknown error');
     }
 
-    const data = await response.json();
     console.log('KSEF API Success:', data);
     return data;
   } catch (error) {
@@ -115,17 +115,12 @@ export async function fetchKSEFInvoicePDF(ksefNumber: string): Promise<Blob> {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Nie udało się pobrać PDF: ${response.status}`);
-  }
-
   const jsonData = await response.json();
 
   if (!jsonData.success || !jsonData.data?.base64) {
-    throw new Error('Nieprawidłowa odpowiedź z serwera KSEF');
+    throw new Error(jsonData.error || 'Nieprawidłowa odpowiedź z serwera KSEF');
   }
 
-  // Dekoduj base64 do Blob
   const base64Data = jsonData.data.base64;
   const binaryString = atob(base64Data);
   const bytes = new Uint8Array(binaryString.length);
@@ -148,8 +143,15 @@ export async function fetchKSEFInvoiceXML(ksefNumber: string): Promise<string> {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Nie udało się pobrać XML: ${response.status}`);
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
+    return response.text();
+  }
+
+  const jsonData = await response.json();
+  if (!jsonData.success) {
+    throw new Error(jsonData.error || 'Nie udało się pobrać XML');
   }
 
   return response.text();
@@ -174,13 +176,13 @@ export async function checkKSEFStatus() {
 
     console.log('KSEF Status Response:', response.status);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('KSEF Status Error:', errorData);
-      throw new Error(`Status check failed: ${response.status}`);
+    const data = await response.json();
+
+    if (!data.success) {
+      console.error('KSEF Status Error:', data);
+      throw new Error(data.error || 'Status check failed');
     }
 
-    const data = await response.json();
     console.log('KSEF Status Success:', data);
     return data;
   } catch (error) {
