@@ -394,20 +394,20 @@ export function KSEFInvoicesPage() {
       // Add delay between requests to avoid rate limiting (429 errors)
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-      const fetchWithRetry = async (fetchFn: () => Promise<Response>, maxRetries = 3): Promise<Response> => {
+      const fetchWithRetry = async (fetchFn: () => Promise<Response>, maxRetries = 5): Promise<Response> => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           try {
             const response = await fetchFn();
-            if (response.status === 429) {
-              const waitTime = Math.pow(2, attempt) * 5000;
-              console.log(`Rate limit (429), czekam ${waitTime / 1000}s...`);
+            if (response.status === 429 || response.status === 500) {
+              const waitTime = Math.pow(2, attempt) * 8000;
+              console.log(`Rate limit (${response.status}), czekam ${waitTime / 1000}s... (proba ${attempt + 1}/${maxRetries})`);
               await delay(waitTime);
               continue;
             }
             return response;
           } catch (err) {
             if (attempt === maxRetries - 1) throw err;
-            const waitTime = Math.pow(2, attempt) * 3000;
+            const waitTime = Math.pow(2, attempt) * 5000;
             await delay(waitTime);
           }
         }
@@ -445,7 +445,8 @@ export function KSEFInvoicesPage() {
         let pdfBase64 = null;
         try {
           console.log(`Pobieranie PDF base64 dla faktury ${invoice.invoiceNumber}...`);
-          await delay(2000);
+          setSuccessMessage(`Pobieranie PDF: ${i + 1}/${ksefInvoices.length} - ${invoice.invoiceNumber}...`);
+          await delay(5000);
 
           const pdfProxyParams = new URLSearchParams({
             path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf-base64`,
