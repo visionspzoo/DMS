@@ -228,7 +228,7 @@ Deno.serve(async (req: Request) => {
       throw insertError;
     }
 
-    // 9. Update KSEF invoice record with XML
+    // 9. Update KSEF invoice record
     const updateData: any = {
       transferred_to_invoice_id: newInvoice.id,
       transferred_to_department_id: departmentId,
@@ -236,8 +236,8 @@ Deno.serve(async (req: Request) => {
       assigned_to_department_at: new Date().toISOString(),
     };
 
-    if (xmlContent) {
-      updateData.xml_content = xmlContent;
+    if (ksefInvoice.xml_content) {
+      updateData.xml_content = ksefInvoice.xml_content;
     }
 
     const { error: updateError } = await supabase
