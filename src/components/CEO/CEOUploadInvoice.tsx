@@ -60,12 +60,17 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
 
       if (insertError) throw insertError;
 
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Brak sesji użytkownika');
+      }
+
       const driveResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({

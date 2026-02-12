@@ -770,18 +770,24 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           console.log('☁️ Przesyłanie PDF na Google Drive...');
           console.log('Folder ID:', department.google_drive_draft_folder_id);
 
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error('Brak sesji użytkownika');
+          }
+
           const uploadResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                pdfBase64: ksefInvoice.pdf_base64,
+                fileBase64: ksefInvoice.pdf_base64,
                 fileName: `${ksefInvoice.invoice_number.replace(/\//g, '_')}.pdf`,
                 folderId: department.google_drive_draft_folder_id,
+                mimeType: 'application/pdf',
               }),
             }
           );

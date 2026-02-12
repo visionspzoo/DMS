@@ -727,12 +727,17 @@ export function KSEFInvoicesPage() {
           console.log('File name:', `${selectedInvoice.invoice_number}.pdf`);
           console.log('Base64 length:', base64Pdf.length);
 
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error('Brak sesji użytkownika');
+          }
+
           const uploadResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({

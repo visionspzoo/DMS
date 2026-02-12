@@ -66,13 +66,17 @@ export function UploadContract({ onClose, onSuccess }: UploadContractProps) {
 
       if (isDocx) {
         try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error('Brak sesji użytkownika');
+          }
+
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
           const uploadResponse = await fetch(`${supabaseUrl}/functions/v1/upload-to-google-drive`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${supabaseKey}`,
+              'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
