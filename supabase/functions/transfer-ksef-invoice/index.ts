@@ -287,20 +287,28 @@ Deno.serve(async (req: Request) => {
       throw updateError;
     }
 
-    // 10. Run OCR on the transferred invoice (only if uploaded to Google Drive)
-    if (driveFileUrl) {
+    // 10. Run OCR on the transferred invoice (only if PDF is available)
+    if (pdfBase64) {
       try {
-        await fetch(`${supabaseUrl}/functions/v1/process-invoice-ocr`, {
+        console.log("🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===");
+        const ocrResponse = await fetch(`${supabaseUrl}/functions/v1/process-invoice-ocr`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${supabaseAnonKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            fileUrl: driveFileUrl,
+            pdfBase64: pdfBase64,
             invoiceId: newInvoice.id,
           }),
         });
+
+        if (ocrResponse.ok) {
+          console.log("✓ OCR zakończone pomyślnie");
+        } else {
+          const ocrError = await ocrResponse.json();
+          console.error("❌ OCR nie powiodło się:", ocrError);
+        }
       } catch (ocrError) {
         console.error("OCR error (non-blocking):", ocrError);
       }
