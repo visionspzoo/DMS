@@ -163,22 +163,18 @@ Deno.serve(async (req: Request) => {
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     console.log("Supabase client imported");
 
-    // Create client with anon key for user authentication
-    console.log("Creating Supabase client for user auth...");
-    const token = authHeader.replace("Bearer ", "");
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
-    });
+    // Create service role client
+    console.log("Creating service role client...");
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log("Service role client created");
 
+    // Authenticate user by passing token directly to getUser
+    const token = authHeader.replace("Bearer ", "");
     console.log("Getting user from token...");
     const {
       data: { user },
       error: userError,
-    } = await supabaseClient.auth.getUser();
+    } = await supabase.auth.getUser(token);
 
     console.error("=== AUTH DEBUG ===");
     console.error("User error:", userError);
@@ -205,11 +201,6 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("User authenticated:", user.id);
-
-    // Create service role client for database operations
-    console.log("Creating service role client...");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("Service role client created");
 
     // Load folder mappings (new system with department assignments)
     const { data: folderMappings, error: mappingError } = await supabase
