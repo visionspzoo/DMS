@@ -77,61 +77,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
 
     setLoadingPdf(true);
     try {
-      // If invoice was already transferred, load PDF from invoices table
-      if (invoice.transferred_to_invoice_id) {
-        const { data: transferredInvoice, error } = await supabase
-          .from('invoices')
-          .select('pdf_base64')
-          .eq('id', invoice.transferred_to_invoice_id)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (transferredInvoice?.pdf_base64) {
-          // Convert base64 to blob
-          const byteCharacters = atob(transferredInvoice.pdf_base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
-          return;
-        }
-      }
-
-      // If we have XML content, generate PDF from XML
-      const xmlContent = invoice.xml_content || invoice.invoice_xml;
-      if (xmlContent) {
-        console.log('Generating PDF from XML content');
-        const generateResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ksef-pdf`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              xml: xmlContent,
-              ksefNumber: invoice.ksef_reference_number,
-            }),
-          }
-        );
-
-        if (generateResponse.ok) {
-          const pdfBlob = await generateResponse.blob();
-          const url = URL.createObjectURL(pdfBlob);
-          setPdfUrl(url);
-          return;
-        } else {
-          console.error('PDF generation from XML failed:', await generateResponse.text());
-        }
-      }
-
-      // Otherwise, download from KSEF API
+      // First, always try to download original PDF from KSEF API
       console.log('Downloading PDF from KSEF API');
       const proxyParams = new URLSearchParams({
         path: `/api/external/invoices/${encodeURIComponent(invoice.ksef_reference_number)}/pdf`,
@@ -147,15 +93,40 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
         }
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('PDF download failed:', errorText);
-        throw new Error('Nie udało się pobrać PDF');
+      if (response.ok) {
+        const pdfBlob = await response.blob();
+        const url = URL.createObjectURL(pdfBlob);
+        setPdfUrl(url);
+        return;
+      } else {
+        console.error('PDF download from KSEF failed:', await response.text());
       }
 
-      const pdfBlob = await response.blob();
-      const url = URL.createObjectURL(pdfBlob);
-      setPdfUrl(url);
+      // Fallback: If invoice was transferred, try loading PDF from invoices table
+      if (invoice.transferred_to_invoice_id) {
+        const { data: transferredInvoice, error } = await supabase
+          .from('invoices')
+          .select('pdf_base64')
+          .eq('id', invoice.transferred_to_invoice_id)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (transferredInvoice?.pdf_base64) {
+          const byteCharacters = atob(transferredInvoice.pdf_base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const pdfBlob = new Blob([byteArray], { type: 'application/pdf' });
+          const url = URL.createObjectURL(pdfBlob);
+          setPdfUrl(url);
+          return;
+        }
+      }
+
+      throw new Error('Nie udało się pobrać PDF z żadnego źródła');
     } catch (error) {
       console.error('Error downloading PDF:', error);
     } finally {
