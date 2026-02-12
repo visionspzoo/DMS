@@ -73,6 +73,10 @@ Deno.serve(async (req: Request) => {
 
     console.log(`📥 Getting PDF for ${ksefInvoice.ksef_reference_number}...`);
     console.log(`   Has existing XML: ${!!xmlContent}`);
+    if (xmlContent) {
+      console.log(`   XML length: ${xmlContent.length} characters`);
+      console.log(`   XML preview (first 200 chars): ${xmlContent.substring(0, 200)}`);
+    }
 
     // Strategy 1: Generate PDF from existing XML (most reliable)
     if (xmlContent) {
@@ -93,21 +97,35 @@ Deno.serve(async (req: Request) => {
           }
         );
 
+        console.log(`   Generate PDF response status: ${generateResponse.status}`);
+        console.log(`   Generate PDF response headers:`, Object.fromEntries(generateResponse.headers.entries()));
+
         if (generateResponse.ok) {
+          const contentType = generateResponse.headers.get("content-type");
+          console.log(`   Response content-type: ${contentType}`);
+
           const pdfBlob = await generateResponse.blob();
+          console.log(`   PDF blob size: ${pdfBlob.size} bytes`);
+          console.log(`   PDF blob type: ${pdfBlob.type}`);
+
           const pdfArrayBuffer = await pdfBlob.arrayBuffer();
           pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
           console.log(`✓ PDF generated from XML successfully (${pdfBlob.size} bytes)`);
         } else {
           const errorText = await generateResponse.text();
-          console.warn(`Strategy 1 failed: ${errorText}`);
-          throw new Error("PDF generation from XML failed");
+          console.error(`❌ Strategy 1 failed with status ${generateResponse.status}`);
+          console.error(`   Error response: ${errorText}`);
+          throw new Error(`PDF generation from XML failed: ${errorText}`);
         }
-      } catch (genError) {
-        console.error("Strategy 1 error:", genError);
+      } catch (genError: any) {
+        console.error("❌ Strategy 1 error:", genError);
+        console.error("   Error message:", genError.message);
+        console.error("   Error stack:", genError.stack);
         // Continue to Strategy 2
         pdfBase64 = null as any;
       }
+    } else {
+      console.warn("⚠️  No XML content available, skipping Strategy 1");
     }
 
     // Strategy 2: Download PDF from KSEF API (fallback)
