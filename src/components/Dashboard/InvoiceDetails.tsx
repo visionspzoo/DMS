@@ -715,6 +715,32 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleConfirmAIData = async () => {
+    if (!profile) return;
+
+    setLoading(true);
+    try {
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          invoice_id: invoice.id,
+          user_id: profile.id,
+          action: 'update',
+          description: 'Użytkownik potwierdził dane rozpoznane przez AI',
+        });
+
+      if (auditError) throw auditError;
+
+      await loadAuditLogs();
+      alert('Dane AI zostały potwierdzone');
+    } catch (error) {
+      console.error('Error confirming AI data:', error);
+      alert('Nie udało się potwierdzić danych');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
@@ -734,6 +760,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 )}
                 {invoice.status === 'draft' && invoice.uploaded_by === profile?.id && (
                   <>
+                    <button
+                      onClick={handleConfirmAIData}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Potwierdź że dane rozpoznane przez AI są poprawne"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Potwierdź dane AI</span>
+                    </button>
                     <button
                       onClick={handleReprocessOCR}
                       disabled={isReprocessing || loading}
