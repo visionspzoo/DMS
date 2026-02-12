@@ -180,11 +180,22 @@ Deno.serve(async (req: Request) => {
       error: userError,
     } = await supabaseClient.auth.getUser();
 
+    console.error("=== AUTH DEBUG ===");
+    console.error("User error:", userError);
+    console.error("User object:", user ? `User ID: ${user.id}` : "null");
+    console.error("Token (first 20 chars):", token.substring(0, 20));
+
     if (userError || !user) {
-      console.log("ERROR: User auth failed:", userError?.message);
+      console.error("ERROR: User auth failed:", userError?.message || "no user");
+      console.error("Full error object:", JSON.stringify(userError));
       return new Response(
         JSON.stringify({
           error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika"),
+          debug: {
+            hasAuthHeader: !!authHeader,
+            errorMessage: userError?.message,
+            errorName: userError?.name,
+          }
         }),
         {
           status: 401,

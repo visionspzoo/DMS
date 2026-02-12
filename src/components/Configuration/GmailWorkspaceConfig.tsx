@@ -337,8 +337,15 @@ export default function GmailWorkspaceConfig() {
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Blad ${response.status}`);
+        const errorText = await response.text();
+        console.error('Drive sync error response:', errorText);
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        throw new Error(errorData.error || `Blad ${response.status}: ${errorText.substring(0, 200)}`);
       }
 
       const result = await response.json();
