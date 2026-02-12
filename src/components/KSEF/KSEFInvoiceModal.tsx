@@ -122,9 +122,13 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
 
   const handleTransfer = async () => {
     if (!selectedDepartment) return;
-    await onTransfer(selectedDepartment, selectedUser || undefined);
-    setSelectedDepartment('');
-    setSelectedUser('');
+    try {
+      await onTransfer(selectedDepartment, selectedUser || undefined);
+      setSelectedDepartment('');
+      setSelectedUser('');
+    } catch (error) {
+      console.error('Transfer error:', error);
+    }
   };
 
   const handleUnassign = async () => {
