@@ -345,27 +345,23 @@ export default function GmailWorkspaceConfig() {
         throw new Error('Brak sesji uzytkownika. Prosze sie wylogowac i zalogowac ponownie.');
       }
 
-      // Sprawdźmy czy token nie wygasł
-      const isExpired = session.expires_at ? session.expires_at < Math.floor(Date.now() / 1000) : false;
-      console.log('🔐 Token check:', {
-        tokenStart: session.access_token.substring(0, 30),
-        tokenEnd: session.access_token.substring(session.access_token.length - 10),
-        tokenLength: session.access_token.length,
-        expiresAt: new Date((session.expires_at || 0) * 1000).toISOString(),
-        isExpired,
-      });
-
-      if (isExpired) {
-        console.warn('⚠️ Token expired, refreshing...');
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError || !refreshData.session) {
-          throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
-        }
-        console.log('✅ Token refreshed successfully');
+      // ALWAYS refresh session before Drive sync to ensure valid token
+      console.log('🔄 FORCE refreshing session before Drive sync...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        console.error('❌ Session refresh failed:', refreshError);
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
       }
 
-      const finalSession = isExpired ? (await supabase.auth.getSession()).data.session : session;
+      const finalSession = refreshData.session;
       if (!finalSession) throw new Error('Brak sesji po odswiezeniu');
+
+      console.log('✅ Token refreshed successfully');
+      console.log('🔐 New token:', {
+        tokenStart: finalSession.access_token.substring(0, 30),
+        tokenLength: finalSession.access_token.length,
+        expiresAt: new Date((finalSession.expires_at || 0) * 1000).toISOString(),
+      });
 
       console.log('🚀 Sending request to edge function...');
       const response = await fetch(
