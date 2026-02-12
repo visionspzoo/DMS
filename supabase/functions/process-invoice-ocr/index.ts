@@ -28,7 +28,7 @@ async function extractTextFromPDF(fileBlob: Blob): Promise<string> {
 
 async function interpretWithClaude(fileUrl: string, apiKey: string, fileBlob: Blob, extractedText?: string) {
   const systemPrompt = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
-Przeanalizuj dokument i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
+Przeanalizuj dokument i zwróć TYLKO czysty JSON bez komentarów, markdown czy dodatkowego tekstu.
 
 Format odpowiedzi (DOKŁADNIE te pola):
 {
@@ -37,11 +37,22 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "supplier_nip": "NIP/VAT ID/Tax ID SPRZEDAWCY (wystawcy faktury) lub null",
   "issue_date": "YYYY-MM-DD lub null",
   "due_date": "YYYY-MM-DD lub null",
-  "net_amount": "kwota netto jako string z kropką np. 1234.56",
-  "tax_amount": "kwota VAT jako string z kropką",
-  "gross_amount": "kwota brutto jako string z kropką",
+  "net_amount": "kwota netto jako string z kropką np. 1234.56 (BEZ SPACJI, BEZ PRZECINKÓW)",
+  "tax_amount": "kwota VAT jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
+  "gross_amount": "kwota brutto jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
   "currency": "kod waluty: PLN, EUR, USD, GBP itp."
 }
+
+BARDZO WAŻNE - FORMATOWANIE KWOT:
+- ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
+- ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
+- USUŃ wszystkie spacje z kwot
+- Przykłady poprawnych konwersji:
+  * "7 564,62" → "7564.62"
+  * "1 234 567,89" → "1234567.89"
+  * "123,45" → "123.45"
+  * "1.234.567,89" → "1234567.89"
+- Jeśli widzisz kwotę "7 564,62" to zwróć "7564.62", NIE "7" ani "7 564.62"
 
 KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
 
@@ -139,7 +150,11 @@ DODATKOWE UWAGI:
         messages: [
           {
             role: 'user',
-            content: `Przeanalizuj poniższy tekst wyekstraktowany z faktury PDF i wyciągnij wszystkie dane zgodnie z instrukcjami. Odpowiedz TYLKO z JSON.\n\nTekst faktury:\n${extractedText}`
+            content: `Przeanalizuj poniższy tekst wyekstraktowany z faktury PDF i wyciągnij wszystkie dane zgodnie z instrukcjami.
+
+KRYTYCZNE: Jeśli widzisz kwoty ze spacjami (np. "7 564,62"), usuń spacje i zamień przecinek na kropkę (zwróć "7564.62").
+
+Odpowiedz TYLKO z JSON.\n\nTekst faktury:\n${extractedText}`
           }
         ],
         temperature: 0,
@@ -558,27 +573,39 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsedData.net_amount) {
-      const netAmount = typeof parsedData.net_amount === 'string'
-        ? parseFloat(parsedData.net_amount)
-        : parsedData.net_amount;
+      let netAmountStr = typeof parsedData.net_amount === 'string'
+        ? parsedData.net_amount
+        : parsedData.net_amount.toString();
+
+      netAmountStr = netAmountStr.replace(/\s/g, '').replace(',', '.');
+      const netAmount = parseFloat(netAmountStr);
+
       if (!isNaN(netAmount) && netAmount > 0) {
         updateData.net_amount = netAmount;
       }
     }
 
     if (parsedData.tax_amount) {
-      const taxAmount = typeof parsedData.tax_amount === 'string'
-        ? parseFloat(parsedData.tax_amount)
-        : parsedData.tax_amount;
+      let taxAmountStr = typeof parsedData.tax_amount === 'string'
+        ? parsedData.tax_amount
+        : parsedData.tax_amount.toString();
+
+      taxAmountStr = taxAmountStr.replace(/\s/g, '').replace(',', '.');
+      const taxAmount = parseFloat(taxAmountStr);
+
       if (!isNaN(taxAmount) && taxAmount > 0) {
         updateData.tax_amount = taxAmount;
       }
     }
 
     if (parsedData.gross_amount) {
-      const grossAmount = typeof parsedData.gross_amount === 'string'
-        ? parseFloat(parsedData.gross_amount)
-        : parsedData.gross_amount;
+      let grossAmountStr = typeof parsedData.gross_amount === 'string'
+        ? parsedData.gross_amount
+        : parsedData.gross_amount.toString();
+
+      grossAmountStr = grossAmountStr.replace(/\s/g, '').replace(',', '.');
+      const grossAmount = parseFloat(grossAmountStr);
+
       if (!isNaN(grossAmount) && grossAmount > 0) {
         updateData.gross_amount = grossAmount;
       }
