@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X } from 'lucide-react';
+import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
@@ -54,6 +54,7 @@ export default function GmailWorkspaceConfig() {
   const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
   const [driveConfig, setDriveConfig] = useState<DriveConfig | null>(null);
   const [driveLoading, setDriveLoading] = useState(true);
@@ -204,6 +205,55 @@ export default function GmailWorkspaceConfig() {
       setDepartments(accessibleDepts);
     } catch (error) {
       console.error('Error loading departments:', error);
+    }
+  };
+
+  const handleCheckOAuthStatus = async () => {
+    setCheckingStatus(true);
+    setEmailMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-oauth-status`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to check OAuth status');
+      }
+
+      console.log('OAuth Status:', result);
+
+      if (result.activeGoogleConfigs === 0) {
+        setEmailMessage({
+          type: 'error',
+          text: `Brak aktywnej konfiguracji Google. Znaleziono ${result.totalConfigs} konfiguracji w bazie, ale zaden nie jest aktywny lub nie ma prawidlowego providera.`
+        });
+      } else {
+        const config = result.configs[0];
+        setEmailMessage({
+          type: 'success',
+          text: `Konfiguracja OK: ${config.email_address} | Token: ${config.hasAccessToken ? '✓' : '✗'} | Refresh: ${config.hasRefreshToken ? '✓' : '✗'} | Wygasa: ${config.tokenExpiry ? new Date(config.tokenExpiry).toLocaleString() : 'brak'}`
+        });
+      }
+    } catch (error: any) {
+      console.error('Error checking OAuth status:', error);
+      setEmailMessage({ type: 'error', text: 'Blad sprawdzania statusu: ' + error.message });
+    } finally {
+      setCheckingStatus(false);
     }
   };
 
@@ -610,6 +660,23 @@ export default function GmailWorkspaceConfig() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleCheckOAuthStatus}
+              disabled={checkingStatus}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
+            >
+              {checkingStatus ? (
+                <>
+                  <Loader className="w-3 h-3 animate-spin" />
+                  Sprawdzanie...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-3 h-3" />
+                  Sprawdz Status
+                </>
+              )}
+            </button>
             {emailConfigs.length > 0 && (
               <button
                 onClick={handleSyncEmails}
