@@ -321,28 +321,66 @@ export default function GmailWorkspaceConfig() {
     setDriveMessage(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji uzytkownika');
+      console.log('🔍 Starting Drive sync...');
 
-      console.log('Session check:', {
+      // Wymuszamy odświeżenie sesji
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      console.log('📋 Session data:', {
         hasSession: !!session,
-        tokenStart: session.access_token.substring(0, 20),
-        expiresAt: session.expires_at,
+        hasError: !!sessionError,
+        error: sessionError,
+        userId: session?.user?.id,
+        expiresAt: session?.expires_at,
         now: Math.floor(Date.now() / 1000),
-        isExpired: session.expires_at ? session.expires_at < Math.floor(Date.now() / 1000) : 'unknown'
       });
 
+      if (sessionError) {
+        console.error('❌ Session error:', sessionError);
+        throw new Error(`Blad sesji: ${sessionError.message}`);
+      }
+
+      if (!session) {
+        console.error('❌ No session found');
+        throw new Error('Brak sesji uzytkownika. Prosze sie wylogowac i zalogowac ponownie.');
+      }
+
+      // Sprawdźmy czy token nie wygasł
+      const isExpired = session.expires_at ? session.expires_at < Math.floor(Date.now() / 1000) : false;
+      console.log('🔐 Token check:', {
+        tokenStart: session.access_token.substring(0, 30),
+        tokenEnd: session.access_token.substring(session.access_token.length - 10),
+        tokenLength: session.access_token.length,
+        expiresAt: new Date((session.expires_at || 0) * 1000).toISOString(),
+        isExpired,
+      });
+
+      if (isExpired) {
+        console.warn('⚠️ Token expired, refreshing...');
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) {
+          throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
+        }
+        console.log('✅ Token refreshed successfully');
+      }
+
+      const finalSession = isExpired ? (await supabase.auth.getSession()).data.session : session;
+      if (!finalSession) throw new Error('Brak sesji po odswiezeniu');
+
+      console.log('🚀 Sending request to edge function...');
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${finalSession.access_token}`,
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
         }
       );
+
+      console.log('📥 Response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorText = await response.text();
