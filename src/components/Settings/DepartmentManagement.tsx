@@ -40,6 +40,16 @@ interface DepartmentMember {
   user: Profile;
 }
 
+interface CostCenter {
+  id: string;
+  department_id: string;
+  code: string;
+  description: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function DepartmentManagement() {
   const { profile } = useAuth();
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -48,6 +58,8 @@ export default function DepartmentManagement() {
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
   const [deptMembers, setDeptMembers] = useState<DepartmentMember[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [newCostCenter, setNewCostCenter] = useState({ code: '', description: '' });
   const [showAddDept, setShowAddDept] = useState(false);
   const [showEditDept, setShowEditDept] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -72,8 +84,15 @@ export default function DepartmentManagement() {
   useEffect(() => {
     if (selectedDept) {
       loadDepartmentMembers(selectedDept);
+      loadCostCenters(selectedDept);
     }
   }, [selectedDept]);
+
+  useEffect(() => {
+    if (editingDept) {
+      loadCostCenters(editingDept.id);
+    }
+  }, [editingDept]);
 
   const loadDepartments = async () => {
     try {
@@ -126,6 +145,80 @@ export default function DepartmentManagement() {
       setDeptMembers(data || []);
     } catch (err) {
       console.error('Error loading department members:', err);
+    }
+  };
+
+  const loadCostCenters = async (departmentId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('cost_centers')
+        .select('*')
+        .eq('department_id', departmentId)
+        .order('code');
+
+      if (error) throw error;
+      setCostCenters(data || []);
+    } catch (err) {
+      console.error('Error loading cost centers:', err);
+    }
+  };
+
+  const handleAddCostCenter = async () => {
+    if (!editingDept || !newCostCenter.code.trim()) return;
+
+    try {
+      const { error } = await supabase.from('cost_centers').insert({
+        department_id: editingDept.id,
+        code: newCostCenter.code.trim(),
+        description: newCostCenter.description.trim(),
+        is_active: true,
+      });
+
+      if (error) throw error;
+
+      await loadCostCenters(editingDept.id);
+      setNewCostCenter({ code: '', description: '' });
+    } catch (err: any) {
+      console.error('Error adding cost center:', err);
+      alert(err.message || 'Nie udało się dodać miejsca powstawania kosztu');
+    }
+  };
+
+  const handleDeleteCostCenter = async (costCenterId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć to miejsce powstawania kosztu?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('cost_centers')
+        .delete()
+        .eq('id', costCenterId);
+
+      if (error) throw error;
+
+      if (editingDept) {
+        await loadCostCenters(editingDept.id);
+      }
+    } catch (err: any) {
+      console.error('Error deleting cost center:', err);
+      alert(err.message || 'Nie udało się usunąć miejsca powstawania kosztu');
+    }
+  };
+
+  const handleToggleCostCenterActive = async (costCenter: CostCenter) => {
+    try {
+      const { error } = await supabase
+        .from('cost_centers')
+        .update({ is_active: !costCenter.is_active })
+        .eq('id', costCenter.id);
+
+      if (error) throw error;
+
+      if (editingDept) {
+        await loadCostCenters(editingDept.id);
+      }
+    } catch (err: any) {
+      console.error('Error toggling cost center:', err);
+      alert(err.message || 'Nie udało się zaktualizować miejsca powstawania kosztu');
     }
   };
 
@@ -855,6 +948,95 @@ export default function DepartmentManagement() {
                       placeholder="ID folderu z Google Drive"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Miejsca powstawania kosztów
+                </h4>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+                  Definiuj kody i opisy miejsc powstawania kosztów dla tego działu
+                </p>
+
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCostCenter.code}
+                      onChange={(e) => setNewCostCenter({ ...newCostCenter, code: e.target.value })}
+                      className="w-32 px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="Kod"
+                    />
+                    <input
+                      type="text"
+                      value={newCostCenter.description}
+                      onChange={(e) => setNewCostCenter({ ...newCostCenter, description: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="Opis"
+                    />
+                    <button
+                      onClick={handleAddCostCenter}
+                      disabled={!newCostCenter.code.trim()}
+                      className="px-3 py-2 bg-brand-primary text-white text-sm font-medium rounded-lg hover:bg-brand-primary-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {costCenters.length > 0 ? (
+                    <div className="space-y-2">
+                      {costCenters.map((cc) => (
+                        <div
+                          key={cc.id}
+                          className={`flex items-center justify-between p-2 rounded-lg border ${
+                            cc.is_active
+                              ? 'bg-light-surface-variant dark:bg-dark-surface-variant border-slate-200 dark:border-slate-700/50'
+                              : 'bg-slate-100 dark:bg-slate-800/30 border-slate-300 dark:border-slate-600/30 opacity-60'
+                          }`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm font-semibold text-brand-primary">
+                                {cc.code}
+                              </span>
+                              {!cc.is_active && (
+                                <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                                  (nieaktywne)
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                              {cc.description}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleCostCenterActive(cc)}
+                              className="p-1.5 hover:bg-light-surface dark:hover:bg-dark-surface rounded transition"
+                              title={cc.is_active ? 'Dezaktywuj' : 'Aktywuj'}
+                            >
+                              {cc.is_active ? (
+                                <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                              ) : (
+                                <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCostCenter(cc.id)}
+                              className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition"
+                            >
+                              <Trash2 className="w-4 h-4 text-status-error dark:text-red-400" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark text-center py-4 border border-dashed border-slate-300 dark:border-slate-600/50 rounded-lg">
+                      Brak zdefiniowanych miejsc powstawania kosztów
+                    </p>
+                  )}
                 </div>
               </div>
 

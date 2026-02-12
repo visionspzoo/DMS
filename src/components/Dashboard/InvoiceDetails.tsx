@@ -85,6 +85,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [ksefPdfBase64, setKsefPdfBase64] = useState<string | null>(null);
   const [loadingKsefPdf, setLoadingKsefPdf] = useState(false);
+  const [costCenters, setCostCenters] = useState<Array<{id: string, code: string, description: string, is_active: boolean}>>([]);
 
   const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
     (invoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -97,7 +98,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadInvoiceDepartments();
     checkIfFromKSEF();
     loadKsefPdfIfNeeded();
+    loadCostCenters();
   }, [invoice.id]);
+
+  useEffect(() => {
+    if (editedInvoice.department_id) {
+      loadCostCenters();
+    }
+  }, [editedInvoice.department_id]);
 
   const checkIfFromKSEF = async () => {
     try {
@@ -257,6 +265,29 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const loadCostCenters = async () => {
+    try {
+      const departmentId = editedInvoice.department_id || invoice.department_id;
+      if (!departmentId) {
+        setCostCenters([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('cost_centers')
+        .select('id, code, description, is_active')
+        .eq('department_id', departmentId)
+        .eq('is_active', true)
+        .order('code');
+
+      if (error) throw error;
+      setCostCenters(data || []);
+    } catch (error) {
+      console.error('Error loading cost centers:', error);
+      setCostCenters([]);
+    }
+  };
+
   const handleApprove = async (action: 'approved' | 'rejected') => {
     if (!profile) return;
 
@@ -398,6 +429,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           department_id: editedInvoice.department_id,
           status: editedInvoice.status,
           description: editedInvoice.description,
+          cost_center_id: editedInvoice.cost_center_id || null,
         })
         .eq('id', invoice.id);
 
@@ -1244,21 +1276,49 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Opis</label>
-                    {isEditing ? (
-                      <textarea
-                        value={editedInvoice.description || ''}
-                        onChange={(e) => setEditedInvoice({ ...editedInvoice, description: e.target.value })}
-                        rows={2}
-                        className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary resize-none text-sm"
-                        placeholder="Dodaj opis lub notatki do faktury..."
-                      />
-                    ) : (
-                      <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {invoice.description || '—'}
-                      </p>
-                    )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Opis</label>
+                      {isEditing ? (
+                        <textarea
+                          value={editedInvoice.description || ''}
+                          onChange={(e) => setEditedInvoice({ ...editedInvoice, description: e.target.value })}
+                          rows={2}
+                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary resize-none text-sm"
+                          placeholder="Dodaj opis lub notatki do faktury..."
+                        />
+                      ) : (
+                        <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
+                          {invoice.description || '—'}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
+                        Miejsce powstawania kosztu
+                      </label>
+                      {isEditing ? (
+                        <select
+                          value={editedInvoice.cost_center_id || ''}
+                          onChange={(e) => setEditedInvoice({ ...editedInvoice, cost_center_id: e.target.value || null })}
+                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                        >
+                          <option value="">Nie wybrano</option>
+                          {costCenters.map(cc => (
+                            <option key={cc.id} value={cc.id}>
+                              {cc.code} - {cc.description}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
+                          {(() => {
+                            const cc = costCenters.find(c => c.id === (invoice as any).cost_center_id);
+                            return cc ? `${cc.code} - ${cc.description}` : '—';
+                          })()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
