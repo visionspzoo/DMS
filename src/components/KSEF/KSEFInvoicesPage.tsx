@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Download, RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, ArrowRight } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -1140,42 +1140,6 @@ export function KSEFInvoicesPage() {
                     </div>
                   </div>
                 )}
-                <button
-                  onClick={autoTransferAssignedInvoices}
-                  disabled={fetching || transferring}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 text-sm"
-                  title="Automatycznie przenieś wszystkie faktury przypisane do działów"
-                >
-                  {transferring ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Przenoszę...
-                    </>
-                  ) : (
-                    <>
-                      <ArrowRight className="w-4 h-4" />
-                      Przenieś auto-przypisane
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={handleRefreshPdfXml}
-                  disabled={fetching}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 text-sm"
-                  title="Pobierz brakujące XML i PDF dla istniejących faktur"
-                >
-                  {fetching ? (
-                    <>
-                      <Download className="w-4 h-4 animate-spin" />
-                      Pobieranie...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Pobierz XML/PDF
-                    </>
-                  )}
-                </button>
                 <button
                   onClick={handleFetchInvoices}
                   disabled={fetching}
