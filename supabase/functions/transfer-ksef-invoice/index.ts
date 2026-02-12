@@ -68,12 +68,46 @@ Deno.serve(async (req: Request) => {
 
     console.log(`✓ Found department: ${department.name}`);
 
-    // 3. Use existing PDF from database (already in ksef_invoices.pdf_base64)
-    const pdfBase64 = ksefInvoice.pdf_base64;
+    // 3. Get PDF - use existing from database, or download if not available (for old invoices)
+    let pdfBase64 = ksefInvoice.pdf_base64;
+
     if (!pdfBase64) {
-      throw new Error("Faktura KSEF nie ma zapisanego PDF w bazie danych");
+      console.log("⚠️  No PDF in database, downloading from KSEF...");
+      try {
+        const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
+        const pdfParams = new URLSearchParams({
+          path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf`,
+        });
+
+        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+          },
+        });
+
+        if (pdfResponse.ok) {
+          const pdfBlob = await pdfResponse.blob();
+          const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+          pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+          console.log(`✓ PDF downloaded from KSEF (${pdfBlob.size} bytes)`);
+
+          // Save to database for future use
+          await supabase
+            .from("ksef_invoices")
+            .update({ pdf_base64: pdfBase64 })
+            .eq("id", ksefInvoice.id);
+          console.log("✓ PDF saved to database");
+        } else {
+          throw new Error(`Failed to download PDF: ${pdfResponse.status}`);
+        }
+      } catch (pdfError: any) {
+        console.error("❌ Failed to download PDF:", pdfError);
+        throw new Error("Nie udało się pobrać PDF faktury");
+      }
+    } else {
+      console.log(`✓ Using existing PDF from database (${pdfBase64.length} chars base64)`);
     }
-    console.log(`✓ Using existing PDF from database (${pdfBase64.length} chars base64)`);
 
     // 5. Upload PDF to Google Drive (if configured and PDF available)
     let driveFileUrl = null;

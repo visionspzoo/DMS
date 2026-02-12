@@ -428,6 +428,35 @@ export function KSEFInvoicesPage() {
           console.error(`Nie udało się pobrać XML dla faktury ${invoice.invoiceNumber}:`, xmlError);
         }
 
+        // Download and save PDF immediately when fetching invoices
+        let pdfBase64 = null;
+        try {
+          const proxyParams = new URLSearchParams({
+            path: `/api/external/invoices/${encodeURIComponent(invoice.ksefNumber)}/pdf`,
+          });
+
+          const pdfResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ksef-proxy?${proxyParams}`,
+            {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+            }
+          );
+
+          if (pdfResponse.ok) {
+            const pdfBlob = await pdfResponse.blob();
+            const pdfArrayBuffer = await pdfBlob.arrayBuffer();
+            pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
+            console.log(`✓ Pobrano PDF dla faktury ${invoice.invoiceNumber} (${pdfBlob.size} bytes)`);
+          } else {
+            console.warn(`Nie udało się pobrać PDF dla faktury ${invoice.invoiceNumber}: ${pdfResponse.status}`);
+          }
+        } catch (pdfError) {
+          console.error(`Błąd podczas pobierania PDF dla faktury ${invoice.invoiceNumber}:`, pdfError);
+        }
+
         const invoiceData = {
           ksef_reference_number: invoice.ksefNumber,
           invoice_number: invoice.invoiceNumber || 'Brak numeru',
@@ -441,6 +470,7 @@ export function KSEFInvoicesPage() {
           tax_amount: taxAmount,
           currency: invoice.currency || 'PLN',
           xml_content: xmlContent,
+          pdf_base64: pdfBase64,
           fetched_by: profile?.id,
         };
 
