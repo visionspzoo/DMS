@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { X, Upload, FileText, Loader, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -21,7 +21,6 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const queueRef = useRef<FileUploadEntry[]>([]);
-  const autoUploadTriggeredRef = useRef(false);
 
   const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
     setQueue(prev => {
@@ -57,13 +56,18 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
       queueRef.current = next;
       return next;
     });
+
+    return entries.some(e => e.status === 'pending');
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
-    autoUploadTriggeredRef.current = false;
-    await addFiles(Array.from(e.target.files || []));
+    const hasPending = await addFiles(Array.from(e.target.files || []));
     e.target.value = '';
+
+    if (hasPending && !uploading && !done) {
+      setTimeout(() => handleUpload(), 50);
+    }
   };
 
   const removeFile = (index: number) => {
@@ -101,14 +105,6 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     setUploading(false);
     setDone(true);
   };
-
-  useEffect(() => {
-    const hasPending = queue.some(f => f.status === 'pending');
-    if (hasPending && !uploading && !done && !autoUploadTriggeredRef.current) {
-      autoUploadTriggeredRef.current = true;
-      setTimeout(() => handleUpload(), 100);
-    }
-  }, [queue, uploading, done]);
 
   const successCount = queue.filter(f => f.status === 'success').length;
   const duplicateCount = queue.filter(f => f.status === 'duplicate').length;
