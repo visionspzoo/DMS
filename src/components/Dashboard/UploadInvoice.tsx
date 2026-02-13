@@ -60,14 +60,13 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
       entries.push({ file, hash, status: 'pending', progress: 'Oczekuje...' });
     }
 
-    setQueue(prev => {
-      const next = [...prev, ...entries];
-      queueRef.current = next;
-      return next;
-    });
+    const next = [...queueRef.current, ...entries];
+    queueRef.current = next;
+    setQueue(next);
 
     const hasPending = entries.some(e => e.status === 'pending');
     console.log('[UploadInvoice] addFiles returning hasPending:', hasPending);
+    console.log('[UploadInvoice] queueRef.current length:', queueRef.current.length);
     return hasPending;
   };
 
