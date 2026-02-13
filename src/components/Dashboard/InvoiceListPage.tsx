@@ -87,6 +87,7 @@ export function InvoiceList() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const runSyncRef = useRef<(manual?: boolean) => Promise<void>>();
 
   const loadFilterPreferences = useCallback(async () => {
     if (!user) return;
@@ -300,21 +301,51 @@ export function InvoiceList() {
   }, [saveFilterPreferences]);
 
   useEffect(() => {
+    runSyncRef.current = runSync;
+  }, [runSync]);
+
+  useEffect(() => {
     if (!driveActive && !emailActive) return;
 
-    syncTimerRef.current = setInterval(() => {
-      runSync(false);
-    }, SYNC_INTERVAL_MS);
+    const latestSync = [driveLastSync, emailLastSync]
+      .filter(Boolean)
+      .map(s => new Date(s!).getTime())
+      .sort((a, b) => b - a)[0];
+
+    let initialDelay = SYNC_INTERVAL_MS;
+    if (latestSync) {
+      const elapsed = Date.now() - latestSync;
+      initialDelay = Math.max(0, SYNC_INTERVAL_MS - elapsed);
+    }
+    setNextSyncIn(initialDelay);
+
+    const startTime = Date.now();
+
+    const initialTimeout = setTimeout(() => {
+      runSyncRef.current?.(false);
+      syncTimerRef.current = setInterval(() => {
+        runSyncRef.current?.(false);
+      }, SYNC_INTERVAL_MS);
+    }, initialDelay);
 
     countdownRef.current = setInterval(() => {
-      setNextSyncIn(prev => Math.max(0, prev - 1000));
+      const elapsed = Date.now() - startTime;
+      const firstCycleRemaining = Math.max(0, initialDelay - elapsed);
+      if (firstCycleRemaining > 0) {
+        setNextSyncIn(firstCycleRemaining);
+      } else {
+        const sinceFirstFire = elapsed - initialDelay;
+        const remaining = SYNC_INTERVAL_MS - (sinceFirstFire % SYNC_INTERVAL_MS);
+        setNextSyncIn(remaining);
+      }
     }, 1000);
 
     return () => {
+      clearTimeout(initialTimeout);
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [driveActive, emailActive, runSync]);
+  }, [driveActive, emailActive, driveLastSync, emailLastSync]);
 
   const loadInvoices = async () => {
     try {

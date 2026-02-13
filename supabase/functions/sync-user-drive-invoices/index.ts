@@ -163,61 +163,42 @@ Deno.serve(async (req: Request) => {
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     console.log("Supabase client imported");
 
-    // Extract token from Authorization header
     const token = authHeader.replace("Bearer ", "");
-    console.log("Token (first 20 chars):", token.substring(0, 20));
+    let userId: string;
 
-    // Create client with anon key and user token for authentication
-    console.log("Creating user auth client...");
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-    });
-    console.log("User auth client created");
+    if (token === supabaseServiceKey) {
+      const body = await req.json().catch(() => ({}));
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: "Brak user_id w trybie cron" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      userId = body.user_id;
+      console.log("Cron mode - syncing for user:", userId);
+    } else {
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
 
-    // Authenticate user
-    console.log("Getting user from token...");
-    const {
-      data: { user },
-      error: userError,
-    } = await userClient.auth.getUser();
-
-    console.error("=== AUTH DEBUG ===");
-    console.error("User error:", userError);
-    console.error("User object:", user ? `User ID: ${user.id}` : "null");
-
-    if (userError || !user) {
-      console.error("ERROR: User auth failed:", userError?.message || "no user");
-      console.error("Full error object:", JSON.stringify(userError));
-      return new Response(
-        JSON.stringify({
-          error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika"),
-          debug: {
-            hasAuthHeader: !!authHeader,
-            errorMessage: userError?.message,
-            errorName: userError?.name,
-          }
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika") }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      userId = userId;
     }
 
-    // Create service role client for privileged operations
-    console.log("Creating service role client for admin operations...");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("Service role client created");
-
-    console.log("User authenticated:", user.id);
+    console.log("User authenticated:", userId);
 
     // Load folder mappings (new system with department assignments)
     const { data: folderMappings, error: mappingError } = await supabase
       .from("user_drive_folder_mappings")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("is_active", true);
 
     if (mappingError) {
@@ -228,7 +209,7 @@ Deno.serve(async (req: Request) => {
     const { data: driveConfigs, error: driveConfigError } = await supabase
       .from("user_drive_configs")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("is_active", true);
 
     if (driveConfigError) {
@@ -253,7 +234,7 @@ Deno.serve(async (req: Request) => {
     const { data: emailConfigs, error: emailConfigError } = await supabase
       .from("user_email_configs")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("is_active", true)
       .eq("provider", "google_workspace");
 
@@ -286,7 +267,7 @@ Deno.serve(async (req: Request) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, department_id")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     let totalSynced = 0;
@@ -360,7 +341,7 @@ Deno.serve(async (req: Request) => {
           const { data: existingInvoice } = await supabase
             .from("invoices")
             .select("id")
-            .eq("uploaded_by", user.id)
+            .eq("uploaded_by", userId)
             .eq("file_hash", `drive:${file.id}`)
             .maybeSingle();
 
@@ -372,7 +353,7 @@ Deno.serve(async (req: Request) => {
           const { data: existingByName } = await supabase
             .from("invoices")
             .select("id")
-            .eq("uploaded_by", user.id)
+            .eq("uploaded_by", userId)
             .eq("invoice_number", file.name.replace(".pdf", ""))
             .maybeSingle();
 
@@ -401,7 +382,7 @@ Deno.serve(async (req: Request) => {
           const base64 = uint8ToBase64(fileBytes);
           const fileHash = `drive:${file.id}`;
 
-          const filePath = `invoices/${user.id}/${Date.now()}_${file.name}`;
+          const filePath = `invoices/${userId}/${Date.now()}_${file.name}`;
           const { error: uploadError } = await supabase.storage
             .from("documents")
             .upload(filePath, fileBytes, {
@@ -420,7 +401,7 @@ Deno.serve(async (req: Request) => {
           console.log(`💾 Inserting invoice to database...`);
           console.log(`   - Invoice number: ${file.name.replace(".pdf", "")}`);
           console.log(`   - Department ID: ${mappedDepartmentId || 'null'}`);
-          console.log(`   - User ID: ${user.id}`);
+          console.log(`   - User ID: ${userId}`);
           console.log(`   - File hash: ${fileHash}`);
 
           const { data: invoiceData, error: insertError } = await supabase
@@ -429,7 +410,7 @@ Deno.serve(async (req: Request) => {
               invoice_number: file.name.replace(".pdf", ""),
               supplier_name: null,
               gross_amount: null,
-              uploaded_by: user.id,
+              uploaded_by: userId,
               department_id: mappedDepartmentId || null,
               status: "draft",
               pdf_base64: base64,
@@ -540,7 +521,7 @@ Deno.serve(async (req: Request) => {
                         invoiceId: invoiceData.id,
                         folderId: targetFolder,
                         originalMimeType: "application/pdf",
-                        userId: user.id,
+                        userId: userId,
                       }),
                     }
                   );

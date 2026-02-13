@@ -63,28 +63,32 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const token = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(token);
+    let userId: string;
 
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Nieautoryzowany: " + (userError?.message || "brak użytkownika"),
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (token === supabaseServiceKey) {
+      const body = await req.json().catch(() => ({}));
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Brak user_id w trybie cron" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      userId = body.user_id;
+    } else {
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Nieautoryzowany: " + (userError?.message || "brak użytkownika") }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      userId = user.id;
     }
 
     const { data: emailConfigs, error: configError } = await supabase
       .from("user_email_configs")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("is_active", true);
 
     if (configError) {
@@ -119,7 +123,7 @@ Deno.serve(async (req: Request) => {
 
     for (const config of emailConfigs as EmailConfig[]) {
       try {
-        const synced = await syncEmailAccount(supabase, config, user.id, warnings);
+        const synced = await syncEmailAccount(supabase, config, userId, warnings);
         totalSynced += synced;
 
         await supabase
