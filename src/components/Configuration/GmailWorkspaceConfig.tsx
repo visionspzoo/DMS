@@ -1187,7 +1187,7 @@ export default function GmailWorkspaceConfig() {
           </div>
         )}
 
-        {(folderMappings.length > 0 || driveConfig) && emailConfigs.length > 0 && (
+        {emailConfigs.length > 0 && (
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
             <button
               onClick={handleDebugDrive}
@@ -1197,14 +1197,16 @@ export default function GmailWorkspaceConfig() {
               <AlertCircle className={`w-4 h-4 ${debuggingDrive ? 'animate-spin' : ''}`} />
               {debuggingDrive ? 'Sprawdzanie...' : 'Diagnostyka folderu'}
             </button>
-            <button
-              onClick={handleSyncDrive}
-              disabled={driveSyncing}
-              className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
-            >
-              <RefreshCw className={`w-4 h-4 ${driveSyncing ? 'animate-spin' : ''}`} />
-              {driveSyncing ? 'Synchronizacja...' : 'Synchronizuj wszystkie foldery'}
-            </button>
+            {(folderMappings.length > 0 || driveConfig) && (
+              <button
+                onClick={handleSyncDrive}
+                disabled={driveSyncing}
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                <RefreshCw className={`w-4 h-4 ${driveSyncing ? 'animate-spin' : ''}`} />
+                {driveSyncing ? 'Synchronizacja...' : 'Synchronizuj wszystkie foldery'}
+              </button>
+            )}
           </div>
         )}
 
