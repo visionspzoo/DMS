@@ -409,36 +409,76 @@ export function InvoiceList() {
   };
 
   useEffect(() => {
-    filterInvoices();
-  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, invoices]);
+    if (profile?.id) {
+      filterInvoices();
+    }
+  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, invoices, profile]);
 
   const filterInvoices = () => {
+    if (!profile?.id) {
+      console.log('⚠️ Profile not loaded yet, skipping filter');
+      setFilteredInvoices([]);
+      return;
+    }
+
     let filtered = [...invoices];
 
+    console.log('🔍 Filtering invoices. Total:', invoices.length, 'Profile ID:', profile?.id, 'Role:', profile?.role, 'Department:', profile?.department_id);
+
     // ALWAYS filter by user context - only show invoices relevant to me
-    filtered = filtered.filter(inv => {
-      // Draft: only if I uploaded it
-      if (inv.status === 'draft') {
-        return inv.uploaded_by === profile?.id;
-      }
+    // EXCEPT if user is admin - admins see everything
+    if (profile.role !== 'Admin') {
+      const isSpecialist = profile.role === 'Specjalista';
 
-      // Waiting/pending/in_review: if I uploaded OR if I'm the current approver
-      if (inv.status === 'waiting' || inv.status === 'pending' || inv.status === 'in_review') {
-        return inv.uploaded_by === profile?.id || inv.current_approver_id === profile?.id;
-      }
+      filtered = filtered.filter(inv => {
+        const isMyUpload = inv.uploaded_by === profile.id;
+        const isMyApproval = inv.current_approver_id === profile.id;
+        const isMyDepartment = inv.department_id === profile.department_id;
 
-      // Rejected: only if I uploaded it
-      if (inv.status === 'rejected') {
-        return inv.uploaded_by === profile?.id;
-      }
+        // For Specialists: ONLY show invoices where they are directly involved
+        // (uploaded by them OR assigned to them as approver) AND in their department
+        if (isSpecialist) {
+          const show = (isMyUpload || isMyApproval) && isMyDepartment;
+          console.log(`[Specjalista] Invoice ${inv.id} (${inv.status}): uploaded=${isMyUpload}, approver=${isMyApproval}, dept=${isMyDepartment} → show=${show}`);
+          return show;
+        }
 
-      // Accepted/Paid: only if I uploaded it
-      if (inv.status === 'accepted' || inv.status === 'paid') {
-        return inv.uploaded_by === profile?.id;
-      }
+        // For Kierownik/Dyrektor: show all invoices from their department
+        // Draft: show if I uploaded it OR if it's assigned to my department OR if I'm the approver
+        if (inv.status === 'draft') {
+          const show = isMyUpload || isMyDepartment || isMyApproval;
+          console.log(`Draft ${inv.id}: uploaded=${isMyUpload}, dept=${isMyDepartment}, approver=${isMyApproval} → show=${show}`);
+          return show;
+        }
 
-      return false;
-    });
+        // Waiting/pending/in_review: if I uploaded OR if I'm the current approver OR if it's my department
+        if (inv.status === 'waiting' || inv.status === 'pending' || inv.status === 'in_review') {
+          const show = isMyUpload || isMyApproval || isMyDepartment;
+          console.log(`${inv.status} ${inv.id}: uploaded=${isMyUpload}, approver=${isMyApproval}, dept=${isMyDepartment} → show=${show}`);
+          return show;
+        }
+
+        // Rejected: only if I uploaded it OR it's my department
+        if (inv.status === 'rejected') {
+          const show = isMyUpload || isMyDepartment;
+          console.log(`Rejected ${inv.id}: uploaded=${isMyUpload}, dept=${isMyDepartment} → show=${show}`);
+          return show;
+        }
+
+        // Accepted/Paid: only if I uploaded it OR it's my department
+        if (inv.status === 'accepted' || inv.status === 'paid') {
+          const show = isMyUpload || isMyDepartment;
+          console.log(`${inv.status} ${inv.id}: uploaded=${isMyUpload}, dept=${isMyDepartment} → show=${show}`);
+          return show;
+        }
+
+        console.log(`Unknown status ${inv.status} for ${inv.id}, hiding`);
+        return false;
+      });
+      console.log('✅ After user filter:', filtered.length);
+    } else {
+      console.log('👑 Admin user - showing all invoices');
+    }
 
     if (selectedYear !== 'all') {
       filtered = filtered.filter(inv =>
