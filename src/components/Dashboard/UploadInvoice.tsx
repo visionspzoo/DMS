@@ -31,23 +31,32 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   };
 
   const addFiles = async (rawFiles: File[]) => {
-    if (!user) return;
+    console.log('[UploadInvoice] addFiles called with', rawFiles.length, 'files');
+    if (!user) {
+      console.log('[UploadInvoice] No user, returning');
+      return;
+    }
     const { valid, errors } = validateFiles(rawFiles);
     if (errors.length > 0) setError(errors.join('; '));
+    console.log('[UploadInvoice] Valid files:', valid.length, 'Errors:', errors.length);
 
     const entries: FileUploadEntry[] = [];
     for (const file of valid) {
+      console.log('[UploadInvoice] Processing file:', file.name);
       const hash = await computeFileHash(file);
       const inQueue = queueRef.current.some(e => e.hash === hash);
       if (inQueue) {
+        console.log('[UploadInvoice] File is duplicate in queue:', file.name);
         entries.push({ file, hash, status: 'duplicate', progress: 'Duplikat w tej partii' });
         continue;
       }
       const dbCheck = await checkDuplicateInDb(hash, user.id);
       if (dbCheck.isDuplicate) {
+        console.log('[UploadInvoice] File is duplicate in DB:', file.name);
         entries.push({ file, hash, status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
         continue;
       }
+      console.log('[UploadInvoice] File added as pending:', file.name);
       entries.push({ file, hash, status: 'pending', progress: 'Oczekuje...' });
     }
 
@@ -57,17 +66,24 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
       return next;
     });
 
-    return entries.some(e => e.status === 'pending');
+    const hasPending = entries.some(e => e.status === 'pending');
+    console.log('[UploadInvoice] addFiles returning hasPending:', hasPending);
+    return hasPending;
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[UploadInvoice] handleFileChange called');
     setError('');
     setDone(false);
     const hasPending = await addFiles(Array.from(e.target.files || []));
+    console.log('[UploadInvoice] hasPending:', hasPending, 'uploading:', uploading);
     e.target.value = '';
 
     if (hasPending && !uploading) {
+      console.log('[UploadInvoice] Starting upload in 50ms');
       setTimeout(() => handleUpload(), 50);
+    } else {
+      console.log('[UploadInvoice] NOT starting upload - hasPending:', hasPending, 'uploading:', uploading);
     }
   };
 
@@ -80,15 +96,19 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   };
 
   const handleUpload = async () => {
+    console.log('[UploadInvoice] handleUpload called, user:', !!user);
     if (!user) return;
     const snapshot = [...queueRef.current];
+    console.log('[UploadInvoice] Queue snapshot:', snapshot.map(e => ({ name: e.file.name, status: e.status })));
     const pending = snapshot.map((e, i) => ({ e, i })).filter(({ e }) => e.status === 'pending');
+    console.log('[UploadInvoice] Pending files:', pending.length);
     if (pending.length === 0) return;
 
     setUploading(true);
     setError('');
 
     for (const { e: entry, i: idx } of pending) {
+      console.log('[UploadInvoice] Processing file:', entry.file.name);
       updateEntry(idx, { status: 'uploading', progress: 'Sprawdzanie...' });
       try {
         const dbCheck = await checkDuplicateInDb(entry.hash, user.id);
@@ -98,13 +118,16 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
         }
         await uploadInvoiceFile(entry.file, entry.hash, user.id, (msg) => updateEntry(idx, { progress: msg }));
         updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
+        console.log('[UploadInvoice] ✓ File uploaded:', entry.file.name);
       } catch (err: any) {
+        console.error('[UploadInvoice] ✗ Upload error:', err);
         updateEntry(idx, { status: 'error', progress: 'Błąd', error: err.message || 'Nieznany błąd' });
       }
     }
 
     setUploading(false);
     setDone(true);
+    console.log('[UploadInvoice] Upload completed');
   };
 
   const successCount = queue.filter(f => f.status === 'success').length;
