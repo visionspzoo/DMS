@@ -75,6 +75,7 @@ export function InvoiceList() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadValidationError, setUploadValidationError] = useState('');
   const uploadQueueRef = useRef<FileUploadEntry[]>([]);
+  const uploadingRef = useRef(false);
 
   const [driveLastSync, setDriveLastSync] = useState<string | null>(null);
   const [driveActive, setDriveActive] = useState(false);
@@ -548,20 +549,19 @@ export function InvoiceList() {
       });
     }
 
-    setUploadQueue(prev => {
-      const next = [...prev, ...newEntries];
-      uploadQueueRef.current = next;
-      return next;
-    });
+    const next = [...uploadQueueRef.current, ...newEntries];
+    uploadQueueRef.current = next;
+    setUploadQueue(next);
 
     const hasPending = newEntries.some(e => e.status === 'pending');
-    if (hasPending && !isUploading) {
-      startUpload([...uploadQueueRef.current]);
+    if (hasPending && !uploadingRef.current) {
+      startUpload([...next]);
     }
   };
 
   const startUpload = async (snapshot: FileUploadEntry[]) => {
-    if (!user) return;
+    if (!user || uploadingRef.current) return;
+    uploadingRef.current = true;
     setIsUploading(true);
 
     const pendingIndices: number[] = [];
@@ -598,6 +598,7 @@ export function InvoiceList() {
       }
     }
 
+    uploadingRef.current = false;
     setIsUploading(false);
     loadInvoices();
   };
