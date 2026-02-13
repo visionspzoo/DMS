@@ -13,6 +13,7 @@ import {
   type FileUploadEntry,
 } from '../../lib/uploadUtils';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
+import { fetchAndUpdateExchangeRates } from '../../lib/exchangeRateUtils';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 
@@ -402,6 +403,12 @@ export function InvoiceList() {
         allInvoices?.filter(inv => inv.issue_date).map(inv => new Date(inv.issue_date).getFullYear()) || []
       ));
       setAvailableYears(years.sort((a, b) => b - a));
+
+      fetchAndUpdateExchangeRates(allInvoices).then(updated => {
+        if (updated !== allInvoices) {
+          setInvoices(updated);
+        }
+      });
     } catch (error) {
       console.error('Error loading invoices:', error);
     } finally {
