@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Upload, FileText, AlertCircle, CheckCircle, Building2 } from 'lucide-react';
 
@@ -8,11 +8,29 @@ interface CEOUploadInvoiceProps {
   onCancel: () => void;
 }
 
+interface Department {
+  id: string;
+  name: string;
+  google_drive_draft_folder_id: string | null;
+}
+
 export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUploadInvoiceProps) {
   const [file, setFile] = useState<File | null>(null);
-  const [department, setDepartment] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadDepartments() {
+      const { data } = await supabase
+        .from('departments')
+        .select('id, name, google_drive_draft_folder_id')
+        .order('name');
+      if (data) setDepartments(data);
+    }
+    loadDepartments();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,8 +40,8 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
       return;
     }
 
-    if (!department.trim()) {
-      setError('Please enter a department');
+    if (!departmentId) {
+      setError('Please select a department');
       return;
     }
 
@@ -45,13 +63,23 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
         .from('documents')
         .getPublicUrl(filePath);
 
+      const reader = new FileReader();
+      const pdfBase64 = await new Promise<string>((resolve) => {
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.readAsDataURL(file);
+      });
+
       const { data: invoiceData, error: insertError } = await supabase
         .from('invoices')
         .insert({
           file_url: publicUrl,
+          pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
           uploaded_by: userId,
           status: 'accepted',
-          department: department.trim(),
+          department_id: departmentId,
           currency: 'PLN',
           source: 'manual',
         })
@@ -62,26 +90,31 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const driveResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileUrl: publicUrl,
-              fileName: file.name,
-              invoiceId: invoiceData.id,
-              department: department.trim(),
-              userId: userId,
-            }),
-          }
-        );
+        const selectedDept = departments.find(d => d.id === departmentId);
+        if (selectedDept?.google_drive_draft_folder_id) {
+          const driveResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileBase64: pdfBase64,
+                fileName: file.name,
+                folderId: selectedDept.google_drive_draft_folder_id,
+                mimeType: file.type,
+                originalMimeType: file.type,
+                userId: userId,
+                invoiceId: invoiceData.id,
+              }),
+            }
+          );
 
-        if (!driveResponse.ok) {
-          console.error('Google Drive upload failed:', await driveResponse.text());
+          if (!driveResponse.ok) {
+            console.error('Google Drive upload failed:', await driveResponse.text());
+          }
         }
       }
 
@@ -146,15 +179,18 @@ export default function CEOUploadInvoice({ userId, onSuccess, onCancel }: CEOUpl
                 Department *
               </label>
               <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="Enter department name"
+                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                <select
+                  value={departmentId}
+                  onChange={(e) => setDepartmentId(e.target.value)}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                >
+                  <option value="">Select department</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 Specify which department this invoice belongs to

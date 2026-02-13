@@ -93,26 +93,43 @@ export async function uploadInvoiceFile(
   onProgress('Google Drive...');
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: publicUrl,
-            fileName: file.name,
-            invoiceId: invoiceData.id,
-            department_id: invoiceData.department_id || null,
-          }),
+    if (session && invoiceData.department_id) {
+      const { data: department } = await supabase
+        .from('departments')
+        .select('google_drive_draft_folder_id')
+        .eq('id', invoiceData.department_id)
+        .maybeSingle();
+
+      if (department?.google_drive_draft_folder_id) {
+        const uploadResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileBase64: pdfBase64,
+              fileName: file.name,
+              folderId: department.google_drive_draft_folder_id,
+              mimeType: file.type,
+              originalMimeType: file.type,
+              userId: userId,
+              invoiceId: invoiceData.id,
+            }),
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          console.warn('Failed to upload to Google Drive:', await uploadResponse.text());
+        } else {
+          console.log('✓ Uploaded to Google Drive');
         }
-      );
+      }
     }
-  } catch {
-    // optional
+  } catch (err) {
+    console.error('Google Drive upload error:', err);
   }
 
   onProgress('OCR...');

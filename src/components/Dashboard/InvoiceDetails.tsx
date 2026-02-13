@@ -703,36 +703,41 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (error) throw error;
 
       if (currentInvoice.google_drive_id && currentInvoice.department_id) {
-        const { data: deptData } = await supabase
-          .from('departments')
-          .select('google_drive_paid_folder_id')
-          .eq('id', currentInvoice.department_id)
-          .single();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.error('No active session for Google Drive operation');
+        } else {
+          const { data: deptData } = await supabase
+            .from('departments')
+            .select('google_drive_paid_folder_id')
+            .eq('id', currentInvoice.department_id)
+            .maybeSingle();
 
-        if (deptData?.google_drive_paid_folder_id) {
-          try {
-            const moveResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  fileId: currentInvoice.google_drive_id,
-                  targetFolderId: deptData.google_drive_paid_folder_id,
-                }),
+          if (deptData?.google_drive_paid_folder_id) {
+            try {
+              const moveResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fileId: currentInvoice.google_drive_id,
+                    targetFolderId: deptData.google_drive_paid_folder_id,
+                  }),
+                }
+              );
+
+              if (!moveResponse.ok) {
+                console.error('Failed to move file to paid folder:', await moveResponse.text());
+              } else {
+                console.log('✓ File moved to paid folder on Google Drive');
               }
-            );
-
-            if (!moveResponse.ok) {
-              console.error('Failed to move file to paid folder:', await moveResponse.text());
-            } else {
-              console.log('✓ File moved to paid folder on Google Drive');
+            } catch (moveError) {
+              console.error('Error moving file on Google Drive:', moveError);
             }
-          } catch (moveError) {
-            console.error('Error moving file on Google Drive:', moveError);
           }
         }
       }
