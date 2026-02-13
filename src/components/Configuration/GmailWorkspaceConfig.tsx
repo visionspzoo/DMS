@@ -438,6 +438,10 @@ export default function GmailWorkspaceConfig() {
       }
 
       const result = await response.json();
+      console.log('📦 Debug result:', result);
+      console.log('📦 Folder ID:', result.folderId);
+      console.log('📦 Total files:', result.totalFiles);
+      console.log('📦 PDF count:', result.pdfCount);
       setDebugResults(result);
 
       setDriveMessage({
