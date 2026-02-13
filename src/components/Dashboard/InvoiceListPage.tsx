@@ -438,7 +438,7 @@ export function InvoiceList() {
         }
 
         if (inv.status === 'draft') {
-          return isMyUpload || isMyDepartment || isMyApproval;
+          return isMyUpload || isMyApproval;
         }
 
         if (inv.status === 'waiting' || inv.status === 'pending' || inv.status === 'in_review') {
@@ -453,7 +453,12 @@ export function InvoiceList() {
       });
       console.log('✅ After user filter:', filtered.length);
     } else {
-      console.log('✅ Admin user (is_admin) - showing all invoices in Moje Faktury');
+      filtered = filtered.filter(inv => {
+        if (inv.status === 'draft') {
+          return inv.uploaded_by === profile.id || inv.current_approver_id === profile.id;
+        }
+        return true;
+      });
     }
 
     if (selectedYear !== 'all') {
