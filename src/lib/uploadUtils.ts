@@ -108,15 +108,31 @@ export async function uploadInvoiceFile(
     if (session && finalInvoiceData.department_id) {
       const { data: department, error: deptError } = await supabase
         .from('departments')
-        .select('google_drive_folder_id, name')
+        .select('google_drive_draft_folder_id, google_drive_unpaid_folder_id, google_drive_paid_folder_id, name')
         .eq('id', finalInvoiceData.department_id)
         .maybeSingle();
 
-      console.log('[Upload] Department folder:', department);
+      console.log('[Upload] Department folders:', department);
       console.log('[Upload] Department error:', deptError);
 
-      if (department?.google_drive_folder_id) {
-        console.log('[Upload] Uploading to department folder:', department.name, department.google_drive_folder_id);
+      let targetFolderId: string | null = null;
+      let folderType = '';
+
+      if (department) {
+        if (finalInvoiceData.status === 'draft') {
+          targetFolderId = department.google_drive_draft_folder_id;
+          folderType = 'draft';
+        } else if (finalInvoiceData.status === 'paid') {
+          targetFolderId = department.google_drive_paid_folder_id;
+          folderType = 'paid';
+        } else {
+          targetFolderId = department.google_drive_unpaid_folder_id;
+          folderType = 'unpaid';
+        }
+      }
+
+      if (targetFolderId) {
+        console.log('[Upload] Uploading to department folder:', department.name, folderType, targetFolderId);
 
         const uploadResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
@@ -129,7 +145,7 @@ export async function uploadInvoiceFile(
             body: JSON.stringify({
               fileBase64: pdfBase64,
               fileName: file.name,
-              folderId: department.google_drive_folder_id,
+              folderId: targetFolderId,
               mimeType: file.type,
               originalMimeType: file.type,
               userId: userId,
@@ -146,7 +162,7 @@ export async function uploadInvoiceFile(
           console.log('[Upload] ✓ Uploaded to Google Drive:', result);
         }
       } else {
-        console.warn('[Upload] No Google Drive folder configured for department:', finalInvoiceData.department_id);
+        console.warn('[Upload] No Google Drive folder configured for department:', finalInvoiceData.department_id, 'status:', finalInvoiceData.status);
       }
     } else {
       console.warn('[Upload] Missing session or department_id');
