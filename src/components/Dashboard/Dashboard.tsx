@@ -187,9 +187,24 @@ export function Dashboard() {
 
       {/* Draft Invoices Section */}
       <div className="mt-4 bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3">
-        <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Faktury robocze
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Faktury robocze
+          </h3>
+          {myDraftInvoices.length > 0 && (
+            <div className="text-right">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Suma PLN
+              </p>
+              <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {myDraftInvoices
+                  .reduce((sum, inv) => sum + (inv.pln_gross_amount || inv.gross_amount || 0), 0)
+                  .toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                PLN
+              </p>
+            </div>
+          )}
+        </div>
         <div className="space-y-2">
           {draftInvoices.length > 0 ? (
             draftInvoices.map((invoice) => (
@@ -215,6 +230,11 @@ export function Dashboard() {
                     })}{' '}
                     {invoice.currency || 'PLN'}
                   </p>
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                    <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      ≈ {(invoice.pln_gross_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                    </p>
+                  )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400">
                     Robocza
                   </span>
@@ -231,9 +251,24 @@ export function Dashboard() {
 
       {/* In Review Invoices Section (my invoices) */}
       <div className="mt-4 bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3">
-        <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Moje faktury w weryfikacji
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Moje faktury w weryfikacji
+          </h3>
+          {myInReviewInvoices.length > 0 && (
+            <div className="text-right">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Suma PLN
+              </p>
+              <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {myInReviewInvoices
+                  .reduce((sum, inv) => sum + (inv.pln_gross_amount || inv.gross_amount || 0), 0)
+                  .toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                PLN
+              </p>
+            </div>
+          )}
+        </div>
         <div className="space-y-2">
           {inReviewInvoices.length > 0 ? (
             inReviewInvoices.map((invoice) => (
@@ -259,6 +294,11 @@ export function Dashboard() {
                     })}{' '}
                     {invoice.currency || 'PLN'}
                   </p>
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                    <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      ≈ {(invoice.pln_gross_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                    </p>
+                  )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20">
                     W weryfikacji
                   </span>
@@ -275,9 +315,24 @@ export function Dashboard() {
 
       {/* Waiting Invoices Section (others' invoices) */}
       <div className="mt-4 bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3">
-        <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Faktury oczekujące na moją weryfikację
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Faktury oczekujące na moją weryfikację
+          </h3>
+          {waitingForMyApprovalInvoices.length > 0 && (
+            <div className="text-right">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Suma PLN
+              </p>
+              <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {waitingForMyApprovalInvoices
+                  .reduce((sum, inv) => sum + (inv.pln_gross_amount || inv.gross_amount || 0), 0)
+                  .toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                PLN
+              </p>
+            </div>
+          )}
+        </div>
         <div className="space-y-2">
           {waitingInvoices.length > 0 ? (
             waitingInvoices.map((invoice) => (
@@ -303,6 +358,11 @@ export function Dashboard() {
                     })}{' '}
                     {invoice.currency || 'PLN'}
                   </p>
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                    <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      ≈ {(invoice.pln_gross_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                    </p>
+                  )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-500/10 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-400">
                     Oczekuje
                   </span>
@@ -319,9 +379,24 @@ export function Dashboard() {
 
       {/* Accepted Invoices Section */}
       <div className="mt-4 bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3">
-        <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-          Ostatnie zaakceptowane faktury
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Ostatnie zaakceptowane faktury
+          </h3>
+          {acceptedInvoices.length > 0 && (
+            <div className="text-right">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Suma PLN (widoczne)
+              </p>
+              <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {acceptedInvoices
+                  .reduce((sum, inv) => sum + (inv.pln_gross_amount || inv.gross_amount || 0), 0)
+                  .toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                PLN
+              </p>
+            </div>
+          )}
+        </div>
         <div className="space-y-2">
           {acceptedInvoices.length > 0 ? (
             acceptedInvoices.map((invoice) => (
@@ -347,6 +422,11 @@ export function Dashboard() {
                     })}{' '}
                     {invoice.currency || 'PLN'}
                   </p>
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                    <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      ≈ {(invoice.pln_gross_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                    </p>
+                  )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-status-success/10 text-status-success dark:bg-status-success/20">
                     Zaakceptowano
                   </span>
