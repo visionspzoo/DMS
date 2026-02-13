@@ -16,19 +16,29 @@ export function Dashboard() {
 
     const fetchInvoices = async () => {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('invoices')
           .select('*')
-          .or(`uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id}`)
           .order('created_at', { ascending: false });
+
+        if (profile.department_id) {
+          query = query.or(
+            `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id},department_id.eq.${profile.department_id}`
+          );
+        } else {
+          query = query.or(
+            `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id}`
+          );
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
-        // Filter client-side to ensure only relevant invoices are shown
-        // even if RLS allows seeing more (e.g., for admins)
         const filtered = (data || []).filter(invoice =>
           invoice.uploaded_by === profile.id ||
-          invoice.current_approver_id === profile.id
+          invoice.current_approver_id === profile.id ||
+          (profile.department_id && invoice.department_id === profile.department_id)
         );
 
         setInvoices(filtered);

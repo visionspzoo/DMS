@@ -453,12 +453,7 @@ export function InvoiceList() {
       });
       console.log('✅ After user filter:', filtered.length);
     } else {
-      filtered = filtered.filter(inv => {
-        if (inv.status === 'draft') {
-          return inv.uploaded_by === profile.id || inv.current_approver_id === profile.id;
-        }
-        return true;
-      });
+      // Admin sees all invoices
     }
 
     if (selectedYear !== 'all') {
