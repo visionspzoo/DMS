@@ -412,6 +412,7 @@ Deno.serve(async (req: Request) => {
               file_url: publicUrl,
               source: "google_drive",
               file_hash: fileHash,
+              user_drive_file_id: file.id,
             })
             .select("id")
             .single();

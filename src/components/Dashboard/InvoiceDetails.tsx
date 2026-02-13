@@ -520,6 +520,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleDelete = async () => {
     setLoading(true);
     try {
+      // Delete from department folder (google_drive_id)
       if (currentInvoice.google_drive_id) {
         try {
           const deleteResponse = await fetch(
@@ -537,12 +538,39 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           );
 
           if (!deleteResponse.ok) {
-            console.error('Failed to delete from Google Drive:', await deleteResponse.text());
+            console.error('Failed to delete from department folder:', await deleteResponse.text());
           } else {
-            console.log('✓ File deleted from Google Drive');
+            console.log('✓ File deleted from department folder');
           }
         } catch (driveError) {
-          console.error('Error deleting from Google Drive:', driveError);
+          console.error('Error deleting from department folder:', driveError);
+        }
+      }
+
+      // Delete from user's personal folder (user_drive_file_id)
+      if (currentInvoice.user_drive_file_id) {
+        try {
+          const deleteResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileId: currentInvoice.user_drive_file_id,
+              }),
+            }
+          );
+
+          if (!deleteResponse.ok) {
+            console.error('Failed to delete from user folder:', await deleteResponse.text());
+          } else {
+            console.log('✓ File deleted from user personal folder');
+          }
+        } catch (driveError) {
+          console.error('Error deleting from user folder:', driveError);
         }
       }
 
