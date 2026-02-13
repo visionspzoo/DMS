@@ -90,18 +90,27 @@ export async function uploadInvoiceFile(
     throw insertError;
   }
 
+  // Pobierz fakturę ponownie, aby mieć department_id ustawione przez trigger
+  const { data: refreshedInvoice } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('id', finalInvoiceData.id)
+    .single();
+
+  const finalInvoiceData = refreshedInvoice || invoiceData;
+
   onProgress('Google Drive...');
   try {
     const { data: { session } } = await supabase.auth.getSession();
     console.log('[Upload] Session exists:', !!session);
-    console.log('[Upload] Invoice department:', invoiceData.department_id);
+    console.log('[Upload] Invoice department:', finalInvoiceData.department_id);
 
-    if (session && invoiceData.department_id) {
+    if (session && finalInvoiceData.department_id) {
       const { data: folderMapping, error: folderError } = await supabase
         .from('user_drive_folder_mappings')
         .select('google_drive_folder_id, folder_name')
         .eq('user_id', userId)
-        .eq('department_id', invoiceData.department_id)
+        .eq('department_id', finalInvoiceData.department_id)
         .eq('is_active', true)
         .maybeSingle();
 
@@ -126,7 +135,7 @@ export async function uploadInvoiceFile(
               mimeType: file.type,
               originalMimeType: file.type,
               userId: userId,
-              invoiceId: invoiceData.id,
+              invoiceId: finalInvoiceData.id,
             }),
           }
         );
@@ -139,7 +148,7 @@ export async function uploadInvoiceFile(
           console.log('[Upload] ✓ Uploaded to Google Drive:', result);
         }
       } else {
-        console.warn('[Upload] No folder mapping found for user:', userId, 'department:', invoiceData.department_id);
+        console.warn('[Upload] No folder mapping found for user:', userId, 'department:', finalInvoiceData.department_id);
       }
     } else {
       console.warn('[Upload] Missing session or department_id');
@@ -160,7 +169,7 @@ export async function uploadInvoiceFile(
         },
         body: JSON.stringify({
           fileUrl: publicUrl,
-          invoiceId: invoiceData.id,
+          invoiceId: finalInvoiceData.id,
         }),
       }
     );
@@ -172,7 +181,7 @@ export async function uploadInvoiceFile(
           await supabase
             .from('invoice_tags')
             .insert({
-              invoice_id: invoiceData.id,
+              invoice_id: finalInvoiceData.id,
               tag_id: tag.id,
             })
             .then(() => {});
@@ -197,7 +206,7 @@ export async function uploadInvoiceFile(
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
-            invoice_id: invoiceData.id,
+            invoice_id: finalInvoiceData.id,
             force_refresh: true,
           }),
         }
@@ -215,7 +224,7 @@ export async function uploadInvoiceFile(
             .from('invoice_tags')
             .upsert(
               {
-                invoice_id: invoiceData.id,
+                invoice_id: finalInvoiceData.id,
                 tag_id: pred.tag_id,
               },
               { onConflict: 'invoice_id,tag_id' }
@@ -233,7 +242,7 @@ export async function uploadInvoiceFile(
     // ML tagging is optional
   }
 
-  return { invoiceId: invoiceData.id };
+  return { invoiceId: finalInvoiceData.id };
 }
 
 export function validateFiles(files: File[]): { valid: File[]; errors: string[] } {
