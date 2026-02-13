@@ -520,6 +520,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleDelete = async () => {
     setLoading(true);
     try {
+      // Get user session for proper authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
       // Delete from department folder (google_drive_id)
       if (currentInvoice.google_drive_id) {
         try {
@@ -528,7 +534,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -538,7 +544,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           );
 
           if (!deleteResponse.ok) {
-            console.error('Failed to delete from department folder:', await deleteResponse.text());
+            const errorText = await deleteResponse.text();
+            console.error('Failed to delete from department folder:', errorText);
           } else {
             console.log('✓ File deleted from department folder');
           }
@@ -555,7 +562,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
@@ -565,7 +572,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           );
 
           if (!deleteResponse.ok) {
-            console.error('Failed to delete from user folder:', await deleteResponse.text());
+            const errorText = await deleteResponse.text();
+            console.error('Failed to delete from user folder:', errorText);
           } else {
             console.log('✓ File deleted from user personal folder');
           }
