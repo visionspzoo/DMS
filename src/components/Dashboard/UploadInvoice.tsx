@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Upload, FileText, Loader, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -22,13 +22,13 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const [done, setDone] = useState(false);
   const queueRef = useRef<FileUploadEntry[]>([]);
 
-  const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
+  const updateEntry = useCallback((index: number, update: Partial<FileUploadEntry>) => {
     setQueue(prev => {
       const next = prev.map((e, i) => i === index ? { ...e, ...update } : e);
       queueRef.current = next;
       return next;
     });
-  };
+  }, []);
 
   const addFiles = async (rawFiles: File[]) => {
     console.log('[UploadInvoice] addFiles called with', rawFiles.length, 'files');
@@ -74,17 +74,19 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     console.log('[UploadInvoice] handleFileChange called');
     setError('');
     setDone(false);
-    const hasPending = await addFiles(Array.from(e.target.files || []));
-    console.log('[UploadInvoice] hasPending:', hasPending, 'uploading:', uploading);
+    await addFiles(Array.from(e.target.files || []));
     e.target.value = '';
+  };
+
+  useEffect(() => {
+    const hasPending = queue.some(e => e.status === 'pending');
+    console.log('[UploadInvoice] useEffect - hasPending:', hasPending, 'uploading:', uploading, 'queue length:', queue.length);
 
     if (hasPending && !uploading) {
-      console.log('[UploadInvoice] Starting upload in 50ms');
-      setTimeout(() => handleUpload(), 50);
-    } else {
-      console.log('[UploadInvoice] NOT starting upload - hasPending:', hasPending, 'uploading:', uploading);
+      console.log('[UploadInvoice] Auto-starting upload');
+      handleUpload();
     }
-  };
+  }, [queue, uploading, handleUpload]);
 
   const removeFile = (index: number) => {
     setQueue(prev => {
@@ -94,7 +96,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     });
   };
 
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
     console.log('[UploadInvoice] handleUpload called, user:', !!user);
     if (!user) return;
     const snapshot = [...queueRef.current];
@@ -127,7 +129,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     setUploading(false);
     setDone(true);
     console.log('[UploadInvoice] Upload completed');
-  };
+  }, [user, updateEntry]);
 
   const successCount = queue.filter(f => f.status === 'success').length;
   const duplicateCount = queue.filter(f => f.status === 'duplicate').length;
