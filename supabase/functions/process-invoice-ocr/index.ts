@@ -621,7 +621,7 @@ Deno.serve(async (req: Request) => {
       updateData.currency = "PLN";
     }
 
-    if (parsedData.net_amount) {
+    if (parsedData.net_amount !== undefined && parsedData.net_amount !== null && parsedData.net_amount !== '') {
       let netAmountStr = typeof parsedData.net_amount === 'string'
         ? parsedData.net_amount
         : parsedData.net_amount.toString();
@@ -629,12 +629,12 @@ Deno.serve(async (req: Request) => {
       netAmountStr = netAmountStr.replace(/\s/g, '').replace(',', '.');
       const netAmount = parseFloat(netAmountStr);
 
-      if (!isNaN(netAmount) && netAmount > 0) {
+      if (!isNaN(netAmount)) {
         updateData.net_amount = netAmount;
       }
     }
 
-    if (parsedData.tax_amount) {
+    if (parsedData.tax_amount !== undefined && parsedData.tax_amount !== null && parsedData.tax_amount !== '') {
       let taxAmountStr = typeof parsedData.tax_amount === 'string'
         ? parsedData.tax_amount
         : parsedData.tax_amount.toString();
@@ -642,12 +642,12 @@ Deno.serve(async (req: Request) => {
       taxAmountStr = taxAmountStr.replace(/\s/g, '').replace(',', '.');
       const taxAmount = parseFloat(taxAmountStr);
 
-      if (!isNaN(taxAmount) && taxAmount > 0) {
+      if (!isNaN(taxAmount)) {
         updateData.tax_amount = taxAmount;
       }
     }
 
-    if (parsedData.gross_amount) {
+    if (parsedData.gross_amount !== undefined && parsedData.gross_amount !== null && parsedData.gross_amount !== '') {
       let grossAmountStr = typeof parsedData.gross_amount === 'string'
         ? parsedData.gross_amount
         : parsedData.gross_amount.toString();
@@ -655,7 +655,7 @@ Deno.serve(async (req: Request) => {
       grossAmountStr = grossAmountStr.replace(/\s/g, '').replace(',', '.');
       const grossAmount = parseFloat(grossAmountStr);
 
-      if (!isNaN(grossAmount) && grossAmount > 0) {
+      if (!isNaN(grossAmount)) {
         updateData.gross_amount = grossAmount;
       }
     }
