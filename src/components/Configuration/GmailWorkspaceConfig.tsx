@@ -441,7 +441,10 @@ export default function GmailWorkspaceConfig() {
       }
 
       const result = await response.json();
-      console.log('Drive sync result:', result);
+      console.log('📊 Drive sync result:', JSON.stringify(result, null, 2));
+      console.log('📊 Total synced:', result.total_synced);
+      console.log('📊 Errors:', result.errors);
+      console.log('📊 Warnings:', result.warnings);
 
       if (result.warnings && result.warnings.length > 0) {
         setDriveMessage({
