@@ -106,19 +106,17 @@ export async function uploadInvoiceFile(
     console.log('[Upload] Invoice department:', finalInvoiceData.department_id);
 
     if (session && finalInvoiceData.department_id) {
-      const { data: folderMapping, error: folderError } = await supabase
-        .from('user_drive_folder_mappings')
-        .select('google_drive_folder_id, folder_name')
-        .eq('user_id', userId)
-        .eq('department_id', finalInvoiceData.department_id)
-        .eq('is_active', true)
+      const { data: department, error: deptError } = await supabase
+        .from('departments')
+        .select('google_drive_folder_id, name')
+        .eq('id', finalInvoiceData.department_id)
         .maybeSingle();
 
-      console.log('[Upload] Folder mapping:', folderMapping);
-      console.log('[Upload] Folder error:', folderError);
+      console.log('[Upload] Department folder:', department);
+      console.log('[Upload] Department error:', deptError);
 
-      if (folderMapping?.google_drive_folder_id) {
-        console.log('[Upload] Uploading to folder:', folderMapping.folder_name, folderMapping.google_drive_folder_id);
+      if (department?.google_drive_folder_id) {
+        console.log('[Upload] Uploading to department folder:', department.name, department.google_drive_folder_id);
 
         const uploadResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
@@ -131,7 +129,7 @@ export async function uploadInvoiceFile(
             body: JSON.stringify({
               fileBase64: pdfBase64,
               fileName: file.name,
-              folderId: folderMapping.google_drive_folder_id,
+              folderId: department.google_drive_folder_id,
               mimeType: file.type,
               originalMimeType: file.type,
               userId: userId,
@@ -148,7 +146,7 @@ export async function uploadInvoiceFile(
           console.log('[Upload] ✓ Uploaded to Google Drive:', result);
         }
       } else {
-        console.warn('[Upload] No folder mapping found for user:', userId, 'department:', finalInvoiceData.department_id);
+        console.warn('[Upload] No Google Drive folder configured for department:', finalInvoiceData.department_id);
       }
     } else {
       console.warn('[Upload] Missing session or department_id');
