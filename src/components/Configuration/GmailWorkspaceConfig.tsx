@@ -395,6 +395,29 @@ export default function GmailWorkspaceConfig() {
       }
 
       console.log('✅ Session obtained successfully');
+      console.log('🔐 Token details:', {
+        tokenStart: session.access_token.substring(0, 30),
+        tokenLength: session.access_token.length,
+        expiresAt: session.expires_at,
+        expiresAtDate: new Date((session.expires_at || 0) * 1000).toISOString(),
+        now: Math.floor(Date.now() / 1000),
+        isExpired: (session.expires_at || 0) < Math.floor(Date.now() / 1000),
+      });
+
+      // Verify token works by calling getUser
+      console.log('🔍 Verifying token with getUser...');
+      const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
+      console.log('👤 User verification:', {
+        hasUser: !!userData?.user,
+        userId: userData?.user?.id,
+        error: userError?.message,
+      });
+
+      if (userError) {
+        console.error('❌ Token verification failed:', userError);
+        throw new Error(`Token nieprawidlowy: ${userError.message}. Prosze sie wylogowac i zalogowac ponownie.`);
+      }
+
       console.log('🚀 Sending request to debug function...');
 
       const response = await fetch(
