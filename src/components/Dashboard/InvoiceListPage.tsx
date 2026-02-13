@@ -86,7 +86,6 @@ export function InvoiceList() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
 
   const loadFilterPreferences = useCallback(async () => {
     if (!user) return;
@@ -416,35 +415,6 @@ export function InvoiceList() {
     }
   }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, invoices, profile]);
 
-  useEffect(() => {
-    const currencies = [...new Set(
-      filteredInvoices
-        .filter(inv => inv.status === 'accepted' && inv.currency && inv.currency !== 'PLN')
-        .map(inv => inv.currency!.toUpperCase())
-    )];
-    if (currencies.length === 0) return;
-
-    const fetchRates = async () => {
-      const rates: Record<string, number> = {};
-      for (const cur of currencies) {
-        if (exchangeRates[cur]) {
-          rates[cur] = exchangeRates[cur];
-          continue;
-        }
-        try {
-          const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/a/${cur}/?format=json`);
-          if (res.ok) {
-            const data = await res.json();
-            rates[cur] = data.rates[0].mid;
-          }
-        } catch {
-          // ignore - rate stays undefined
-        }
-      }
-      setExchangeRates(prev => ({ ...prev, ...rates }));
-    };
-    fetchRates();
-  }, [filteredInvoices]);
 
   const filterInvoices = () => {
     if (!profile?.id) {
@@ -527,30 +497,25 @@ export function InvoiceList() {
 
   const currencyBreakdown = useMemo(() => {
     const accepted = filteredInvoices.filter(inv => inv.status === 'accepted');
-    const byCurrency: Record<string, { total: number; totalPln: number; rate: number; count: number }> = {};
+    const byCurrency: Record<string, { total: number; count: number }> = {};
     for (const inv of accepted) {
       const cur = inv.currency || 'PLN';
       if (!byCurrency[cur]) {
-        byCurrency[cur] = { total: 0, totalPln: 0, rate: 0, count: 0 };
+        byCurrency[cur] = { total: 0, count: 0 };
       }
-      const amount = Number(inv.gross_amount) || 0;
-      byCurrency[cur].total += amount;
-      if (cur === 'PLN') {
-        byCurrency[cur].totalPln += amount;
-      } else {
-        const rate = exchangeRates[cur] || 0;
-        byCurrency[cur].totalPln += amount * rate;
-        byCurrency[cur].rate = rate;
-      }
+      byCurrency[cur].total += Number(inv.gross_amount) || 0;
       byCurrency[cur].count++;
     }
     return Object.entries(byCurrency)
+      .filter(([cur]) => cur !== 'PLN')
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredInvoices, exchangeRates]);
+  }, [filteredInvoices]);
 
   const totalAcceptedAmount = useMemo(() => {
-    return currencyBreakdown.reduce((sum, [, data]) => sum + data.totalPln, 0);
-  }, [currencyBreakdown]);
+    return filteredInvoices
+      .filter(inv => inv.status === 'accepted')
+      .reduce((sum, inv) => sum + (Number(inv.pln_gross_amount || inv.gross_amount) || 0), 0);
+  }, [filteredInvoices]);
 
   const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
     setUploadQueue(prev => {
@@ -1086,12 +1051,6 @@ export function InvoiceList() {
                     <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">
                       {data.total.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {cur}
                     </span>
-                    {cur !== 'PLN' && data.rate > 0 && (
-                      <span className="ml-1 text-[10px] opacity-70">
-                        = {data.totalPln.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
-                        <span className="ml-0.5">(kurs: {data.rate.toFixed(4)})</span>
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
