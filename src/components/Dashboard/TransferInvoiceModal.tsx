@@ -89,7 +89,7 @@ export function TransferInvoiceModal({
           .eq('department_id', departmentId),
         supabase
           .from('departments')
-          .select('manager_id')
+          .select('manager_id, director_id')
           .eq('id', departmentId)
           .single()
       ]);
@@ -106,11 +106,38 @@ export function TransferInvoiceModal({
         });
       }
 
+      // Dodaj kierownika i dyrektora jeśli nie są już na liście
+      if (departmentResult.data?.manager_id) {
+        const { data: manager } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role')
+          .eq('id', departmentResult.data.manager_id)
+          .single();
+
+        if (manager && !users.find(u => u.id === manager.id)) {
+          users.push(manager);
+        }
+      }
+
+      if (departmentResult.data?.director_id) {
+        const { data: director } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role')
+          .eq('id', departmentResult.data.director_id)
+          .single();
+
+        if (director && !users.find(u => u.id === director.id)) {
+          users.push(director);
+        }
+      }
+
       users.sort((a, b) => a.full_name.localeCompare(b.full_name));
 
-      const managerUser = users.find(u => u.id === departmentResult.data?.manager_id);
-      if (managerUser) {
-        setSelectedUser(managerUser.id);
+      // Domyślnie wybierz kierownika, potem dyrektora, potem pierwszego użytkownika
+      if (departmentResult.data?.manager_id) {
+        setSelectedUser(departmentResult.data.manager_id);
+      } else if (departmentResult.data?.director_id) {
+        setSelectedUser(departmentResult.data.director_id);
       } else if (users.length > 0) {
         setSelectedUser(users[0].id);
       }
@@ -253,7 +280,7 @@ export function TransferInvoiceModal({
                   ))}
                 </select>
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-2">
-                  Domyślnie wybrany jest kierownik działu
+                  Domyślnie wybrany jest kierownik działu lub dyrektor jeśli nie ma kierownika
                 </p>
               </div>
             )}
