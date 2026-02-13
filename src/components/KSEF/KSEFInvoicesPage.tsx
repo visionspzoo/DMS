@@ -645,6 +645,91 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
+      // Check if this KSEF invoice was transferred to the system
+      const { data: ksefInvoice, error: ksefError } = await supabase
+        .from('ksef_invoices')
+        .select('transferred_to_invoice_id')
+        .eq('id', ksefInvoiceId)
+        .maybeSingle();
+
+      if (ksefError) throw ksefError;
+
+      // If transferred, delete the associated invoice file from Google Drive
+      if (ksefInvoice?.transferred_to_invoice_id) {
+        const { data: invoice, error: invoiceError } = await supabase
+          .from('invoices')
+          .select('google_drive_id, user_drive_file_id')
+          .eq('id', ksefInvoice.transferred_to_invoice_id)
+          .maybeSingle();
+
+        if (invoiceError) throw invoiceError;
+
+        const { data: { session } } = await supabase.auth.getSession();
+
+        // Delete from department folder
+        if (invoice?.google_drive_id && session) {
+          try {
+            const deleteResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId: invoice.google_drive_id,
+                }),
+              }
+            );
+
+            if (!deleteResponse.ok) {
+              console.error('Failed to delete from department folder:', await deleteResponse.text());
+            } else {
+              console.log('✓ File deleted from department folder');
+            }
+          } catch (driveError) {
+            console.error('Error deleting from department folder:', driveError);
+          }
+        }
+
+        // Delete from user's personal folder
+        if (invoice?.user_drive_file_id && session) {
+          try {
+            const deleteResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId: invoice.user_drive_file_id,
+                }),
+              }
+            );
+
+            if (!deleteResponse.ok) {
+              console.error('Failed to delete from user folder:', await deleteResponse.text());
+            } else {
+              console.log('✓ File deleted from user folder');
+            }
+          } catch (driveError) {
+            console.error('Error deleting from user folder:', driveError);
+          }
+        }
+
+        // Delete the invoice from the system
+        const { error: deleteInvoiceError } = await supabase
+          .from('invoices')
+          .delete()
+          .eq('id', ksefInvoice.transferred_to_invoice_id);
+
+        if (deleteInvoiceError) throw deleteInvoiceError;
+      }
+
+      // Finally, delete the KSEF invoice
       const { error: deleteError } = await supabase
         .from('ksef_invoices')
         .delete()
