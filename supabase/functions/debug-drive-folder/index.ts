@@ -132,6 +132,10 @@ Deno.serve(async (req: Request) => {
 
     const folderId = folderMappings?.google_drive_folder_id || driveConfigs?.google_drive_folder_id;
 
+    console.log("🔍 Folder mappings:", folderMappings);
+    console.log("🔍 Drive configs:", driveConfigs);
+    console.log("🔍 Selected folder ID:", folderId);
+
     if (!folderId) {
       return new Response(
         JSON.stringify({ error: "Brak skonfigurowanego folderu Drive" }),
