@@ -209,7 +209,27 @@ Deno.serve(async (req: Request) => {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
+      console.log("All folders response status:", allFoldersResponse.status);
+
+      if (!allFoldersResponse.ok) {
+        const errorBody = await allFoldersResponse.text();
+        console.error("❌ Error listing folders:", errorBody);
+
+        return new Response(
+          JSON.stringify({
+            error: "Nie można pobrać listy folderów z Google Drive",
+            requestedFolderId: folderId,
+            driveApiError: errorBody,
+            driveApiStatus: allFoldersResponse.status,
+            message: `Błąd ${allFoldersResponse.status} podczas pobierania folderów. Sprawdź uprawnienia OAuth.`,
+            hint: "Token OAuth może nie mieć dostępu do Google Drive. Sprawdź scope w konfiguracji OAuth.",
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const allFoldersData = await allFoldersResponse.json();
+      console.log("All folders response data:", JSON.stringify(allFoldersData, null, 2));
       const allFolders = allFoldersData.files || [];
 
       console.log(`Found ${allFolders.length} available folders`);
