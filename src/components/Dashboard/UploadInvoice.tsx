@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Upload, FileText, Loader, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -22,47 +22,71 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const [done, setDone] = useState(false);
   const queueRef = useRef<FileUploadEntry[]>([]);
 
-  const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
+  const updateEntry = useCallback((index: number, update: Partial<FileUploadEntry>) => {
     setQueue(prev => {
       const next = prev.map((e, i) => i === index ? { ...e, ...update } : e);
       queueRef.current = next;
       return next;
     });
-  };
+  }, []);
 
   const addFiles = async (rawFiles: File[]) => {
-    if (!user) return;
+    console.log('[UploadInvoice] addFiles called with', rawFiles.length, 'files');
+    if (!user) {
+      console.log('[UploadInvoice] No user, returning');
+      return;
+    }
     const { valid, errors } = validateFiles(rawFiles);
     if (errors.length > 0) setError(errors.join('; '));
+    console.log('[UploadInvoice] Valid files:', valid.length, 'Errors:', errors.length);
 
     const entries: FileUploadEntry[] = [];
     for (const file of valid) {
+      console.log('[UploadInvoice] Processing file:', file.name);
       const hash = await computeFileHash(file);
       const inQueue = queueRef.current.some(e => e.hash === hash);
       if (inQueue) {
+        console.log('[UploadInvoice] File is duplicate in queue:', file.name);
         entries.push({ file, hash, status: 'duplicate', progress: 'Duplikat w tej partii' });
         continue;
       }
       const dbCheck = await checkDuplicateInDb(hash, user.id);
       if (dbCheck.isDuplicate) {
+        console.log('[UploadInvoice] File is duplicate in DB:', file.name);
         entries.push({ file, hash, status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
         continue;
       }
+      console.log('[UploadInvoice] File added as pending:', file.name);
       entries.push({ file, hash, status: 'pending', progress: 'Oczekuje...' });
     }
 
-    setQueue(prev => {
-      const next = [...prev, ...entries];
-      queueRef.current = next;
-      return next;
-    });
+    const next = [...queueRef.current, ...entries];
+    queueRef.current = next;
+    setQueue(next);
+
+    const hasPending = entries.some(e => e.status === 'pending');
+    console.log('[UploadInvoice] addFiles returning hasPending:', hasPending);
+    console.log('[UploadInvoice] queueRef.current length:', queueRef.current.length);
+    return hasPending;
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[UploadInvoice] handleFileChange called');
     setError('');
+    setDone(false);
     await addFiles(Array.from(e.target.files || []));
     e.target.value = '';
   };
+
+  useEffect(() => {
+    const hasPending = queue.some(e => e.status === 'pending');
+    console.log('[UploadInvoice] useEffect - hasPending:', hasPending, 'uploading:', uploading, 'queue length:', queue.length);
+
+    if (hasPending && !uploading) {
+      console.log('[UploadInvoice] Auto-starting upload');
+      handleUpload();
+    }
+  }, [queue, uploading, handleUpload]);
 
   const removeFile = (index: number) => {
     setQueue(prev => {
@@ -72,16 +96,20 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     });
   };
 
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
+    console.log('[UploadInvoice] handleUpload called, user:', !!user);
     if (!user) return;
     const snapshot = [...queueRef.current];
+    console.log('[UploadInvoice] Queue snapshot:', snapshot.map(e => ({ name: e.file.name, status: e.status })));
     const pending = snapshot.map((e, i) => ({ e, i })).filter(({ e }) => e.status === 'pending');
+    console.log('[UploadInvoice] Pending files:', pending.length);
     if (pending.length === 0) return;
 
     setUploading(true);
     setError('');
 
     for (const { e: entry, i: idx } of pending) {
+      console.log('[UploadInvoice] Processing file:', entry.file.name);
       updateEntry(idx, { status: 'uploading', progress: 'Sprawdzanie...' });
       try {
         const dbCheck = await checkDuplicateInDb(entry.hash, user.id);
@@ -91,14 +119,17 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
         }
         await uploadInvoiceFile(entry.file, entry.hash, user.id, (msg) => updateEntry(idx, { progress: msg }));
         updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
+        console.log('[UploadInvoice] ✓ File uploaded:', entry.file.name);
       } catch (err: any) {
+        console.error('[UploadInvoice] ✗ Upload error:', err);
         updateEntry(idx, { status: 'error', progress: 'Błąd', error: err.message || 'Nieznany błąd' });
       }
     }
 
     setUploading(false);
     setDone(true);
-  };
+    console.log('[UploadInvoice] Upload completed');
+  }, [user, updateEntry]);
 
   const successCount = queue.filter(f => f.status === 'success').length;
   const duplicateCount = queue.filter(f => f.status === 'duplicate').length;
@@ -202,7 +233,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
               </div>
 
               <div className="flex gap-3 pt-1">
-                {!uploading && !done && (
+                {!done && (
                   <label className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium text-center cursor-pointer text-sm">
                     Dodaj więcej
                     <input type="file" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" className="hidden" multiple />
@@ -212,17 +243,12 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
                   <button onClick={onSuccess} className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm">
                     Zamknij
                   </button>
-                ) : (
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || pendingCount === 0}
-                    className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium disabled:opacity-50 text-sm"
-                  >
-                    {uploading
-                      ? `Przesyłanie (${successCount + duplicateCount + errorCount}/${queue.length})...`
-                      : `Prześlij${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
-                  </button>
-                )}
+                ) : uploading ? (
+                  <div className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Przetwarzanie ({successCount + duplicateCount + errorCount}/{queue.length})
+                  </div>
+                ) : null}
               </div>
             </div>
           )}

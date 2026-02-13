@@ -101,23 +101,59 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
     );
   }
 
+  const checkDuplicate = (currentInvoice: Invoice): boolean => {
+    if (!currentInvoice.invoice_number) return false;
+
+    const duplicates = invoices.filter((inv) => {
+      if (inv.id === currentInvoice.id) return false;
+      if (!inv.invoice_number) return false;
+      if (inv.invoice_number !== currentInvoice.invoice_number) return false;
+
+      if (currentInvoice.supplier_nip && inv.supplier_nip) {
+        const cleanCurrentNip = currentInvoice.supplier_nip.replace(/[^0-9]/g, '');
+        const cleanInvNip = inv.supplier_nip.replace(/[^0-9]/g, '');
+        return cleanCurrentNip === cleanInvNip;
+      }
+
+      if (currentInvoice.supplier_name && inv.supplier_name) {
+        const cleanCurrentName = currentInvoice.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
+        const cleanInvName = inv.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
+        return cleanCurrentName === cleanInvName;
+      }
+
+      return false;
+    });
+
+    return duplicates.length > 0;
+  };
+
   return (
     <div className="grid gap-2">
       {invoices.map((invoice) => {
         const displayStatus = getUserSpecificStatus(invoice, user?.id || '');
-        const isInvalidBuyer = invoice.supplier_nip === AURA_HERBALS_NIP ||
+        const isInvalidSupplier = invoice.supplier_nip === AURA_HERBALS_NIP ||
           (invoice.supplier_nip?.includes('[BŁĄD]')) ||
           (invoice.supplier_name?.includes('[BŁĄD'));
+        const isInvalidBuyer = invoice.buyer_nip &&
+          invoice.buyer_nip.replace(/[^0-9]/g, '') !== AURA_HERBALS_NIP &&
+          invoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
+        const isDuplicate = checkDuplicate(invoice);
+        const hasError = isInvalidSupplier || isInvalidBuyer || isDuplicate;
         return (
           <button
             key={invoice.id}
             onClick={() => onSelectInvoice(invoice)}
+            title={
+              isDuplicate ? 'DUPLIKAT' :
+              isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
+              isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
+              ''
+            }
             className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full ${
-              isInvalidBuyer
+              hasError
                 ? 'border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'
                 : 'border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40'
             }`}
-            title={isInvalidBuyer ? '⚠️ Błędny nabywca - Aura Herbals to kupujący, nie sprzedawca!' : undefined}
           >
             <div className="flex items-center justify-between gap-3">
               {/* Left section - Dates */}
