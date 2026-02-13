@@ -134,10 +134,12 @@ export default function NipAutomationRules() {
   }, []);
 
   const loadSuggestions = useCallback(async () => {
+    if (!profile?.id) return;
     try {
       const { data: invoices } = await supabase
         .from('invoices')
         .select('supplier_nip, supplier_name, cost_center_id')
+        .eq('uploaded_by', profile.id)
         .not('supplier_nip', 'is', null)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -230,7 +232,7 @@ export default function NipAutomationRules() {
     } catch (err) {
       console.error('Error loading suggestions:', err);
     }
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     loadRules();
