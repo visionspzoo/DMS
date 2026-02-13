@@ -120,9 +120,8 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Supabase configuration missing");
     }
 
@@ -133,15 +132,17 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Authenticate user
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Extract JWT token from Authorization header
+    const token = authHeader.replace('Bearer ', '');
 
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    // Verify the JWT token and get user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
+      console.error("Auth error:", userError);
       throw new Error("Unauthorized");
     }
+
+    console.log(`Authenticated user: ${user.id}`);
 
     const { fileId }: DeleteRequest = await req.json();
 
