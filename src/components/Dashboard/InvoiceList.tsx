@@ -101,32 +101,6 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
     );
   }
 
-  const checkDuplicate = (currentInvoice: Invoice): boolean => {
-    if (!currentInvoice.invoice_number) return false;
-
-    const duplicates = invoices.filter((inv) => {
-      if (inv.id === currentInvoice.id) return false;
-      if (!inv.invoice_number) return false;
-      if (inv.invoice_number !== currentInvoice.invoice_number) return false;
-
-      if (currentInvoice.supplier_nip && inv.supplier_nip) {
-        const cleanCurrentNip = currentInvoice.supplier_nip.replace(/[^0-9]/g, '');
-        const cleanInvNip = inv.supplier_nip.replace(/[^0-9]/g, '');
-        return cleanCurrentNip === cleanInvNip;
-      }
-
-      if (currentInvoice.supplier_name && inv.supplier_name) {
-        const cleanCurrentName = currentInvoice.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
-        const cleanInvName = inv.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
-        return cleanCurrentName === cleanInvName;
-      }
-
-      return false;
-    });
-
-    return duplicates.length > 0;
-  };
-
   return (
     <div className="grid gap-2">
       {invoices.map((invoice) => {
@@ -137,18 +111,12 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
         const isInvalidBuyer = invoice.buyer_nip &&
           invoice.buyer_nip.replace(/[^0-9]/g, '') !== AURA_HERBALS_NIP &&
           invoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
-        const isDuplicate = checkDuplicate(invoice);
-        const hasError = isInvalidSupplier || isInvalidBuyer || isDuplicate;
+        const hasError = isInvalidSupplier || isInvalidBuyer;
         return (
           <button
             key={invoice.id}
             onClick={() => onSelectInvoice(invoice)}
-            title={
-              isDuplicate ? 'DUPLIKAT' :
-              isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
-              isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
-              ''
-            }
+            title={hasError ? (isInvalidBuyer ? 'BŁĘDNY ODBIORCA' : 'BŁĘDNY SPRZEDAWCA') : ''}
             className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full ${
               hasError
                 ? 'border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'

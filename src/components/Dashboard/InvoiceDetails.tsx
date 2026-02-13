@@ -91,7 +91,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [costCenters, setCostCenters] = useState<Array<{id: string, code: string, description: string, is_active: boolean}>>([]);
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
-  const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{id: string, invoice_number: string, created_at: string}>>([]);
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -101,8 +100,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== AURA_HERBALS_NIP &&
     currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
 
-  const isDuplicate = duplicateInvoices.length > 0;
-
   useEffect(() => {
     loadApprovals();
     loadAuditLogs();
@@ -111,43 +108,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     checkIfFromKSEF();
     loadKsefPdfIfNeeded();
     loadCostCenters();
-    checkDuplicates();
   }, [currentInvoice.id]);
-
-  const checkDuplicates = async () => {
-    try {
-      if (!currentInvoice.invoice_number) {
-        setDuplicateInvoices([]);
-        return;
-      }
-
-      let query = supabase
-        .from('invoices')
-        .select('id, invoice_number, created_at')
-        .eq('invoice_number', currentInvoice.invoice_number)
-        .neq('id', currentInvoice.id);
-
-      if (currentInvoice.supplier_nip) {
-        const cleanNip = currentInvoice.supplier_nip.replace(/[^0-9]/g, '');
-        query = query.ilike('supplier_nip', `%${cleanNip}%`);
-      } else if (currentInvoice.supplier_name) {
-        const cleanName = currentInvoice.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim();
-        query = query.ilike('supplier_name', `%${cleanName}%`);
-      } else {
-        setDuplicateInvoices([]);
-        return;
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      setDuplicateInvoices(data || []);
-    } catch (error) {
-      console.error('Error checking duplicates:', error);
-      setDuplicateInvoices([]);
-    }
-  };
 
   const checkIfFromKSEF = async () => {
     try {
@@ -1770,20 +1731,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
                           Aura Herbals (NIP: 5851490834) to kupujący (nabywca), nie sprzedawca (dostawca).
                           AI prawdopodobnie pomyliło strony na fakturze. Użyj przycisku "Przetwórz ponownie przez AI" lub popraw dane ręcznie.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {isDuplicate && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3 flex items-start gap-2">
-                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">DUPLIKAT!</p>
-                        <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
-                          W systemie znajduje się {duplicateInvoices.length} {duplicateInvoices.length === 1 ? 'inna faktura' : 'innych faktur'}
-                          {' '}o tym samym numerze ({currentInvoice.invoice_number})
-                          {currentInvoice.supplier_nip ? ` i NIP dostawcy (${currentInvoice.supplier_nip})` : ` i nazwie dostawcy (${currentInvoice.supplier_name})`}.
                         </p>
                       </div>
                     </div>
