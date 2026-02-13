@@ -508,6 +508,79 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (error) throw error;
 
+      // If invoice doesn't have a PDF, generate one and upload to Google Drive
+      if (!currentInvoice.pdf_base64 && !currentInvoice.file_url && profile) {
+        try {
+          console.log('📄 Faktura bez PDF - generowanie...');
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('No active session');
+
+          // Generate PDF
+          const generateResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-invoice-pdf`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                invoiceId: currentInvoice.id,
+                returnBase64: true,
+              }),
+            }
+          );
+
+          if (generateResponse.ok) {
+            const { base64 } = await generateResponse.json();
+            console.log('✓ PDF wygenerowany');
+
+            // Get department info
+            if (editedInvoice.department_id || currentInvoice.department_id) {
+              const { data: department } = await supabase
+                .from('departments')
+                .select('google_drive_draft_folder_id')
+                .eq('id', editedInvoice.department_id || currentInvoice.department_id)
+                .maybeSingle();
+
+              if (department?.google_drive_draft_folder_id) {
+                console.log('☁️ Upload PDF na Google Drive...');
+
+                // Upload to Google Drive
+                const uploadResponse = await fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${session.access_token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      fileBase64: base64,
+                      fileName: `${editedInvoice.invoice_number?.replace(/\//g, '_') || currentInvoice.id}.pdf`,
+                      folderId: department.google_drive_draft_folder_id,
+                      mimeType: 'application/pdf',
+                      userId: user?.id,
+                      invoiceId: currentInvoice.id,
+                    }),
+                  }
+                );
+
+                if (uploadResponse.ok) {
+                  console.log('✓ PDF przesłany na Google Drive');
+                } else {
+                  console.warn('⚠️ Nie udało się przesłać PDF na Google Drive');
+                }
+              }
+            }
+          }
+        } catch (pdfError) {
+          console.error('Error generating/uploading PDF:', pdfError);
+          // Don't fail the save operation if PDF generation fails
+        }
+      }
+
       setIsEditing(false);
       onUpdate();
     } catch (error) {
