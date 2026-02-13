@@ -86,7 +86,7 @@ export default function CEODashboard({ onUpload }: CEODashboardProps) {
     return departmentMatch && yearMatch && monthMatch;
   });
 
-  const totalAmount = filteredInvoices.reduce((sum, inv) => sum + (inv.gross_amount || 0), 0);
+  const totalAmount = filteredInvoices.reduce((sum, inv) => sum + (inv.pln_gross_amount || inv.gross_amount || 0), 0);
 
   if (loading) {
     return (
