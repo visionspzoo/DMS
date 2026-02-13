@@ -813,11 +813,11 @@ export function KSEFInvoicesPage() {
 
       try {
         // Call the SQL function to get the next approver
-        // Since the user transferring is admin, we use 'Administrator' as role
+        // Pass null as user_role to start workflow from the beginning (Kierownik)
         const { data: approverData, error: approverError } = await supabase
           .rpc('get_next_approver_in_department', {
             dept_id: departmentId,
-            user_role: 'Administrator'
+            user_role: null
           });
 
         if (approverError) {
