@@ -1225,16 +1225,68 @@ export default function GmailWorkspaceConfig() {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div>
-                <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
-                  Informacje o folderze:
-                </p>
-                <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 font-mono text-[10px]">
-                  <p>ID: {debugResults.folderId}</p>
-                  <p>Nazwa: {debugResults.folderMetadata?.name || 'Brak'}</p>
-                  <p>Typ: {debugResults.folderMetadata?.mimeType || 'Brak'}</p>
+              {debugResults.availableFolders && debugResults.availableFolders.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Dostępne foldery na Google Drive ({debugResults.availableFolders.length}):
+                  </p>
+                  <div className="bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 max-h-96 overflow-y-auto">
+                    <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                      {debugResults.availableFolders.map((folder: any, idx: number) => (
+                        <div key={idx} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-text-primary-light dark:text-text-primary-dark truncate">
+                                {folder.name}
+                              </p>
+                              <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-1 font-mono break-all">
+                                ID: {folder.id}
+                              </p>
+                              {folder.webViewLink && (
+                                <a
+                                  href={folder.webViewLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-brand-primary hover:underline mt-1 inline-block"
+                                >
+                                  Otwórz w Google Drive
+                                </a>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(folder.id);
+                                setDriveMessage({ type: 'success', text: `Skopiowano ID: ${folder.id}` });
+                              }}
+                              className="flex-shrink-0 px-2 py-1 bg-brand-primary hover:bg-blue-700 text-white rounded text-[10px] font-medium transition-colors"
+                            >
+                              Kopiuj ID
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+                    <p className="text-[10px] text-blue-800 dark:text-blue-300">
+                      💡 Skopiuj ID folderu który chcesz użyć i wklej go w polu "Link do folderu Google Drive" w formacie: https://drive.google.com/drive/folders/FOLDER_ID
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {debugResults.folderId && (
+                <div>
+                  <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
+                    Informacje o folderze:
+                  </p>
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 font-mono text-[10px]">
+                    <p>ID: {debugResults.folderId}</p>
+                    <p>Nazwa: {debugResults.folderMetadata?.name || 'Brak'}</p>
+                    <p>Typ: {debugResults.folderMetadata?.mimeType || 'Brak'}</p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">

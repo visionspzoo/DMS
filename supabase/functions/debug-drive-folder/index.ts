@@ -136,10 +136,40 @@ Deno.serve(async (req: Request) => {
     console.log("🔍 Drive configs:", driveConfigs);
     console.log("🔍 Selected folder ID:", folderId);
 
+    // If no folder configured, list all available folders
     if (!folderId) {
+      console.log("ℹ️ No folder configured, listing all available folders...");
+
+      const allFoldersUrl = `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name,owners,shared,capabilities,webViewLink)&pageSize=100`;
+      const allFoldersResponse = await fetch(allFoldersUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!allFoldersResponse.ok) {
+        const errorBody = await allFoldersResponse.text();
+        console.error("Error listing folders:", errorBody);
+        return new Response(
+          JSON.stringify({
+            error: `Błąd Google Drive API (${allFoldersResponse.status})`,
+            details: errorBody
+          }),
+          { status: allFoldersResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const allFoldersData = await allFoldersResponse.json();
+      const allFolders = allFoldersData.files || [];
+
+      console.log(`Found ${allFolders.length} available folders`);
+
       return new Response(
-        JSON.stringify({ error: "Brak skonfigurowanego folderu Drive" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          success: true,
+          message: `Nie masz skonfigurowanego folderu. Znaleziono ${allFolders.length} dostępnych folderów.`,
+          availableFolders: allFolders,
+          hint: "Wybierz folder z listy i skopiuj jego ID (widoczne w URL po /folders/ lub w polu 'id')",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
