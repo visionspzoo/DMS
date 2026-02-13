@@ -60,26 +60,29 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
 
       if (insertError) throw insertError;
 
-      const driveResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: publicUrl,
-            fileName: file.name,
-            invoiceId: invoiceData.id,
-            department: department.trim(),
-            userId: userId,
-          }),
-        }
-      );
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const driveResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileUrl: publicUrl,
+              fileName: file.name,
+              invoiceId: invoiceData.id,
+              department: department.trim(),
+              userId: userId,
+            }),
+          }
+        );
 
-      if (!driveResponse.ok) {
-        console.error('Google Drive upload failed:', await driveResponse.text());
+        if (!driveResponse.ok) {
+          console.error('Google Drive upload failed:', await driveResponse.text());
+        }
       }
 
       onSuccess();

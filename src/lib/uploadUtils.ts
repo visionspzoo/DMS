@@ -92,22 +92,25 @@ export async function uploadInvoiceFile(
 
   onProgress('Google Drive...');
   try {
-    await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileUrl: publicUrl,
-          fileName: file.name,
-          invoiceId: invoiceData.id,
-          department_id: invoiceData.department_id || null,
-        }),
-      }
-    );
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileUrl: publicUrl,
+            fileName: file.name,
+            invoiceId: invoiceData.id,
+            department_id: invoiceData.department_id || null,
+          }),
+        }
+      );
+    }
   } catch {
     // optional
   }
