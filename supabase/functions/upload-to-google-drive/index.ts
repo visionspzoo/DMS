@@ -295,10 +295,15 @@ Deno.serve(async (req: Request) => {
         .from("invoices")
         .update({
           google_drive_id: uploadData.id,
+          user_drive_file_id: uploadData.id,
         })
         .eq("id", invoiceId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('[Drive Upload] Failed to update invoice:', updateError);
+        throw updateError;
+      }
+      console.log('[Drive Upload] Updated invoice', invoiceId, 'with file ID', uploadData.id);
     }
 
     return new Response(

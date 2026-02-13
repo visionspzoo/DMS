@@ -93,16 +93,24 @@ export async function uploadInvoiceFile(
   onProgress('Google Drive...');
   try {
     const { data: { session } } = await supabase.auth.getSession();
+    console.log('[Upload] Session exists:', !!session);
+    console.log('[Upload] Invoice department:', invoiceData.department_id);
+
     if (session && invoiceData.department_id) {
-      const { data: folderMapping } = await supabase
+      const { data: folderMapping, error: folderError } = await supabase
         .from('user_drive_folder_mappings')
-        .select('google_drive_folder_id')
+        .select('google_drive_folder_id, folder_name')
         .eq('user_id', userId)
         .eq('department_id', invoiceData.department_id)
         .eq('is_active', true)
         .maybeSingle();
 
+      console.log('[Upload] Folder mapping:', folderMapping);
+      console.log('[Upload] Folder error:', folderError);
+
       if (folderMapping?.google_drive_folder_id) {
+        console.log('[Upload] Uploading to folder:', folderMapping.folder_name, folderMapping.google_drive_folder_id);
+
         const uploadResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
           {
@@ -124,14 +132,20 @@ export async function uploadInvoiceFile(
         );
 
         if (!uploadResponse.ok) {
-          console.warn('Failed to upload to Google Drive:', await uploadResponse.text());
+          const errorText = await uploadResponse.text();
+          console.error('[Upload] Failed to upload to Google Drive:', errorText);
         } else {
-          console.log('✓ Uploaded to Google Drive');
+          const result = await uploadResponse.json();
+          console.log('[Upload] ✓ Uploaded to Google Drive:', result);
         }
+      } else {
+        console.warn('[Upload] No folder mapping found for user:', userId, 'department:', invoiceData.department_id);
       }
+    } else {
+      console.warn('[Upload] Missing session or department_id');
     }
   } catch (err) {
-    console.error('Google Drive upload error:', err);
+    console.error('[Upload] Google Drive upload error:', err);
   }
 
   onProgress('OCR...');
