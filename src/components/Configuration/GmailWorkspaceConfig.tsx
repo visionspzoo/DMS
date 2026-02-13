@@ -63,6 +63,8 @@ export default function GmailWorkspaceConfig() {
   const [driveIsActive, setDriveIsActive] = useState(true);
   const [driveMessage, setDriveMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [driveSyncing, setDriveSyncing] = useState(false);
+  const [debuggingDrive, setDebuggingDrive] = useState(false);
+  const [debugResults, setDebugResults] = useState<any>(null);
 
   const [folderMappings, setFolderMappings] = useState<FolderMapping[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -363,6 +365,53 @@ export default function GmailWorkspaceConfig() {
       setEmailMessage({ type: 'error', text: 'Blad: ' + error.message });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleDebugDrive = async () => {
+    setDebuggingDrive(true);
+    setDriveMessage(null);
+    setDebugResults(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak sesji uzytkownika');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/debug-drive-folder`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        throw new Error(errorData.error || `Blad ${response.status}`);
+      }
+
+      const result = await response.json();
+      setDebugResults(result);
+
+      setDriveMessage({
+        type: 'success',
+        text: `Diagnostyka zakonczona: ${result.message}`,
+      });
+    } catch (error: any) {
+      console.error('Error debugging Drive:', error);
+      setDriveMessage({ type: 'error', text: 'Blad diagnostyki: ' + error.message });
+    } finally {
+      setDebuggingDrive(false);
     }
   };
 
@@ -1100,6 +1149,14 @@ export default function GmailWorkspaceConfig() {
         {(folderMappings.length > 0 || driveConfig) && emailConfigs.length > 0 && (
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
             <button
+              onClick={handleDebugDrive}
+              disabled={debuggingDrive}
+              className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+            >
+              <AlertCircle className={`w-4 h-4 ${debuggingDrive ? 'animate-spin' : ''}`} />
+              {debuggingDrive ? 'Sprawdzanie...' : 'Diagnostyka folderu'}
+            </button>
+            <button
               onClick={handleSyncDrive}
               disabled={driveSyncing}
               className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
@@ -1107,6 +1164,108 @@ export default function GmailWorkspaceConfig() {
               <RefreshCw className={`w-4 h-4 ${driveSyncing ? 'animate-spin' : ''}`} />
               {driveSyncing ? 'Synchronizacja...' : 'Synchronizuj wszystkie foldery'}
             </button>
+          </div>
+        )}
+
+        {debugResults && (
+          <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-600">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                Wyniki diagnostyki
+              </h3>
+              <button
+                onClick={() => setDebugResults(null)}
+                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Informacje o folderze:
+                </p>
+                <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 font-mono text-[10px]">
+                  <p>ID: {debugResults.folderId}</p>
+                  <p>Nazwa: {debugResults.folderMetadata?.name || 'Brak'}</p>
+                  <p>Typ: {debugResults.folderMetadata?.mimeType || 'Brak'}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Statystyki:
+                </p>
+                <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700">
+                  <p>Wszystkich plików: <span className="font-semibold text-brand-primary">{debugResults.totalFiles}</span></p>
+                  <p>Plików PDF: <span className="font-semibold text-green-600 dark:text-green-400">{debugResults.pdfCount}</span></p>
+                </div>
+              </div>
+
+              {debugResults.pdfCount === 0 && debugResults.totalFiles > 0 && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold mb-1">Problem: Brak plików PDF</p>
+                      <p className="text-[10px]">
+                        W folderze jest {debugResults.totalFiles} plik(ów), ale żaden nie jest PDF.
+                        System synchronizuje tylko pliki PDF.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {debugResults.allFiles && debugResults.allFiles.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
+                    Wszystkie pliki w folderze:
+                  </p>
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto">
+                    <ul className="space-y-1 text-[10px]">
+                      {debugResults.allFiles.map((file: any, idx: number) => (
+                        <li key={idx} className="flex items-start gap-2 py-1 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium flex-shrink-0 ${
+                            file.mimeType === 'application/pdf'
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}>
+                            {file.mimeType === 'application/pdf' ? 'PDF' : file.mimeType?.split('/')[1]?.toUpperCase() || 'INNE'}
+                          </span>
+                          <span className="flex-1 truncate text-text-primary-light dark:text-text-primary-dark">
+                            {file.name}
+                          </span>
+                          {file.size && (
+                            <span className="text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
+                              {(parseInt(file.size) / 1024).toFixed(1)} KB
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {debugResults.pdfFiles && debugResults.pdfFiles.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
+                    Pliki PDF gotowe do synchronizacji:
+                  </p>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border border-green-200 dark:border-green-800">
+                    <ul className="space-y-1 text-[10px]">
+                      {debugResults.pdfFiles.map((file: any, idx: number) => (
+                        <li key={idx} className="text-green-800 dark:text-green-300 truncate">
+                          {idx + 1}. {file.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
