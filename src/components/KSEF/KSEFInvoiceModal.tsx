@@ -427,7 +427,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                       VAT
                     </label>
                     <p className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mt-1 font-mono">
-                      {currentInvoice.tax_amount ? currentInvoice.tax_amount.toFixed(2) : (currentInvoice.gross_amount - currentInvoice.net_amount).toFixed(2)} {currentInvoice.currency}
+                      {currentInvoice.tax_amount != null ? currentInvoice.tax_amount.toFixed(2) : (currentInvoice.gross_amount - currentInvoice.net_amount).toFixed(2)} {currentInvoice.currency}
                     </p>
                   </div>
                   <div className="text-center p-3 bg-brand-primary/10 rounded-lg">

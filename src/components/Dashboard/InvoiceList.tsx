@@ -249,18 +249,18 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                 <div className="flex flex-col items-end gap-0 min-w-[140px] pl-3 border-l border-slate-200 dark:border-slate-700">
                   <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                     Netto: <span className="font-mono font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {invoice.net_amount ? `${invoice.net_amount.toFixed(2)} ${invoice.currency}` : '—'}
+                      {invoice.net_amount != null ? `${invoice.net_amount.toFixed(2)} ${invoice.currency}` : '—'}
                     </span>
                   </div>
                   <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                     VAT: <span className="font-mono font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {invoice.tax_amount ? `${invoice.tax_amount.toFixed(2)} ${invoice.currency}` : '—'}
+                      {invoice.tax_amount != null ? `${invoice.tax_amount.toFixed(2)} ${invoice.currency}` : '—'}
                     </span>
                   </div>
                   <div className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark font-mono mt-0.5">
-                    {invoice.gross_amount ? `${invoice.gross_amount.toFixed(2)} ${invoice.currency}` : 'Przetwarzanie...'}
+                    {invoice.gross_amount != null ? `${invoice.gross_amount.toFixed(2)} ${invoice.currency}` : 'Przetwarzanie...'}
                   </div>
-                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && invoice.exchange_rate && invoice.exchange_rate !== 1 && (
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount != null && invoice.exchange_rate && invoice.exchange_rate !== 1 && (
                     <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
                       ≈ {invoice.pln_gross_amount.toFixed(2)} PLN
                       <span className="ml-1 opacity-70">(kurs: {invoice.exchange_rate.toFixed(4)})</span>

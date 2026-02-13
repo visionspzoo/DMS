@@ -2139,13 +2139,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <input
                         type="number"
                         step="0.01"
-                        value={editedInvoice.net_amount || ''}
-                        onChange={(e) => setEditedInvoice({ ...editedInvoice, net_amount: parseFloat(e.target.value) })}
+                        value={editedInvoice.net_amount != null ? editedInvoice.net_amount : ''}
+                        onChange={(e) => setEditedInvoice({ ...editedInvoice, net_amount: e.target.value === '' ? null : parseFloat(e.target.value) })}
                         className="w-full mt-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                       />
                     ) : (
                       <p className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {currentInvoice.net_amount
+                        {currentInvoice.net_amount != null
                           ? `${currentInvoice.net_amount.toFixed(2)} ${currentInvoice.currency}`
                           : '—'}
                       </p>
@@ -2157,13 +2157,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <input
                         type="number"
                         step="0.01"
-                        value={editedInvoice.tax_amount || ''}
-                        onChange={(e) => setEditedInvoice({ ...editedInvoice, tax_amount: parseFloat(e.target.value) })}
+                        value={editedInvoice.tax_amount != null ? editedInvoice.tax_amount : ''}
+                        onChange={(e) => setEditedInvoice({ ...editedInvoice, tax_amount: e.target.value === '' ? null : parseFloat(e.target.value) })}
                         className="w-full mt-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                       />
                     ) : (
                       <p className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {currentInvoice.tax_amount
+                        {currentInvoice.tax_amount != null
                           ? `${currentInvoice.tax_amount.toFixed(2)} ${currentInvoice.currency}`
                           : '—'}
                       </p>
@@ -2175,18 +2175,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <input
                         type="number"
                         step="0.01"
-                        value={editedInvoice.gross_amount || ''}
-                        onChange={(e) => setEditedInvoice({ ...editedInvoice, gross_amount: parseFloat(e.target.value) })}
+                        value={editedInvoice.gross_amount != null ? editedInvoice.gross_amount : ''}
+                        onChange={(e) => setEditedInvoice({ ...editedInvoice, gross_amount: e.target.value === '' ? null : parseFloat(e.target.value) })}
                         className="w-full mt-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                       />
                     ) : (
                       <div className="mt-1">
                         <p className="text-lg font-bold text-brand-primary">
-                          {currentInvoice.gross_amount
+                          {currentInvoice.gross_amount != null
                             ? `${currentInvoice.gross_amount.toFixed(2)} ${currentInvoice.currency}`
                             : '—'}
                         </p>
-                        {currentInvoice.currency !== 'PLN' && currentInvoice.pln_gross_amount && (
+                        {currentInvoice.currency !== 'PLN' && currentInvoice.pln_gross_amount != null && (
                           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
                             = {currentInvoice.pln_gross_amount.toFixed(2)} PLN
                             {currentInvoice.exchange_rate && (

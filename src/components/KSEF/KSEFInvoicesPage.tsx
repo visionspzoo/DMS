@@ -975,7 +975,7 @@ export function KSEFInvoicesPage() {
 
       // Step 8: Create invoice record with file URL and base64
       console.log('💾 Tworzenie faktury w systemie...');
-      const taxAmount = selectedInvoice.tax_amount || (selectedInvoice.gross_amount - selectedInvoice.net_amount);
+      const taxAmount = selectedInvoice.tax_amount != null ? selectedInvoice.tax_amount : (selectedInvoice.gross_amount - selectedInvoice.net_amount);
 
       const invoiceData: any = {
         invoice_number: selectedInvoice.invoice_number,
