@@ -67,9 +67,8 @@ export function Dashboard() {
 
   const myDraftInvoices = invoices.filter(i =>
     i.status === 'draft' && (
-      (i.uploaded_by === profile?.id && i.source !== 'ksef') ||
       i.current_approver_id === profile?.id ||
-      (i.uploaded_by === profile?.id && i.source === 'ksef' && !i.current_approver_id)
+      (i.uploaded_by === profile?.id && !i.current_approver_id)
     )
   );
 
