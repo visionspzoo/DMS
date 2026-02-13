@@ -12,36 +12,38 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadInvoices();
+    if (!profile?.id) return;
+
+    const fetchInvoices = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .or(`uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id}`)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setInvoices(data || []);
+      } catch (error) {
+        console.error('Error loading invoices:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInvoices();
 
     const subscription = supabase
       .channel('invoices-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
-        loadInvoices();
+        fetchInvoices();
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
-
-  const loadInvoices = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
-        .or(`uploaded_by.eq.${profile?.id},current_approver_id.eq.${profile?.id}`)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setInvoices(data || []);
-    } catch (error) {
-      console.error('Error loading invoices:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [profile?.id]);
 
   const myInvoices = invoices.filter(i => i.uploaded_by === profile?.id);
 
