@@ -403,8 +403,8 @@ Deno.serve(async (req: Request) => {
             .from("invoices")
             .insert({
               invoice_number: file.name.replace(".pdf", ""),
-              supplier_name: "Przetwarzanie...",
-              gross_amount: 0,
+              supplier_name: null,
+              gross_amount: null,
               uploaded_by: user.id,
               department_id: mappedDepartmentId || null,
               status: "draft",

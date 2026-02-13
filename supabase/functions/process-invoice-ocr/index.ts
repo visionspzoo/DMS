@@ -310,9 +310,9 @@ function createFallbackInterpretation() {
     supplier_nip: null,
     issue_date: null,
     due_date: null,
-    net_amount: "0.00",
-    tax_amount: "0.00",
-    gross_amount: "0.00",
+    net_amount: null,
+    tax_amount: null,
+    gross_amount: null,
     currency: "PLN",
   };
 }
