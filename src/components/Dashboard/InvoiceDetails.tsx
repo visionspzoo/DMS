@@ -92,13 +92,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
 
-  const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
+  const isInvalidBuyer = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
     (currentInvoice.supplier_name?.includes('[BŁĄD'));
-
-  const isInvalidBuyer = currentInvoice.buyer_nip &&
-    currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== AURA_HERBALS_NIP &&
-    currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
 
   useEffect(() => {
     loadApprovals();
@@ -505,8 +501,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           invoice_number: editedInvoice.invoice_number,
           supplier_name: editedInvoice.supplier_name,
           supplier_nip: editedInvoice.supplier_nip,
-          buyer_name: editedInvoice.buyer_name,
-          buyer_nip: editedInvoice.buyer_nip,
           issue_date: editedInvoice.issue_date,
           due_date: editedInvoice.due_date,
           net_amount: editedInvoice.net_amount,
@@ -1723,11 +1717,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   </div>
 
-                  {isInvalidSupplier && (
+                  {isInvalidBuyer && (
                     <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3 flex items-start gap-2">
                       <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">Błędny sprzedawca!</p>
+                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">Błędny nabywca!</p>
                         <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
                           Aura Herbals (NIP: 5851490834) to kupujący (nabywca), nie sprzedawca (dostawca).
                           AI prawdopodobnie pomyliło strony na fakturze. Użyj przycisku "Przetwórz ponownie przez AI" lub popraw dane ręcznie.
@@ -1745,14 +1739,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           value={editedInvoice.supplier_name || ''}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, supplier_name: e.target.value })}
                           className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
-                            isInvalidSupplier
+                            isInvalidBuyer
                               ? 'border-2 border-red-600 dark:border-red-500'
                               : 'border border-slate-300 dark:border-slate-600'
                           }`}
                         />
                       ) : (
                         <p className={`text-base font-semibold mt-1 ${
-                          isInvalidSupplier
+                          isInvalidBuyer
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
@@ -1768,80 +1762,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           value={editedInvoice.supplier_nip || ''}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, supplier_nip: e.target.value })}
                           className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
-                            isInvalidSupplier
+                            isInvalidBuyer
                               ? 'border-2 border-red-600 dark:border-red-500'
                               : 'border border-slate-300 dark:border-slate-600'
                           }`}
                         />
                       ) : (
                         <p className={`text-base font-semibold mt-1 ${
-                          isInvalidSupplier
+                          isInvalidBuyer
                             ? 'text-red-600 dark:text-red-500'
                             : 'text-text-primary-light dark:text-text-primary-dark'
                         }`}>
                           {(currentInvoice.supplier_nip || '—').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {isInvalidBuyer && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3 flex items-start gap-2">
-                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">BŁĘDNY ODBIORCA!</p>
-                        <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
-                          Faktura wystawiona na inną firmę niż Aura Herbals Sp. z o.o. (NIP: 5851490834).
-                          Sprawdź czy to prawidłowy dokument.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Odbiorca</label>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editedInvoice.buyer_name || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, buyer_name: e.target.value })}
-                          className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
-                            isInvalidBuyer
-                              ? 'border-2 border-red-600 dark:border-red-500'
-                              : 'border border-slate-300 dark:border-slate-600'
-                          }`}
-                        />
-                      ) : (
-                        <p className={`text-base font-semibold mt-1 ${
-                          isInvalidBuyer
-                            ? 'text-red-600 dark:text-red-500'
-                            : 'text-text-primary-light dark:text-text-primary-dark'
-                        }`}>
-                          {currentInvoice.buyer_name || '—'}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">NIP Odbiorcy</label>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editedInvoice.buyer_nip || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, buyer_nip: e.target.value })}
-                          className={`w-full mt-1 px-3 py-2 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm ${
-                            isInvalidBuyer
-                              ? 'border-2 border-red-600 dark:border-red-500'
-                              : 'border border-slate-300 dark:border-slate-600'
-                          }`}
-                        />
-                      ) : (
-                        <p className={`text-base font-semibold mt-1 ${
-                          isInvalidBuyer
-                            ? 'text-red-600 dark:text-red-500'
-                            : 'text-text-primary-light dark:text-text-primary-dark'
-                        }`}>
-                          {currentInvoice.buyer_nip || '—'}
                         </p>
                       )}
                     </div>
