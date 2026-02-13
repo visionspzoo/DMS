@@ -69,7 +69,10 @@ Deno.serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
+    console.log("Auth header present:", !!authHeader);
+
     if (!authHeader) {
+      console.error("❌ No Authorization header");
       return new Response(
         JSON.stringify({ error: "Brak nagłówka autoryzacji" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -82,14 +85,29 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
+    console.log("Attempting to get user...");
     const { data: { user }, error: userError } = await userClient.auth.getUser();
 
+    console.log("User result:", {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email,
+      error: userError?.message
+    });
+
     if (userError || !user) {
+      console.error("❌ User authentication failed:", userError);
       return new Response(
-        JSON.stringify({ error: "Nieautoryzowany" }),
+        JSON.stringify({
+          error: "Nieautoryzowany",
+          details: userError?.message,
+          hint: "Prosze sie wylogowac i zalogowac ponownie"
+        }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("✅ User authenticated:", user.email);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
