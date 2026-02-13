@@ -23,7 +23,15 @@ export function Dashboard() {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setInvoices(data || []);
+
+        // Filter client-side to ensure only relevant invoices are shown
+        // even if RLS allows seeing more (e.g., for admins)
+        const filtered = (data || []).filter(invoice =>
+          invoice.uploaded_by === profile.id ||
+          invoice.current_approver_id === profile.id
+        );
+
+        setInvoices(filtered);
       } catch (error) {
         console.error('Error loading invoices:', error);
       } finally {
