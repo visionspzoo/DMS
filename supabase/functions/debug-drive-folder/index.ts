@@ -152,6 +152,32 @@ Deno.serve(async (req: Request) => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
+    // If folder not found, list all available folders
+    if (folderMetadataResponse.status === 404) {
+      console.log("❌ Folder not found! Listing all available folders...");
+
+      const allFoldersUrl = `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name,owners,shared,capabilities)&pageSize=100`;
+      const allFoldersResponse = await fetch(allFoldersUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      const allFoldersData = await allFoldersResponse.json();
+      const allFolders = allFoldersData.files || [];
+
+      console.log(`Found ${allFolders.length} available folders`);
+
+      return new Response(
+        JSON.stringify({
+          error: "Folder not found",
+          requestedFolderId: folderId,
+          availableFolders: allFolders,
+          message: `Folder ID ${folderId} nie istnieje. Znaleziono ${allFolders.length} dostępnych folderów.`,
+          hint: "Skopiuj ID folderu z URL Google Drive (część po /folders/ w adresie URL)",
+        }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const folderMetadata = await folderMetadataResponse.json();
     console.log("Folder metadata:", JSON.stringify(folderMetadata, null, 2));
 
