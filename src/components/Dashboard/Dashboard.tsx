@@ -43,23 +43,32 @@ export function Dashboard() {
   };
 
   const myInvoices = invoices.filter(i => i.uploaded_by === profile?.id);
-  const othersInvoices = invoices.filter(i => i.uploaded_by !== profile?.id);
 
   const myDraftInvoices = invoices.filter(i =>
-    i.status === 'draft' && (i.uploaded_by === profile?.id || i.current_approver_id === profile?.id)
+    i.status === 'draft' && i.uploaded_by === profile?.id
   );
+
+  const myInReviewInvoices = myInvoices.filter(i =>
+    i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review'
+  );
+
+  const waitingForMyApprovalInvoices = invoices.filter(i =>
+    i.current_approver_id === profile?.id && (i.status === 'waiting' || i.status === 'pending')
+  );
+
+  const myRejectedInvoices = myInvoices.filter(i => i.status === 'rejected');
 
   const stats = {
     draft: myDraftInvoices.length,
-    inReview: myInvoices.filter(i => i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review').length,
-    waiting: othersInvoices.filter(i => i.status === 'waiting' || i.status === 'pending').length,
-    rejected: invoices.filter(i => i.status === 'rejected').length,
+    inReview: myInReviewInvoices.length,
+    waiting: waitingForMyApprovalInvoices.length,
+    rejected: myRejectedInvoices.length,
   };
 
   const draftInvoices = myDraftInvoices.slice(0, 5);
-  const inReviewInvoices = myInvoices.filter(i => i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review').slice(0, 5);
-  const waitingInvoices = othersInvoices.filter(i => i.status === 'waiting' || i.status === 'pending').slice(0, 5);
-  const acceptedInvoices = invoices.filter(i => i.status === 'accepted').slice(0, 5);
+  const inReviewInvoices = myInReviewInvoices.slice(0, 5);
+  const waitingInvoices = waitingForMyApprovalInvoices.slice(0, 5);
+  const acceptedInvoices = myInvoices.filter(i => i.status === 'accepted').slice(0, 5);
 
   if (loading) {
     return (
