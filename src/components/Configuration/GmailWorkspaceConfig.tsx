@@ -376,7 +376,8 @@ export default function GmailWorkspaceConfig() {
     try {
       console.log('🔍 Starting Drive debug...');
 
-      // Wymuszamy odświeżenie sesji
+      // Get current session
+      console.log('🔄 Getting current session...');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       console.log('📋 Session data:', {
@@ -388,28 +389,12 @@ export default function GmailWorkspaceConfig() {
         now: Math.floor(Date.now() / 1000),
       });
 
-      if (sessionError) {
-        console.error('❌ Session error:', sessionError);
-        throw new Error(`Blad sesji: ${sessionError.message}`);
+      if (sessionError || !session) {
+        console.error('❌ Session get failed:', sessionError);
+        throw new Error('Nie udalo sie pobrac sesji. Prosze sie wylogowac i zalogowac ponownie.');
       }
 
-      if (!session) {
-        console.error('❌ No session found');
-        throw new Error('Brak sesji uzytkownika. Prosze sie wylogowac i zalogowac ponownie.');
-      }
-
-      // ALWAYS refresh session before debug to ensure valid token
-      console.log('🔄 FORCE refreshing session before debug...');
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
-        console.error('❌ Session refresh failed:', refreshError);
-        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
-      }
-
-      const finalSession = refreshData.session;
-      if (!finalSession) throw new Error('Brak sesji po odswiezeniu');
-
-      console.log('✅ Token refreshed successfully');
+      console.log('✅ Session obtained successfully');
       console.log('🚀 Sending request to debug function...');
 
       const response = await fetch(
@@ -417,7 +402,7 @@ export default function GmailWorkspaceConfig() {
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${finalSession.access_token}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
