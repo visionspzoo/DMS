@@ -1323,6 +1323,65 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleRecallInvoice = async () => {
+    if (!profile || !user) return;
+
+    const confirmed = window.confirm(
+      'Czy na pewno chcesz cofnąć tę fakturę do edycji? Faktura zostanie wycofana z weryfikacji i powrócisz do statusu roboczego.'
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      const previousApproverId = currentInvoice.current_approver_id;
+
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+          status: 'draft',
+          current_approver_id: null,
+        })
+        .eq('id', currentInvoice.id);
+
+      if (error) throw error;
+
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          invoice_id: currentInvoice.id,
+          user_id: profile.id,
+          action: 'recall',
+          description: 'Faktura cofnięta do edycji przez właściciela',
+        });
+
+      if (auditError) console.error('Error creating audit log:', auditError);
+
+      if (previousApproverId) {
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: previousApproverId,
+            type: 'invoice_recalled',
+            title: 'Faktura cofnięta',
+            message: `Faktura ${currentInvoice.invoice_number || 'bez numeru'} została cofnięta do edycji przez właściciela`,
+            invoice_id: currentInvoice.id,
+          });
+
+        if (notifError) console.error('Error creating notification:', notifError);
+      }
+
+      alert('Faktura została cofnięta do edycji');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error recalling invoice:', error);
+      alert('Nie udało się cofnąć faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const needsKsefPdf = currentInvoice.source === 'ksef' && !currentInvoice.pdf_base64 && !currentInvoice.file_url && !ksefPdfBase64 && pdfLoadAttempted && !loadingKsefPdf;
 
   return (
@@ -1372,6 +1431,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <span>Prześlij</span>
                     </button>
                   </>
+                )}
+                {currentInvoice.status === 'waiting' && currentInvoice.uploaded_by === profile?.id && (
+                  <button
+                    onClick={handleRecallInvoice}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Cofnij fakturę do edycji"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    <span>Cofnij</span>
+                  </button>
                 )}
                 {currentInvoice.status === 'accepted' && currentInvoice.uploaded_by !== profile?.id && (
                   <button
