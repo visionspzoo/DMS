@@ -527,7 +527,7 @@ function SuggestionsPanel({
                 </span>
                 {s.most_used_cost_center && (
                   <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
-                    MPK: {s.most_used_cost_center.code}
+                    MPK: {s.most_used_cost_center.code}{s.most_used_cost_center.description ? ` - ${s.most_used_cost_center.description}` : ''}
                   </span>
                 )}
                 {s.most_used_tags.map(tag => (
@@ -924,7 +924,7 @@ function RulesList({
                   {rule.cost_center && (
                     <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">
                       <Building2 className="w-3 h-3" />
-                      MPK: {rule.cost_center.code}
+                      MPK: {rule.cost_center.code}{rule.cost_center.description ? ` - ${rule.cost_center.description}` : ''}
                     </span>
                   )}
                   {rule.tags.map(tag => (
