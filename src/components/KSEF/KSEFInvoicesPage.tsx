@@ -981,6 +981,8 @@ export function KSEFInvoicesPage() {
         invoice_number: selectedInvoice.invoice_number,
         supplier_name: selectedInvoice.supplier_name || 'Brak nazwy',
         supplier_nip: selectedInvoice.supplier_nip,
+        buyer_name: selectedInvoice.buyer_name || null,
+        buyer_nip: selectedInvoice.buyer_nip || null,
         gross_amount: selectedInvoice.gross_amount,
         net_amount: selectedInvoice.net_amount,
         tax_amount: taxAmount,
@@ -996,7 +998,7 @@ export function KSEFInvoicesPage() {
         pln_gross_amount: plnGrossAmount,
         exchange_rate: exchangeRate,
         source: 'ksef',
-        current_approver_id: appropriateApproverId, // Always use the department's approver
+        current_approver_id: appropriateApproverId,
       };
 
       console.log('✓ Ustawiono akceptującego:', appropriateApproverId || 'BRAK');

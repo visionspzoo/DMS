@@ -281,6 +281,8 @@ Deno.serve(async (req: Request) => {
       invoice_number: ksefInvoice.invoice_number,
       supplier_name: ksefInvoice.supplier_name || "Brak nazwy",
       supplier_nip: ksefInvoice.supplier_nip,
+      buyer_name: ksefInvoice.buyer_name || null,
+      buyer_nip: ksefInvoice.buyer_nip || null,
       gross_amount: ksefInvoice.gross_amount,
       net_amount: ksefInvoice.net_amount,
       tax_amount: taxAmount,

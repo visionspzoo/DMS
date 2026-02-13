@@ -976,7 +976,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       console.log('📄 Pobieranie PDF z KSEF invoice...');
       const { data: ksefInvoice, error: ksefError } = await supabase
         .from('ksef_invoices')
-        .select('pdf_base64, invoice_number, supplier_name, supplier_nip, gross_amount, net_amount, tax_amount, currency, issue_date')
+        .select('pdf_base64, invoice_number, supplier_name, supplier_nip, buyer_name, buyer_nip, gross_amount, net_amount, tax_amount, currency, issue_date')
         .eq('id', ksefInvoiceId)
         .maybeSingle();
 
@@ -1085,6 +1085,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         google_drive_id: googleDriveId,
         pln_gross_amount: plnGrossAmount,
         exchange_rate: exchangeRate,
+        buyer_name: ksefInvoice.buyer_name || null,
+        buyer_nip: ksefInvoice.buyer_nip || null,
       };
 
       const { error: updateError } = await supabase

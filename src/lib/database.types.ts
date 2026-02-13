@@ -100,6 +100,8 @@ export interface Database {
           approved_by_director_at: string | null;
           exchange_rate: number | null;
           pln_gross_amount: number | null;
+          buyer_name: string | null;
+          buyer_nip: string | null;
         };
         Insert: {
           id?: string;
@@ -134,6 +136,8 @@ export interface Database {
           approved_by_director_at?: string | null;
           exchange_rate?: number | null;
           pln_gross_amount?: number | null;
+          buyer_name?: string | null;
+          buyer_nip?: string | null;
         };
         Update: {
           id?: string;
@@ -164,6 +168,8 @@ export interface Database {
           approved_by_director_at?: string | null;
           exchange_rate?: number | null;
           pln_gross_amount?: number | null;
+          buyer_name?: string | null;
+          buyer_nip?: string | null;
           paid_at?: string | null;
           paid_by?: string | null;
           description?: string | null;
