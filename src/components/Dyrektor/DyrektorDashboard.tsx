@@ -13,6 +13,8 @@ interface Invoice {
   department: string | null;
   rejection_reason: string | null;
   created_at: string;
+  pln_gross_amount: number | null;
+  exchange_rate: number | null;
 }
 
 interface DyrektorDashboardProps {
@@ -433,10 +435,19 @@ export default function DyrektorDashboard({ onUpload, onManageDepartments, onMan
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-semibold text-slate-900">
-                        {invoice.gross_amount?.toLocaleString('pl-PL', { minimumFractionDigits: 2 }) || '0.00'}
-                      </span>
-                      <span className="text-sm text-slate-500 ml-1">{invoice.currency}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <div>
+                          <span className="font-semibold text-slate-900">
+                            {invoice.gross_amount?.toLocaleString('pl-PL', { minimumFractionDigits: 2 }) || '0.00'}
+                          </span>
+                          <span className="text-sm text-slate-500 ml-1">{invoice.currency}</span>
+                        </div>
+                        {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                          <div className="text-xs text-slate-500">
+                            ≈ {invoice.pln_gross_amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>

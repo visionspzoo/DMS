@@ -260,6 +260,11 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                   <div className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark font-mono mt-0.5">
                     {invoice.gross_amount ? `${invoice.gross_amount.toFixed(2)} ${invoice.currency}` : 'Przetwarzanie...'}
                   </div>
+                  {invoice.currency !== 'PLN' && invoice.pln_gross_amount && (
+                    <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      ≈ {invoice.pln_gross_amount.toFixed(2)} PLN
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
