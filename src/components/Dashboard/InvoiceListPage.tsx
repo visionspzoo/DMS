@@ -415,6 +415,31 @@ export function InvoiceList() {
   const filterInvoices = () => {
     let filtered = [...invoices];
 
+    // ALWAYS filter by user context - only show invoices relevant to me
+    filtered = filtered.filter(inv => {
+      // Draft: only if I uploaded it
+      if (inv.status === 'draft') {
+        return inv.uploaded_by === profile?.id;
+      }
+
+      // Waiting/pending/in_review: if I uploaded OR if I'm the current approver
+      if (inv.status === 'waiting' || inv.status === 'pending' || inv.status === 'in_review') {
+        return inv.uploaded_by === profile?.id || inv.current_approver_id === profile?.id;
+      }
+
+      // Rejected: only if I uploaded it
+      if (inv.status === 'rejected') {
+        return inv.uploaded_by === profile?.id;
+      }
+
+      // Accepted/Paid: only if I uploaded it
+      if (inv.status === 'accepted' || inv.status === 'paid') {
+        return inv.uploaded_by === profile?.id;
+      }
+
+      return false;
+    });
+
     if (selectedYear !== 'all') {
       filtered = filtered.filter(inv =>
         inv.issue_date && new Date(inv.issue_date).getFullYear().toString() === selectedYear
@@ -430,15 +455,7 @@ export function InvoiceList() {
     if (selectedStatuses.length > 0) {
       filtered = filtered.filter(inv => {
         const status = getUserSpecificStatus(inv, profile?.id || '');
-        if (!selectedStatuses.includes(status)) return false;
-
-        // Special handling for 'draft' status - only show if I'm the current_approver or (no approver and I'm uploader)
-        if (status === 'draft' && inv.status === 'draft') {
-          return inv.current_approver_id === profile?.id ||
-                 (!inv.current_approver_id && inv.uploaded_by === profile?.id);
-        }
-
-        return true;
+        return selectedStatuses.includes(status);
       });
     }
 
