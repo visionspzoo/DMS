@@ -45,14 +45,18 @@ export function Dashboard() {
   const myInvoices = invoices.filter(i => i.uploaded_by === profile?.id);
   const othersInvoices = invoices.filter(i => i.uploaded_by !== profile?.id);
 
+  const myDraftInvoices = invoices.filter(i =>
+    i.status === 'draft' && (i.uploaded_by === profile?.id || i.current_approver_id === profile?.id)
+  );
+
   const stats = {
-    draft: myInvoices.filter(i => i.status === 'draft').length,
+    draft: myDraftInvoices.length,
     inReview: myInvoices.filter(i => i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review').length,
     waiting: othersInvoices.filter(i => i.status === 'waiting' || i.status === 'pending').length,
     rejected: invoices.filter(i => i.status === 'rejected').length,
   };
 
-  const draftInvoices = myInvoices.filter(i => i.status === 'draft').slice(0, 5);
+  const draftInvoices = myDraftInvoices.slice(0, 5);
   const inReviewInvoices = myInvoices.filter(i => i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review').slice(0, 5);
   const waitingInvoices = othersInvoices.filter(i => i.status === 'waiting' || i.status === 'pending').slice(0, 5);
   const acceptedInvoices = invoices.filter(i => i.status === 'accepted').slice(0, 5);
