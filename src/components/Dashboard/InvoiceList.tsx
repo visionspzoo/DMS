@@ -40,6 +40,18 @@ const statusLabels = {
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): keyof typeof statusLabels {
   if (invoice.status === 'draft') {
+    // Draft is visible only to current_approver or uploader (if no approver assigned)
+    if (invoice.current_approver_id === currentUserId) {
+      return 'draft';
+    }
+    if (!invoice.current_approver_id && invoice.uploaded_by === currentUserId) {
+      return 'draft';
+    }
+    // If I uploaded it but it's assigned to someone else, show as "in_review"
+    if (invoice.uploaded_by === currentUserId) {
+      return 'in_review';
+    }
+    // Otherwise (admin viewing), show as draft but shouldn't appear in "My Drafts" filter
     return 'draft';
   }
 
@@ -183,7 +195,7 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-0.5 text-[10px]">
                   <span className="text-text-secondary-light dark:text-text-secondary-dark">Dział:</span>
-                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Przesyłający:</span>
+                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Akceptujący:</span>
                 </div>
                 <div className="flex flex-col gap-0.5 text-[10px]">
                   <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
@@ -192,7 +204,7 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                   <div className="flex items-center gap-0.5">
                     <User className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {invoice.uploader?.full_name || '—'}
+                      {(invoice as any).current_approver?.full_name || invoice.uploader?.full_name || '—'}
                     </span>
                   </div>
                 </div>

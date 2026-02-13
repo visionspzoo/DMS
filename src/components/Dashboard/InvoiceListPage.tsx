@@ -19,7 +19,22 @@ type Invoice = Database['public']['Tables']['invoices']['Row'];
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string {
-  if (invoice.status === 'draft') return 'draft';
+  if (invoice.status === 'draft') {
+    // Draft is visible only to current_approver or uploader (if no approver assigned)
+    if (invoice.current_approver_id === currentUserId) {
+      return 'draft';
+    }
+    if (!invoice.current_approver_id && invoice.uploaded_by === currentUserId) {
+      return 'draft';
+    }
+    // If I uploaded it but it's assigned to someone else, show as "in_review"
+    if (invoice.uploaded_by === currentUserId) {
+      return 'in_review';
+    }
+    // Otherwise, admin should see it but not as their draft
+    return 'draft'; // Will be filtered out by RLS or other logic
+  }
+
   if (invoice.status === 'accepted') return 'accepted';
   if (invoice.status === 'rejected') return 'rejected';
   if (invoice.status === 'paid') return 'paid';
@@ -308,6 +323,7 @@ export function InvoiceList() {
         .select(`
           *,
           uploader:profiles!uploaded_by(full_name, role),
+          current_approver:profiles!current_approver_id(full_name, role),
           department:departments!department_id(id, name, parent_department_id)
         `)
         .order('created_at', { ascending: false });
@@ -412,9 +428,18 @@ export function InvoiceList() {
     }
 
     if (selectedStatuses.length > 0) {
-      filtered = filtered.filter(inv =>
-        selectedStatuses.includes(getUserSpecificStatus(inv, profile?.id || ''))
-      );
+      filtered = filtered.filter(inv => {
+        const status = getUserSpecificStatus(inv, profile?.id || '');
+        if (!selectedStatuses.includes(status)) return false;
+
+        // Special handling for 'draft' status - only show if I'm the current_approver or (no approver and I'm uploader)
+        if (status === 'draft' && inv.status === 'draft') {
+          return inv.current_approver_id === profile?.id ||
+                 (!inv.current_approver_id && inv.uploaded_by === profile?.id);
+        }
+
+        return true;
+      });
     }
 
     if (selectedDepartments.length > 0) {

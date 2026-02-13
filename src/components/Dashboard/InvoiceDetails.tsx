@@ -456,7 +456,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    if (currentInvoice.uploaded_by === profile.id) {
+    // Only current_approver can approve
+    if (currentInvoice.current_approver_id !== profile.id) {
       return false;
     }
 
@@ -468,11 +469,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    if (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile.id) {
-      return true;
+    // Can edit draft if I'm current_approver or (no approver assigned and I'm uploader)
+    if (currentInvoice.status === 'draft') {
+      return currentInvoice.current_approver_id === profile.id ||
+             (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile.id);
     }
 
-    if (currentInvoice.uploaded_by !== profile.id && (currentInvoice.status === 'waiting' || currentInvoice.status === 'pending')) {
+    // Can edit waiting/pending if I'm current_approver
+    if ((currentInvoice.status === 'waiting' || currentInvoice.status === 'pending') &&
+        currentInvoice.current_approver_id === profile.id) {
       return true;
     }
 
@@ -1128,7 +1133,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {isFromKSEF && currentInvoice.status === 'draft' && (profile?.role === 'Administrator' || currentInvoice.uploaded_by === profile?.id) && (
+                {isFromKSEF && currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id)) && (
                   <>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -1147,7 +1152,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id && !isFromKSEF && (
+                {currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id)) && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
