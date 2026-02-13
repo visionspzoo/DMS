@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { X, Upload, FileText, Loader, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -21,6 +21,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const queueRef = useRef<FileUploadEntry[]>([]);
+  const uploadingRef = useRef(false);
 
   const updateEntry = useCallback((index: number, update: Partial<FileUploadEntry>) => {
     setQueue(prev => {
@@ -30,86 +31,17 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     });
   }, []);
 
-  const addFiles = async (rawFiles: File[]) => {
-    console.log('[UploadInvoice] addFiles called with', rawFiles.length, 'files');
-    if (!user) {
-      console.log('[UploadInvoice] No user, returning');
-      return;
-    }
-    const { valid, errors } = validateFiles(rawFiles);
-    if (errors.length > 0) setError(errors.join('; '));
-    console.log('[UploadInvoice] Valid files:', valid.length, 'Errors:', errors.length);
-
-    const entries: FileUploadEntry[] = [];
-    for (const file of valid) {
-      console.log('[UploadInvoice] Processing file:', file.name);
-      const hash = await computeFileHash(file);
-      const inQueue = queueRef.current.some(e => e.hash === hash);
-      if (inQueue) {
-        console.log('[UploadInvoice] File is duplicate in queue:', file.name);
-        entries.push({ file, hash, status: 'duplicate', progress: 'Duplikat w tej partii' });
-        continue;
-      }
-      const dbCheck = await checkDuplicateInDb(hash, user.id);
-      if (dbCheck.isDuplicate) {
-        console.log('[UploadInvoice] File is duplicate in DB:', file.name);
-        entries.push({ file, hash, status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
-        continue;
-      }
-      console.log('[UploadInvoice] File added as pending:', file.name);
-      entries.push({ file, hash, status: 'pending', progress: 'Oczekuje...' });
-    }
-
-    const next = [...queueRef.current, ...entries];
-    queueRef.current = next;
-    setQueue(next);
-
-    const hasPending = entries.some(e => e.status === 'pending');
-    console.log('[UploadInvoice] addFiles returning hasPending:', hasPending);
-    console.log('[UploadInvoice] queueRef.current length:', queueRef.current.length);
-    return hasPending;
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('[UploadInvoice] handleFileChange called');
-    setError('');
-    setDone(false);
-    await addFiles(Array.from(e.target.files || []));
-    e.target.value = '';
-  };
-
-  useEffect(() => {
-    const hasPending = queue.some(e => e.status === 'pending');
-    console.log('[UploadInvoice] useEffect - hasPending:', hasPending, 'uploading:', uploading, 'queue length:', queue.length);
-
-    if (hasPending && !uploading) {
-      console.log('[UploadInvoice] Auto-starting upload');
-      handleUpload();
-    }
-  }, [queue, uploading, handleUpload]);
-
-  const removeFile = (index: number) => {
-    setQueue(prev => {
-      const next = prev.filter((_, i) => i !== index);
-      queueRef.current = next;
-      return next;
-    });
-  };
-
-  const handleUpload = useCallback(async () => {
-    console.log('[UploadInvoice] handleUpload called, user:', !!user);
-    if (!user) return;
+  const processQueue = useCallback(async () => {
+    if (!user || uploadingRef.current) return;
     const snapshot = [...queueRef.current];
-    console.log('[UploadInvoice] Queue snapshot:', snapshot.map(e => ({ name: e.file.name, status: e.status })));
     const pending = snapshot.map((e, i) => ({ e, i })).filter(({ e }) => e.status === 'pending');
-    console.log('[UploadInvoice] Pending files:', pending.length);
     if (pending.length === 0) return;
 
+    uploadingRef.current = true;
     setUploading(true);
     setError('');
 
     for (const { e: entry, i: idx } of pending) {
-      console.log('[UploadInvoice] Processing file:', entry.file.name);
       updateEntry(idx, { status: 'uploading', progress: 'Sprawdzanie...' });
       try {
         const dbCheck = await checkDuplicateInDb(entry.hash, user.id);
@@ -119,22 +51,69 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
         }
         await uploadInvoiceFile(entry.file, entry.hash, user.id, (msg) => updateEntry(idx, { progress: msg }));
         updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
-        console.log('[UploadInvoice] ✓ File uploaded:', entry.file.name);
       } catch (err: any) {
-        console.error('[UploadInvoice] ✗ Upload error:', err);
-        updateEntry(idx, { status: 'error', progress: 'Błąd', error: err.message || 'Nieznany błąd' });
+        updateEntry(idx, { status: 'error', progress: 'Blad', error: err.message || 'Nieznany blad' });
       }
     }
 
+    uploadingRef.current = false;
     setUploading(false);
     setDone(true);
-    console.log('[UploadInvoice] Upload completed');
+
+    const remainingPending = queueRef.current.some(e => e.status === 'pending');
+    if (remainingPending) {
+      processQueue();
+    }
   }, [user, updateEntry]);
+
+  const addFiles = async (rawFiles: File[]) => {
+    if (!user) return;
+    const { valid, errors } = validateFiles(rawFiles);
+    if (errors.length > 0) setError(errors.join('; '));
+
+    const entries: FileUploadEntry[] = [];
+    for (const file of valid) {
+      const hash = await computeFileHash(file);
+      const inQueue = queueRef.current.some(e => e.hash === hash);
+      if (inQueue) {
+        entries.push({ file, hash, status: 'duplicate', progress: 'Duplikat w tej partii' });
+        continue;
+      }
+      const dbCheck = await checkDuplicateInDb(hash, user.id);
+      if (dbCheck.isDuplicate) {
+        entries.push({ file, hash, status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
+        continue;
+      }
+      entries.push({ file, hash, status: 'pending', progress: 'Oczekuje...' });
+    }
+
+    const next = [...queueRef.current, ...entries];
+    queueRef.current = next;
+    setQueue(next);
+
+    if (entries.some(e => e.status === 'pending')) {
+      processQueue();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError('');
+    setDone(false);
+    await addFiles(Array.from(e.target.files || []));
+    e.target.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setQueue(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      queueRef.current = next;
+      return next;
+    });
+  };
 
   const successCount = queue.filter(f => f.status === 'success').length;
   const duplicateCount = queue.filter(f => f.status === 'duplicate').length;
   const errorCount = queue.filter(f => f.status === 'error').length;
-  const pendingCount = queue.filter(f => f.status === 'pending').length;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -160,9 +139,9 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
           {queue.length === 0 ? (
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-12 cursor-pointer hover:border-slate-400 transition group">
               <Upload className="w-12 h-12 text-slate-400 mb-4 group-hover:text-slate-500 transition-colors" />
-              <p className="text-sm font-medium text-slate-900 mb-1">Kliknij, aby wybrać pliki</p>
-              <p className="text-xs text-slate-600">PDF, JPG, PNG (maks. 10MB każdy)</p>
-              <p className="text-xs text-slate-500 mt-1">Możesz wybrać wiele plików naraz</p>
+              <p className="text-sm font-medium text-slate-900 mb-1">Kliknij, aby wybrac pliki</p>
+              <p className="text-xs text-slate-600">PDF, JPG, PNG (maks. 10MB kazdy)</p>
+              <p className="text-xs text-slate-500 mt-1">Mozesz wybrac wiele plikow naraz</p>
               <input
                 type="file"
                 onChange={handleFileChange}
@@ -177,12 +156,12 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-1">
                     <CheckCircle2 className="w-5 h-5 text-green-600" />
-                    <p className="text-sm font-semibold text-green-900">Zakończono</p>
+                    <p className="text-sm font-semibold text-green-900">Zakonczone</p>
                   </div>
                   <p className="text-xs text-green-700">
-                    {successCount > 0 && `Przesłano: ${successCount}`}
+                    {successCount > 0 && `Przeslano: ${successCount}`}
                     {duplicateCount > 0 && ` | Duplikaty: ${duplicateCount}`}
-                    {errorCount > 0 && ` | Błędy: ${errorCount}`}
+                    {errorCount > 0 && ` | Bledy: ${errorCount}`}
                   </p>
                 </div>
               )}
@@ -235,7 +214,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
               <div className="flex gap-3 pt-1">
                 {!done && (
                   <label className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium text-center cursor-pointer text-sm">
-                    Dodaj więcej
+                    Dodaj wiecej
                     <input type="file" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" className="hidden" multiple />
                   </label>
                 )}
