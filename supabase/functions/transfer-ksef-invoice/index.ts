@@ -278,6 +278,11 @@ Deno.serve(async (req: Request) => {
       updateData.xml_content = ksefInvoice.xml_content;
     }
 
+    // Save PDF base64 to ksef_invoices for preview
+    if (pdfBase64) {
+      updateData.pdf_base64 = pdfBase64;
+    }
+
     const { error: updateError } = await supabase
       .from("ksef_invoices")
       .update(updateData)
