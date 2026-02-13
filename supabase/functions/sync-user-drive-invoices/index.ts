@@ -349,7 +349,14 @@ Deno.serve(async (req: Request) => {
         const filesData = await filesResponse.json();
         const files = filesData.files || [];
 
+        console.log(`📁 Found ${files.length} PDF files in folder ${folderId}`);
+        if (files.length > 0) {
+          console.log('📄 Files:', files.map((f: any) => f.name).join(', '));
+        }
+
         for (const file of files) {
+          console.log(`\n🔍 Processing file: ${file.name} (ID: ${file.id})`);
+
           const { data: existingInvoice } = await supabase
             .from("invoices")
             .select("id")
@@ -357,7 +364,10 @@ Deno.serve(async (req: Request) => {
             .eq("file_hash", `drive:${file.id}`)
             .maybeSingle();
 
-          if (existingInvoice) continue;
+          if (existingInvoice) {
+            console.log(`⏭️  Skipping ${file.name} - already exists by file_hash`);
+            continue;
+          }
 
           const { data: existingByName } = await supabase
             .from("invoices")
@@ -366,7 +376,12 @@ Deno.serve(async (req: Request) => {
             .eq("invoice_number", file.name.replace(".pdf", ""))
             .maybeSingle();
 
-          if (existingByName) continue;
+          if (existingByName) {
+            console.log(`⏭️  Skipping ${file.name} - already exists by invoice_number`);
+            continue;
+          }
+
+          console.log(`📥 Downloading and importing ${file.name}...`);
 
           const fileUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`;
           const fileResponse = await fetch(fileUrl, {
@@ -374,9 +389,12 @@ Deno.serve(async (req: Request) => {
           });
 
           if (!fileResponse.ok) {
-            console.error(`Failed to download file ${file.name}: ${fileResponse.status}`);
+            console.error(`❌ Failed to download file ${file.name}: ${fileResponse.status}`);
+            errors.push(`Nie udało się pobrać pliku ${file.name}: ${fileResponse.status}`);
             continue;
           }
+
+          console.log(`✅ File downloaded successfully`);
 
           const fileBuffer = await fileResponse.arrayBuffer();
           const fileBytes = new Uint8Array(fileBuffer);
@@ -399,6 +417,12 @@ Deno.serve(async (req: Request) => {
             publicUrl = url;
           }
 
+          console.log(`💾 Inserting invoice to database...`);
+          console.log(`   - Invoice number: ${file.name.replace(".pdf", "")}`);
+          console.log(`   - Department ID: ${mappedDepartmentId || 'null'}`);
+          console.log(`   - User ID: ${user.id}`);
+          console.log(`   - File hash: ${fileHash}`);
+
           const { data: invoiceData, error: insertError } = await supabase
             .from("invoices")
             .insert({
@@ -418,9 +442,12 @@ Deno.serve(async (req: Request) => {
             .single();
 
           if (insertError) {
-            console.error(`Failed to insert invoice ${file.name}:`, insertError);
+            console.error(`❌ Failed to insert invoice ${file.name}:`, insertError);
+            errors.push(`Nie udało się zapisać faktury ${file.name}: ${insertError.message}`);
             continue;
           }
+
+          console.log(`✅ Invoice inserted with ID: ${invoiceData?.id}`);
 
           if (invoiceData?.id) {
             try {
@@ -525,7 +552,10 @@ Deno.serve(async (req: Request) => {
           }
 
           totalSynced++;
+          console.log(`✅ Successfully synced ${file.name} - Total synced so far: ${totalSynced}`);
         }
+
+        console.log(`\n📊 Finished processing folder ${folderId} - Synced ${totalSynced} invoices from this folder`);
 
         // Update last_sync_at for the appropriate table
         if (isUsingMappings) {
