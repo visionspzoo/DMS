@@ -634,6 +634,20 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         }
       }
 
+      const { data: refreshed } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+      if (refreshed) {
+        setCurrentInvoice(refreshed);
+        setEditedInvoice({
+          ...refreshed,
+          supplier_name: refreshed.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+          supplier_nip: refreshed.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+        });
+      }
+
       setIsEditing(false);
       onUpdate();
     } catch (error) {
@@ -2101,7 +2115,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       ) : (
                         <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
                           {(() => {
-                            const cc = costCenters.find(c => c.id === (invoice as any).cost_center_id);
+                            const cc = costCenters.find(c => c.id === (currentInvoice as any).cost_center_id);
                             return cc ? `${cc.code} - ${cc.description}` : '—';
                           })()}
                         </p>
