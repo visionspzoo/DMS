@@ -422,7 +422,7 @@ export default function GmailWorkspaceConfig() {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
-            folderId: driveFolderId,
+            folderId: driveConfig?.google_drive_folder_id,
           }),
         }
       );
