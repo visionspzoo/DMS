@@ -807,7 +807,32 @@ export function KSEFInvoicesPage() {
         console.log('✓ Waluta PLN, pomijam pobieranie kursu');
       }
 
-      // Step 7: Create invoice record with file URL and base64
+      // Step 7: Find the appropriate approver for this department
+      console.log('👤 Szukanie właściwego akceptującego dla działu...');
+      let appropriateApproverId = null;
+
+      try {
+        // Call the SQL function to get the next approver
+        // Since the user transferring is admin, we use 'Administrator' as role
+        const { data: approverData, error: approverError } = await supabase
+          .rpc('get_next_approver_in_department', {
+            dept_id: departmentId,
+            user_role: 'Administrator'
+          });
+
+        if (approverError) {
+          console.error('⚠️ Błąd przy wyszukiwaniu akceptującego:', approverError);
+        } else if (approverData) {
+          appropriateApproverId = approverData;
+          console.log('✓ Znaleziono właściwego akceptującego:', appropriateApproverId);
+        } else {
+          console.warn('⚠️ Nie znaleziono akceptującego dla działu');
+        }
+      } catch (err) {
+        console.error('⚠️ Błąd przy wywołaniu get_next_approver_in_department:', err);
+      }
+
+      // Step 8: Create invoice record with file URL and base64
       console.log('💾 Tworzenie faktury w systemie...');
       const taxAmount = selectedInvoice.tax_amount || (selectedInvoice.gross_amount - selectedInvoice.net_amount);
 
@@ -830,12 +855,10 @@ export function KSEFInvoicesPage() {
         pln_gross_amount: plnGrossAmount,
         exchange_rate: exchangeRate,
         source: 'ksef',
+        current_approver_id: appropriateApproverId, // Always use the department's approver
       };
 
-      if (userId) {
-        invoiceData.current_approver_id = userId;
-        console.log('✓ Ustawiono akceptującego:', userId);
-      }
+      console.log('✓ Ustawiono akceptującego:', appropriateApproverId || 'BRAK');
 
       console.log('📝 Dane faktury do zapisu:', {
         invoice_number: invoiceData.invoice_number,
@@ -859,6 +882,7 @@ export function KSEFInvoicesPage() {
       }
       console.log('✓ Faktura utworzona pomyślnie, ID:', newInvoice.id);
 
+      // Step 9: Update KSEF invoice to link it with the created invoice
       console.log('🔗 Aktualizacja linku w KSEF invoice...');
       const { error: updateError } = await supabase
         .from('ksef_invoices')
@@ -876,7 +900,7 @@ export function KSEFInvoicesPage() {
       }
       console.log('✓ KSEF invoice zaktualizowany pomyślnie');
 
-      // Step 9: Run OCR on the transferred invoice (only if uploaded to Google Drive)
+      // Step 10: Run OCR on the transferred invoice (only if uploaded to Google Drive)
       if (driveFileUrl) {
         try {
           console.log('🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===');
