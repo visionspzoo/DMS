@@ -147,40 +147,61 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 5. Upload PDF to Google Drive (if configured and PDF available)
+    // 5. Upload PDF to Google Drive (ZAWSZE gdy PDF jest dostępny i folder skonfigurowany)
     let driveFileUrl = null;
     let googleDriveId = null;
 
-    if (pdfBase64 && department.google_drive_draft_folder_id && ksefInvoice.fetched_by) {
-      console.log("Uploading PDF to Google Drive...");
-      const uploadResponse = await fetch(
-        `${supabaseUrl}/functions/v1/upload-to-google-drive`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${supabaseAnonKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fileName: `${ksefInvoice.invoice_number}.pdf`,
-            fileBase64: pdfBase64,
-            folderId: department.google_drive_draft_folder_id,
-            mimeType: "application/pdf",
-            userId: ksefInvoice.fetched_by,
-          }),
-        }
-      );
+    if (pdfBase64 && department.google_drive_draft_folder_id) {
+      try {
+        console.log("📤 Uploading PDF to Google Drive...");
+        console.log(`Folder: ${department.google_drive_draft_folder_id}`);
+        console.log(`File: ${ksefInvoice.invoice_number}.pdf`);
 
-      if (uploadResponse.ok) {
-        const uploadResult = await uploadResponse.json();
-        googleDriveId = uploadResult.fileId;
-        driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
-        console.log("✓ PDF uploaded to Google Drive");
-      } else {
-        console.warn("Failed to upload to Google Drive, will store PDF in database only");
+        // Use fetched_by as userId, or fallback to uploaderId
+        const userIdForUpload = ksefInvoice.fetched_by || uploaderId;
+
+        if (!userIdForUpload) {
+          console.warn("⚠️ No user ID available for Google Drive upload, skipping...");
+        } else {
+          const uploadResponse = await fetch(
+            `${supabaseUrl}/functions/v1/upload-to-google-drive`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${supabaseAnonKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                fileName: `${ksefInvoice.invoice_number}.pdf`,
+                fileBase64: pdfBase64,
+                folderId: department.google_drive_draft_folder_id,
+                mimeType: "application/pdf",
+                userId: userIdForUpload,
+              }),
+            }
+          );
+
+          if (uploadResponse.ok) {
+            const uploadResult = await uploadResponse.json();
+            googleDriveId = uploadResult.fileId;
+            driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
+            console.log(`✓ PDF uploaded to Google Drive: ${driveFileUrl}`);
+          } else {
+            const errorText = await uploadResponse.text();
+            console.error(`❌ Failed to upload to Google Drive: ${errorText}`);
+            console.warn("Will store PDF in database only");
+          }
+        }
+      } catch (uploadError: any) {
+        console.error("❌ Error during Google Drive upload:", uploadError.message);
+        console.warn("Will store PDF in database only");
       }
-    } else if (!pdfBase64) {
-      console.log("Skipping Google Drive upload - no PDF available");
+    } else {
+      if (!pdfBase64) {
+        console.log("⚠️ Skipping Google Drive upload - no PDF available");
+      } else if (!department.google_drive_draft_folder_id) {
+        console.log("⚠️ Skipping Google Drive upload - no Google Drive folder configured for department");
+      }
     }
 
     // 6. Get exchange rate if needed

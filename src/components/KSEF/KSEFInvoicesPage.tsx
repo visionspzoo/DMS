@@ -349,11 +349,53 @@ export function KSEFInvoicesPage() {
 
       // Reload invoices to show updated state
       await loadInvoices();
+
+      // Auto-upload PDFs to Google Drive for transferred invoices
+      if (transferred > 0) {
+        await uploadKsefPdfsToGoogleDrive();
+      }
     } catch (error) {
       console.error('Błąd podczas automatycznego transferu:', error);
       setError('Nieoczekiwany błąd podczas automatycznego transferu');
     } finally {
       setTransferring(false);
+    }
+  };
+
+  const uploadKsefPdfsToGoogleDrive = async () => {
+    try {
+      console.log('📤 Rozpoczynam automatyczny upload PDF do Google Drive...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('Brak sesji, pomijam upload PDF');
+        return;
+      }
+
+      const uploadResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-upload-ksef-pdfs`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      if (uploadResponse.ok) {
+        const result = await uploadResponse.json();
+        console.log('✓ Auto-upload PDF zakończony:', result);
+        if (result.successCount > 0) {
+          console.log(`✓ Uploadowano ${result.successCount} plików PDF do Google Drive`);
+        }
+      } else {
+        const errorText = await uploadResponse.text();
+        console.warn('⚠️ Nie udało się wykonać auto-upload PDF:', errorText);
+      }
+    } catch (error) {
+      console.error('Błąd podczas auto-upload PDF:', error);
     }
   };
 
