@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, Trash2, Building2, AlertCircle, User } from 'lucide-react';
+import { Plus, Trash2, Building2, AlertCircle, User, Edit2, Check, X } from 'lucide-react';
 
 interface NIPMapping {
   id: string;
@@ -44,6 +44,12 @@ export function KSEFConfiguration() {
   const [bulkDepartmentUsers, setBulkDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [bulkOperating, setBulkOperating] = useState(false);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDepartment, setEditDepartment] = useState('');
+  const [editUser, setEditUser] = useState('');
+  const [editDepartmentUsers, setEditDepartmentUsers] = useState<DepartmentUser[]>([]);
+  const [editing, setEditing] = useState(false);
+
   const canManageMappings = user?.role !== 'specialist';
 
   useEffect(() => {
@@ -67,6 +73,14 @@ export function KSEFConfiguration() {
       setBulkUser('');
     }
   }, [bulkDepartment]);
+
+  useEffect(() => {
+    if (editDepartment) {
+      loadDepartmentUsers(editDepartment).then(users => setEditDepartmentUsers(users || []));
+    } else {
+      setEditDepartmentUsers([]);
+    }
+  }, [editDepartment]);
 
   async function loadData() {
     try {
@@ -231,6 +245,56 @@ export function KSEFConfiguration() {
     } catch (err) {
       console.error('Error deleting mapping:', err);
       setError('Nie udało się usunąć mapowania');
+    }
+  }
+
+  function startEditing(mapping: NIPMapping) {
+    setEditingId(mapping.id);
+    setEditDepartment(mapping.department_id);
+    setEditUser(mapping.assigned_user_id || '');
+    setError(null);
+    setSuccess(null);
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditDepartment('');
+    setEditUser('');
+    setEditDepartmentUsers([]);
+  }
+
+  async function saveEdit(id: string) {
+    if (!editDepartment) {
+      setError('Wybierz dział');
+      return;
+    }
+
+    try {
+      setEditing(true);
+      setError(null);
+      setSuccess(null);
+
+      const { error: updateError } = await supabase
+        .from('ksef_nip_department_mappings')
+        .update({
+          department_id: editDepartment,
+          assigned_user_id: editUser || null,
+        })
+        .eq('id', id);
+
+      if (updateError) throw updateError;
+
+      setSuccess('Pomyślnie zaktualizowano mapowanie');
+      setEditingId(null);
+      setEditDepartment('');
+      setEditUser('');
+      setEditDepartmentUsers([]);
+      await loadData();
+    } catch (err) {
+      console.error('Error updating mapping:', err);
+      setError('Nie udało się zaktualizować mapowania');
+    } finally {
+      setEditing(false);
     }
   }
 
@@ -533,61 +597,129 @@ export function KSEFConfiguration() {
                   </td>
                 </tr>
               ) : (
-                mappings.map((mapping) => (
-                  <tr key={mapping.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant/50">
-                    {canManageMappings && (
-                      <td className="px-4 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedMappings.has(mapping.id)}
-                          onChange={() => toggleSelection(mapping.id)}
-                          className="w-4 h-4 text-brand-primary bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-brand-primary focus:ring-2"
-                        />
-                      </td>
-                    )}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-mono text-sm text-text-primary-light dark:text-text-primary-dark">
-                        {mapping.nip}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-                        <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
-                          {mapping.department_name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {mapping.assigned_user_name ? (
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-                          <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
-                            {mapping.assigned_user_name}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
-                          Kierownik działu
-                        </span>
+                mappings.map((mapping) => {
+                  const isEditing = editingId === mapping.id;
+
+                  return (
+                    <tr key={mapping.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant/50">
+                      {canManageMappings && (
+                        <td className="px-4 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedMappings.has(mapping.id)}
+                            onChange={() => toggleSelection(mapping.id)}
+                            disabled={isEditing}
+                            className="w-4 h-4 text-brand-primary bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-brand-primary focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                        </td>
                       )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                      {new Date(mapping.created_at).toLocaleDateString('pl-PL')}
-                    </td>
-                    {canManageMappings && (
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <button
-                          onClick={() => handleDeleteMapping(mapping.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          title="Usuń mapowanie"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="font-mono text-sm text-text-primary-light dark:text-text-primary-dark">
+                          {mapping.nip}
+                        </span>
                       </td>
-                    )}
-                  </tr>
-                ))
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <select
+                            value={editDepartment}
+                            onChange={(e) => setEditDepartment(e.target.value)}
+                            className="w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                          >
+                            <option value="">Wybierz dział</option>
+                            {departments.map((dept) => (
+                              <option key={dept.id} value={dept.id}>
+                                {dept.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                            <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
+                              {mapping.department_name}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <select
+                            value={editUser}
+                            onChange={(e) => setEditUser(e.target.value)}
+                            disabled={!editDepartment}
+                            className="w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="">Kierownik działu</option>
+                            {editDepartmentUsers.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.full_name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <>
+                            {mapping.assigned_user_name ? (
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                                <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
+                                  {mapping.assigned_user_name}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                                Kierownik działu
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                        {new Date(mapping.created_at).toLocaleDateString('pl-PL')}
+                      </td>
+                      {canManageMappings && (
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          {isEditing ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => saveEdit(mapping.id)}
+                                disabled={editing || !editDepartment}
+                                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 p-2 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Zapisz"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                disabled={editing}
+                                className="text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 p-2 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Anuluj"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => startEditing(mapping)}
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                title="Edytuj mapowanie"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMapping(mapping.id)}
+                                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Usuń mapowanie"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
