@@ -472,6 +472,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
+    // Admins can always edit
+    if (profile.is_admin) {
+      return true;
+    }
+
     // Can edit draft if I'm current_approver or (no approver assigned and I'm uploader)
     if (currentInvoice.status === 'draft') {
       return currentInvoice.current_approver_id === profile.id ||
@@ -1326,9 +1331,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleRecallInvoice = async () => {
     if (!profile || !user) return;
 
-    const confirmed = window.confirm(
-      'Czy na pewno chcesz cofnąć tę fakturę do edycji? Faktura zostanie wycofana z weryfikacji i powrócisz do statusu roboczego.'
-    );
+    const isOwner = currentInvoice.uploaded_by === profile.id;
+    const confirmMessage = profile.is_admin && !isOwner
+      ? 'Czy na pewno chcesz cofnąć tę fakturę do edycji? Jako administrator cofasz fakturę innego użytkownika.'
+      : 'Czy na pewno chcesz cofnąć tę fakturę do edycji? Faktura zostanie wycofana z weryfikacji i powrócisz do statusu roboczego.';
+
+    const confirmed = window.confirm(confirmMessage);
 
     if (!confirmed) return;
 
@@ -1346,25 +1354,33 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (error) throw error;
 
+      const auditDescription = profile.is_admin && !isOwner
+        ? 'Faktura cofnięta do edycji przez administratora'
+        : 'Faktura cofnięta do edycji przez właściciela';
+
       const { error: auditError } = await supabase
         .from('audit_logs')
         .insert({
           invoice_id: currentInvoice.id,
           user_id: profile.id,
           action: 'recall',
-          description: 'Faktura cofnięta do edycji przez właściciela',
+          description: auditDescription,
         });
 
       if (auditError) console.error('Error creating audit log:', auditError);
 
       if (previousApproverId) {
+        const notificationMessage = profile.is_admin && !isOwner
+          ? `Faktura ${currentInvoice.invoice_number || 'bez numeru'} została cofnięta do edycji przez administratora`
+          : `Faktura ${currentInvoice.invoice_number || 'bez numeru'} została cofnięta do edycji przez właściciela`;
+
         const { error: notifError } = await supabase
           .from('notifications')
           .insert({
             user_id: previousApproverId,
             type: 'invoice_recalled',
             title: 'Faktura cofnięta',
-            message: `Faktura ${currentInvoice.invoice_number || 'bez numeru'} została cofnięta do edycji przez właściciela`,
+            message: notificationMessage,
             invoice_id: currentInvoice.id,
           });
 
@@ -1392,7 +1408,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {isFromKSEF && currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id)) && (
+                {isFromKSEF && currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && (
                   <>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -1411,7 +1427,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id)) && !isFromKSEF && (
+                {currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
@@ -1432,7 +1448,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {currentInvoice.status === 'waiting' && currentInvoice.uploaded_by === profile?.id && (
+                {currentInvoice.status === 'waiting' && (currentInvoice.uploaded_by === profile?.id || profile?.is_admin) && (
                   <button
                     onClick={handleRecallInvoice}
                     disabled={loading}
@@ -1443,7 +1459,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Cofnij</span>
                   </button>
                 )}
-                {currentInvoice.status === 'accepted' && currentInvoice.uploaded_by !== profile?.id && (
+                {currentInvoice.status === 'accepted' && (currentInvoice.uploaded_by !== profile?.id || profile?.is_admin) && (
                   <button
                     onClick={() => setShowTransferModal(true)}
                     disabled={loading}
@@ -1462,7 +1478,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
-                {currentInvoice.status === 'draft' && (currentInvoice.uploaded_by === profile?.id || profile?.is_admin) && !isFromKSEF && (
+                {((currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && !isFromKSEF && (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
