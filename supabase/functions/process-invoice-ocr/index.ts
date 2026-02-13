@@ -35,6 +35,8 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "invoice_number": "numer faktury lub null",
   "supplier_name": "nazwa SPRZEDAWCY (wystawcy faktury) lub null",
   "supplier_nip": "NIP/VAT ID/Tax ID SPRZEDAWCY (wystawcy faktury) lub null",
+  "buyer_name": "nazwa NABYWCY (odbiorcy faktury) lub null",
+  "buyer_nip": "NIP NABYWCY (odbiorcy faktury) lub null",
   "issue_date": "YYYY-MM-DD lub null",
   "due_date": "YYYY-MM-DD lub null",
   "net_amount": "kwota netto jako string z kropką np. 1234.56 (BEZ SPACJI, BEZ PRZECINKÓW)",
@@ -57,10 +59,11 @@ BARDZO WAŻNE - FORMATOWANIE KWOT:
 KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
 
 Na fakturze są zawsze DWA podmioty:
-1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę
-2. NABYWCA (Buyer, Customer, Bill to, Bill To, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę
+1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę → supplier_name, supplier_nip
+2. NABYWCA (Buyer, Customer, Bill to, Bill To, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę → buyer_name, buyer_nip
 
 ETYKIETY ANGIELSKIE I POLSKIE - DOKŁADNE TŁUMACZENIE:
+SPRZEDAWCA (do pól supplier_*):
 - "Seller:" = SPRZEDAWCA → supplier_name, supplier_nip
 - "Vendor:" = SPRZEDAWCA → supplier_name, supplier_nip
 - "Supplier:" = SPRZEDAWCA → supplier_name, supplier_nip
@@ -69,14 +72,16 @@ ETYKIETY ANGIELSKIE I POLSKIE - DOKŁADNE TŁUMACZENIE:
 - "Wystawca:" = SPRZEDAWCA → supplier_name, supplier_nip
 - "Dostawca:" = SPRZEDAWCA → supplier_name, supplier_nip
 
-NIE WPISUJ DO supplier_name/supplier_nip firm oznaczonych jako:
-- "Bill to:" = NABYWCA (nie supplier!)
-- "Bill To:" = NABYWCA (nie supplier!)
-- "Buyer:" = NABYWCA (nie supplier!)
-- "Customer:" = NABYWCA (nie supplier!)
-- "Nabywca:" = NABYWCA (nie supplier!)
-- "Kupujący:" = NABYWCA (nie supplier!)
-- "Odbiorca:" = NABYWCA (nie supplier!)
+NABYWCA (do pól buyer_*):
+- "Bill to:" = NABYWCA → buyer_name, buyer_nip
+- "Bill To:" = NABYWCA → buyer_name, buyer_nip
+- "Buyer:" = NABYWCA → buyer_name, buyer_nip
+- "Customer:" = NABYWCA → buyer_name, buyer_nip
+- "Nabywca:" = NABYWCA → buyer_name, buyer_nip
+- "Kupujący:" = NABYWCA → buyer_name, buyer_nip
+- "Odbiorca:" = NABYWCA → buyer_name, buyer_nip
+
+WAŻNE: Wyciągnij OBIE strony faktury - zarówno sprzedawcę JAK I nabywcę!
 
 SZCZEGÓLNA UWAGA dla angielskich faktur:
 - Jeśli widzisz sekcję "Bill to:" lub "Bill To:" - to jest NABYWCA, NIE SPRZEDAWCA
@@ -99,6 +104,8 @@ NIP: 5851490834"
 POPRAWNA ODPOWIEDŹ:
 supplier_name: "ABC Ltd"
 supplier_nip: "GB123456789"
+buyer_name: "Aura Herbals sp. z o.o."
+buyer_nip: "5851490834"
 
 PRZYKŁAD 2 - Faktura polska:
 "Sprzedawca:
@@ -112,11 +119,13 @@ NIP: 5851490834"
 POPRAWNA ODPOWIEDŹ:
 supplier_name: "XYZ Sp. z o.o."
 supplier_nip: "1234567890"
+buyer_name: "Aura Herbals sp. z o.o."
+buyer_nip: "5851490834"
 
 BŁĘDY DO UNIKNIĘCIA:
 ❌ NIE wpisuj firmy z sekcji "Bill to" jako supplier
 ❌ NIE wpisuj firmy z sekcji "Nabywca" jako supplier
-❌ NIE wpisuj "Aura Herbals" jako supplier (to zawsze nabywca w tym systemie)
+✓ Wpisuj zarówno supplier JAK I buyer (to dwa różne pola!)
 
 WERYFIKACJA KOŃCOWA:
 Przed zwróceniem odpowiedzi, zapytaj siebie:
@@ -308,6 +317,8 @@ function createFallbackInterpretation() {
     invoice_number: null,
     supplier_name: null,
     supplier_nip: null,
+    buyer_name: null,
+    buyer_nip: null,
     issue_date: null,
     due_date: null,
     net_amount: null,
@@ -508,9 +519,15 @@ Deno.serve(async (req: Request) => {
 
     // Validate supplier NIP - check if it's a company NIP (buyer should be our company, not supplier)
     const COMPANY_NIPS = ['5851490834', '8222407812']; // Aura Herbals and other company NIPs
-    let hasSupplierError = false;
-    let supplierErrorMessage = null;
+    const CORRECT_BUYER_NIP = '5851490834';
+    const CORRECT_BUYER_NAME = 'Aura Herbals';
 
+    let hasSupplierError = false;
+    let hasBuyerError = false;
+    let supplierErrorMessage = null;
+    let buyerErrorMessage = null;
+
+    // Validate supplier NIP
     if (parsedData.supplier_nip) {
       const cleanSupplierNip = parsedData.supplier_nip.replace(/[^0-9]/g, '');
       if (COMPANY_NIPS.some(nip => cleanSupplierNip === nip)) {
@@ -522,6 +539,24 @@ Deno.serve(async (req: Request) => {
         // Mark the invalid data with a special prefix so it's easy to spot
         parsedData.supplier_name = `[BŁĄD: TO NABYWCA] ${parsedData.supplier_name || ''}`;
         parsedData.supplier_nip = `[BŁĄD] ${parsedData.supplier_nip}`;
+      }
+    }
+
+    // Validate buyer NIP - check if buyer is Aura Herbals
+    if (parsedData.buyer_nip) {
+      const cleanBuyerNip = parsedData.buyer_nip.replace(/[^0-9]/g, '');
+      if (cleanBuyerNip !== CORRECT_BUYER_NIP) {
+        hasBuyerError = true;
+        buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (NIP: ${parsedData.buyer_nip}). Oczekiwany odbiorca: Aura Herbals Sp. z o.o., NIP: 5851490834`;
+        console.warn(buyerErrorMessage);
+      }
+    } else if (parsedData.buyer_name) {
+      // Check buyer name if NIP not available
+      const buyerNameLower = parsedData.buyer_name.toLowerCase();
+      if (!buyerNameLower.includes('aura') || !buyerNameLower.includes('herbals')) {
+        hasBuyerError = true;
+        buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (${parsedData.buyer_name}). Oczekiwany odbiorca: Aura Herbals Sp. z o.o., NIP: 5851490834`;
+        console.warn(buyerErrorMessage);
       }
     }
 
@@ -549,6 +584,20 @@ Deno.serve(async (req: Request) => {
       updateData.supplier_nip = parsedData.supplier_nip;
     } else if (!existingInvoice?.supplier_nip) {
       updateData.supplier_nip = null;
+    }
+
+    // Update buyer_name only if OCR found it OR it's currently empty
+    if (parsedData.buyer_name) {
+      updateData.buyer_name = parsedData.buyer_name;
+    } else if (!existingInvoice?.buyer_name) {
+      updateData.buyer_name = null;
+    }
+
+    // Update buyer_nip only if OCR found it OR it's currently empty
+    if (parsedData.buyer_nip) {
+      updateData.buyer_nip = parsedData.buyer_nip;
+    } else if (!existingInvoice?.buyer_nip) {
+      updateData.buyer_nip = null;
     }
 
     // Update issue_date only if OCR found it OR it's currently empty
@@ -857,6 +906,7 @@ Deno.serve(async (req: Request) => {
         suggestedTags,
         suggestedDescription,
         validationError: hasSupplierError ? supplierErrorMessage : null,
+        buyerError: hasBuyerError ? buyerErrorMessage : null,
       }),
       {
         headers: {
