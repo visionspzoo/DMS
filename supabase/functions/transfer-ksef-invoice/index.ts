@@ -228,7 +228,32 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 8. Create invoice record
+    // 8. Find appropriate approver for department if userId not provided
+    let appropriateApproverId = userId || null;
+
+    if (!appropriateApproverId) {
+      console.log("👤 Finding appropriate approver for department...");
+      try {
+        const { data: approverData, error: approverError } = await supabase
+          .rpc("get_next_approver_in_department", {
+            dept_id: departmentId,
+            user_role: null,
+          });
+
+        if (approverError) {
+          console.error("⚠️ Error finding approver:", approverError);
+        } else if (approverData) {
+          appropriateApproverId = approverData;
+          console.log("✓ Found appropriate approver:", appropriateApproverId);
+        } else {
+          console.warn("⚠️ No approver found for department");
+        }
+      } catch (err) {
+        console.error("⚠️ Error calling get_next_approver_in_department:", err);
+      }
+    }
+
+    // 9. Create invoice record
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
 
     const invoiceData: any = {
@@ -250,11 +275,8 @@ Deno.serve(async (req: Request) => {
       exchange_rate: exchangeRate,
       source: "ksef",
       google_drive_id: googleDriveId,
+      current_approver_id: appropriateApproverId,
     };
-
-    if (userId) {
-      invoiceData.current_approver_id = userId;
-    }
 
     const { data: newInvoice, error: insertError } = await supabase
       .from("invoices")
