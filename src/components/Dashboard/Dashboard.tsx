@@ -31,6 +31,7 @@ export function Dashboard() {
       const { data, error } = await supabase
         .from('invoices')
         .select('*')
+        .or(`uploaded_by.eq.${profile?.id},current_approver_id.eq.${profile?.id}`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
