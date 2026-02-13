@@ -374,20 +374,57 @@ export default function GmailWorkspaceConfig() {
     setDebugResults(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji uzytkownika');
+      console.log('🔍 Starting Drive debug...');
+
+      // Wymuszamy odświeżenie sesji
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      console.log('📋 Session data:', {
+        hasSession: !!session,
+        hasError: !!sessionError,
+        error: sessionError,
+        userId: session?.user?.id,
+        expiresAt: session?.expires_at,
+        now: Math.floor(Date.now() / 1000),
+      });
+
+      if (sessionError) {
+        console.error('❌ Session error:', sessionError);
+        throw new Error(`Blad sesji: ${sessionError.message}`);
+      }
+
+      if (!session) {
+        console.error('❌ No session found');
+        throw new Error('Brak sesji uzytkownika. Prosze sie wylogowac i zalogowac ponownie.');
+      }
+
+      // ALWAYS refresh session before debug to ensure valid token
+      console.log('🔄 FORCE refreshing session before debug...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        console.error('❌ Session refresh failed:', refreshError);
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
+      }
+
+      const finalSession = refreshData.session;
+      if (!finalSession) throw new Error('Brak sesji po odswiezeniu');
+
+      console.log('✅ Token refreshed successfully');
+      console.log('🚀 Sending request to debug function...');
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/debug-drive-folder`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${finalSession.access_token}`,
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
         }
       );
+
+      console.log('📥 Response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorText = await response.text();
