@@ -500,6 +500,26 @@ export function InvoiceList() {
       .reduce((sum, inv) => sum + (Number(inv.pln_gross_amount || inv.gross_amount) || 0), 0);
   }, [filteredInvoices]);
 
+  const currencyBreakdown = useMemo(() => {
+    const accepted = filteredInvoices.filter(inv => inv.status === 'accepted');
+    const byCurrency: Record<string, { total: number; totalPln: number; rate: number; count: number }> = {};
+    for (const inv of accepted) {
+      const cur = inv.currency || 'PLN';
+      if (!byCurrency[cur]) {
+        byCurrency[cur] = { total: 0, totalPln: 0, rate: 0, count: 0 };
+      }
+      byCurrency[cur].total += Number(inv.gross_amount) || 0;
+      byCurrency[cur].totalPln += Number(inv.pln_gross_amount || inv.gross_amount) || 0;
+      if (inv.exchange_rate && inv.exchange_rate !== 1) {
+        byCurrency[cur].rate = Number(inv.exchange_rate);
+      }
+      byCurrency[cur].count++;
+    }
+    return Object.entries(byCurrency)
+      .filter(([cur]) => cur !== 'PLN')
+      .sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredInvoices]);
+
   const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
     setUploadQueue(prev => {
       const next = prev.map((e, i) => i === index ? { ...e, ...update } : e);
@@ -1019,12 +1039,30 @@ export function InvoiceList() {
               </p>
             </div>
           </div>
-          <div className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
-            {totalAcceptedAmount.toLocaleString('pl-PL', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}{' '}
-            PLN
+          <div className="text-right">
+            <div className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+              {totalAcceptedAmount.toLocaleString('pl-PL', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              PLN
+            </div>
+            {currencyBreakdown.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap justify-end gap-x-4 gap-y-1">
+                {currencyBreakdown.map(([cur, data]) => (
+                  <div key={cur} className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                    <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      {data.total.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {cur}
+                    </span>
+                    {data.rate > 0 && (
+                      <span className="ml-1 text-[10px] opacity-70">
+                        (1 {cur} = {data.rate.toFixed(4)} PLN)
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
