@@ -428,12 +428,26 @@ export default function GmailWorkspaceConfig() {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log('📦 Error response body:', errorText);
         let errorData;
         try {
           errorData = JSON.parse(errorText);
+          console.log('📦 Parsed error data:', errorData);
         } catch {
           errorData = { error: errorText };
         }
+
+        // If we got available folders, show them
+        if (errorData.availableFolders) {
+          console.log('📂 Available folders:', errorData.availableFolders);
+          setDebugResults(errorData);
+          setDriveMessage({
+            type: 'error',
+            text: errorData.message || errorData.error,
+          });
+          return;
+        }
+
         throw new Error(errorData.error || `Blad ${response.status}`);
       }
 
