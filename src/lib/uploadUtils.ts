@@ -94,7 +94,7 @@ export async function uploadInvoiceFile(
   const { data: refreshedInvoice } = await supabase
     .from('invoices')
     .select('*')
-    .eq('id', finalInvoiceData.id)
+    .eq('id', invoiceData.id)
     .single();
 
   const finalInvoiceData = refreshedInvoice || invoiceData;
