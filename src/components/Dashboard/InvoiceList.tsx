@@ -195,7 +195,7 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-0.5 text-[10px]">
                   <span className="text-text-secondary-light dark:text-text-secondary-dark">Dział:</span>
-                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Akceptujący:</span>
+                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Właściciel:</span>
                 </div>
                 <div className="flex flex-col gap-0.5 text-[10px]">
                   <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
