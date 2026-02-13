@@ -404,25 +404,28 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       Object.assign(invoice, data);
 
-      if (newStatus === 'accepted' && currentInvoice.google_drive_id && currentInvoice.department_id) {
+      // Move file to unpaid folder when fully accepted
+      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
+      if (newStatus === 'accepted' && fileId && currentInvoice.department_id) {
+        const { data: { session } } = await supabase.auth.getSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
           .eq('id', currentInvoice.department_id)
           .single();
 
-        if (deptData?.google_drive_unpaid_folder_id) {
+        if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
           try {
             const moveResponse = await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
               {
                 method: 'POST',
                 headers: {
-                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Authorization': `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  fileId: currentInvoice.google_drive_id,
+                  fileId: fileId,
                   targetFolderId: deptData.google_drive_unpaid_folder_id,
                 }),
               }
@@ -702,7 +705,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (error) throw error;
 
-      if (currentInvoice.google_drive_id && currentInvoice.department_id) {
+      // Move file to paid folder on Google Drive
+      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
+      if (fileId && currentInvoice.department_id) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           console.error('No active session for Google Drive operation');
@@ -724,7 +729,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     'Content-Type': 'application/json',
                   },
                   body: JSON.stringify({
-                    fileId: currentInvoice.google_drive_id,
+                    fileId: fileId,
                     targetFolderId: deptData.google_drive_paid_folder_id,
                   }),
                 }
@@ -792,6 +797,43 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           .eq('id', currentInvoice.id);
 
         if (updateError) throw updateError;
+
+        // Move file on Google Drive if applicable
+        if (currentInvoice.user_drive_file_id && currentInvoice.department_id) {
+          try {
+            const { data: department, error: deptError } = await supabase
+              .from('departments')
+              .select('google_drive_draft_folder_id')
+              .eq('id', currentInvoice.department_id)
+              .single();
+
+            if (!deptError && department?.google_drive_draft_folder_id) {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.access_token) {
+                const moveResponse = await fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${session.access_token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      fileId: currentInvoice.user_drive_file_id,
+                      targetFolderId: department.google_drive_draft_folder_id,
+                    }),
+                  }
+                );
+
+                if (!moveResponse.ok) {
+                  console.error('Failed to move file on Google Drive:', await moveResponse.text());
+                }
+              }
+            }
+          } catch (moveError) {
+            console.error('Error moving file on Google Drive:', moveError);
+          }
+        }
 
         alert('Faktura została przesłana do akceptacji');
         onUpdate();
@@ -1196,6 +1238,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     if (!profile) return;
 
     try {
+      // Update invoice in database
       const { error: updateError } = await supabase
         .from('invoices')
         .update({
@@ -1206,6 +1249,45 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         .eq('id', currentInvoice.id);
 
       if (updateError) throw updateError;
+
+      // Move file on Google Drive if applicable
+      if (currentInvoice.user_drive_file_id) {
+        try {
+          // Get target department's draft folder
+          const { data: department, error: deptError } = await supabase
+            .from('departments')
+            .select('google_drive_draft_folder_id')
+            .eq('id', departmentId)
+            .single();
+
+          if (!deptError && department?.google_drive_draft_folder_id) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+              const moveResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fileId: currentInvoice.user_drive_file_id,
+                    targetFolderId: department.google_drive_draft_folder_id,
+                  }),
+                }
+              );
+
+              if (!moveResponse.ok) {
+                console.error('Failed to move file on Google Drive:', await moveResponse.text());
+              }
+            }
+          }
+        } catch (moveError) {
+          console.error('Error moving file on Google Drive:', moveError);
+          // Don't throw - file move is not critical for transfer
+        }
+      }
 
       alert('Faktura została przesłana do wybranej osoby');
       onUpdate();
