@@ -349,11 +349,6 @@ export function KSEFInvoicesPage() {
 
       // Reload invoices to show updated state
       await loadInvoices();
-
-      // Auto-upload PDFs to Google Drive for transferred invoices
-      if (transferred > 0) {
-        await uploadKsefPdfsToGoogleDrive();
-      }
     } catch (error) {
       console.error('Błąd podczas automatycznego transferu:', error);
       setError('Nieoczekiwany błąd podczas automatycznego transferu');
@@ -365,6 +360,9 @@ export function KSEFInvoicesPage() {
   const uploadKsefPdfsToGoogleDrive = async () => {
     try {
       console.log('📤 Rozpoczynam automatyczny upload PDF do Google Drive...');
+
+      // Small delay to allow database transactions to commit
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -389,6 +387,11 @@ export function KSEFInvoicesPage() {
         console.log('✓ Auto-upload PDF zakończony:', result);
         if (result.successCount > 0) {
           console.log(`✓ Uploadowano ${result.successCount} plików PDF do Google Drive`);
+          setSuccessMessage(prev =>
+            prev + ` | Uploadowano ${result.successCount} PDF na Google Drive`
+          );
+          // Reload invoices to show updated google_drive_id
+          await loadInvoices();
         }
       } else {
         const errorText = await uploadResponse.text();
@@ -589,6 +592,12 @@ export function KSEFInvoicesPage() {
 
       // Auto-transfer any newly assigned invoices
       await autoTransferAssignedInvoices();
+
+      // IMPORTANT: Always upload PDFs to Google Drive after fetching
+      // This handles invoices that were auto-transferred by the database trigger
+      console.log('🔄 Sprawdzanie czy są faktury do uploadu na Google Drive...');
+      await uploadKsefPdfsToGoogleDrive();
+
       const syncTime = new Date().toISOString();
       setLastSync(syncTime);
       localStorage.setItem('ksef_last_sync', syncTime);
