@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { Mail, Key, User } from 'lucide-react';
+import { Mail, Key, User, Zap } from 'lucide-react';
 import GmailWorkspaceConfig from './GmailWorkspaceConfig';
 import AliceIntegration from './AliceIntegration';
 import AccountInfo from './AccountInfo';
+import NipAutomationRules from './NipAutomationRules';
 
-type ConfigTab = 'account' | 'google' | 'alice';
+type ConfigTab = 'account' | 'google' | 'alice' | 'automations';
 
 const tabs: { id: ConfigTab; label: string; icon: typeof Mail }[] = [
   { id: 'account', label: 'Informacje o koncie', icon: User },
   { id: 'google', label: 'Google Workspace', icon: Mail },
   { id: 'alice', label: 'Alice API', icon: Key },
+  { id: 'automations', label: 'Automatyzacje', icon: Zap },
 ];
 
 export default function UserConfiguration() {
@@ -49,6 +51,7 @@ export default function UserConfiguration() {
       {activeTab === 'account' && <AccountInfo />}
       {activeTab === 'google' && <GmailWorkspaceConfig />}
       {activeTab === 'alice' && <AliceIntegration />}
+      {activeTab === 'automations' && <NipAutomationRules />}
     </div>
   );
 }
