@@ -94,13 +94,15 @@ export async function uploadInvoiceFile(
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session && invoiceData.department_id) {
-      const { data: department } = await supabase
-        .from('departments')
-        .select('google_drive_draft_folder_id')
-        .eq('id', invoiceData.department_id)
+      const { data: folderMapping } = await supabase
+        .from('user_drive_folder_mappings')
+        .select('google_drive_folder_id')
+        .eq('user_id', userId)
+        .eq('department_id', invoiceData.department_id)
+        .eq('is_active', true)
         .maybeSingle();
 
-      if (department?.google_drive_draft_folder_id) {
+      if (folderMapping?.google_drive_folder_id) {
         const uploadResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
           {
@@ -112,7 +114,7 @@ export async function uploadInvoiceFile(
             body: JSON.stringify({
               fileBase64: pdfBase64,
               fileName: file.name,
-              folderId: department.google_drive_draft_folder_id,
+              folderId: folderMapping.google_drive_folder_id,
               mimeType: file.type,
               originalMimeType: file.type,
               userId: userId,
