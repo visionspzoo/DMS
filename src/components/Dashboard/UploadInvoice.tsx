@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Upload, FileText, Loader, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -21,6 +21,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const queueRef = useRef<FileUploadEntry[]>([]);
+  const autoUploadTriggeredRef = useRef(false);
 
   const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
     setQueue(prev => {
@@ -60,6 +61,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
+    autoUploadTriggeredRef.current = false;
     await addFiles(Array.from(e.target.files || []));
     e.target.value = '';
   };
@@ -99,6 +101,14 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
     setUploading(false);
     setDone(true);
   };
+
+  useEffect(() => {
+    const hasPending = queue.some(f => f.status === 'pending');
+    if (hasPending && !uploading && !done && !autoUploadTriggeredRef.current) {
+      autoUploadTriggeredRef.current = true;
+      setTimeout(() => handleUpload(), 100);
+    }
+  }, [queue, uploading, done]);
 
   const successCount = queue.filter(f => f.status === 'success').length;
   const duplicateCount = queue.filter(f => f.status === 'duplicate').length;
@@ -202,7 +212,7 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
               </div>
 
               <div className="flex gap-3 pt-1">
-                {!uploading && !done && (
+                {!done && (
                   <label className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium text-center cursor-pointer text-sm">
                     Dodaj więcej
                     <input type="file" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" className="hidden" multiple />
@@ -212,17 +222,12 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
                   <button onClick={onSuccess} className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm">
                     Zamknij
                   </button>
-                ) : (
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || pendingCount === 0}
-                    className="flex-1 px-4 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium disabled:opacity-50 text-sm"
-                  >
-                    {uploading
-                      ? `Przesyłanie (${successCount + duplicateCount + errorCount}/${queue.length})...`
-                      : `Prześlij${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
-                  </button>
-                )}
+                ) : uploading ? (
+                  <div className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Przetwarzanie ({successCount + duplicateCount + errorCount}/{queue.length})
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
