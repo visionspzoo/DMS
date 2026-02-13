@@ -62,10 +62,11 @@ export function UploadInvoice({ onClose, onSuccess }: UploadInvoiceProps) {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
+    setDone(false);
     const hasPending = await addFiles(Array.from(e.target.files || []));
     e.target.value = '';
 
-    if (hasPending && !uploading && !done) {
+    if (hasPending && !uploading) {
       setTimeout(() => handleUpload(), 50);
     }
   };
