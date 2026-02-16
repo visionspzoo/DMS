@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle } from 'lucide-react';
+import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle, DollarSign } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
@@ -847,6 +847,41 @@ export function InvoiceList() {
     }
   };
 
+  const handleBulkMarkAsPaid = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+
+    const confirmMsg = `Czy na pewno chcesz oznaczyć ${selectedInvoiceIds.length} faktur jako opłacone?`;
+    if (!confirm(confirmMsg)) return;
+
+    setBulkActionLoading(true);
+    try {
+      const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+
+      for (const invoice of selectedInvs) {
+        if (invoice.status !== 'accepted') {
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('invoices')
+          .update({
+            status: 'paid',
+          })
+          .eq('id', invoice.id);
+
+        if (error) throw error;
+      }
+
+      setSelectedInvoiceIds([]);
+      setSelectionMode(false);
+      loadInvoices();
+    } catch (error: any) {
+      alert('Błąd podczas oznaczania faktur jako opłacone: ' + error.message);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   const canApproveSelected = useMemo(() => {
     if (selectedInvoiceIds.length === 0) return false;
     const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
@@ -855,6 +890,12 @@ export function InvoiceList() {
       (inv.status === 'waiting' || inv.status === 'pending')
     );
   }, [selectedInvoiceIds, filteredInvoices, profile]);
+
+  const canMarkAsPaidSelected = useMemo(() => {
+    if (selectedInvoiceIds.length === 0) return false;
+    const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+    return selectedInvs.some(inv => inv.status === 'accepted');
+  }, [selectedInvoiceIds, filteredInvoices]);
 
   const successCount = uploadQueue.filter(e => e.status === 'success').length;
   const duplicateCount = uploadQueue.filter(e => e.status === 'duplicate').length;
@@ -870,7 +911,7 @@ export function InvoiceList() {
   }
 
   return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
+    <div className={`h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto ${selectionMode && selectedInvoiceIds.length > 0 ? 'pb-28' : ''}`}>
       <div className="mb-4">
         <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Faktury w Obiegu</h1>
         <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
@@ -1277,47 +1318,6 @@ export function InvoiceList() {
               className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
             />
           </div>
-
-          {selectionMode && selectedInvoiceIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleBulkTransfer}
-                disabled={bulkActionLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
-              >
-                <Send className="w-4 h-4" />
-                Prześlij
-              </button>
-              {canApproveSelected && (
-                <>
-                  <button
-                    onClick={handleBulkAccept}
-                    disabled={bulkActionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <Check className="w-4 h-4" />
-                    Zaakceptuj
-                  </button>
-                  <button
-                    onClick={handleBulkReject}
-                    disabled={bulkActionLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Odrzuć
-                  </button>
-                </>
-              )}
-              <button
-                onClick={handleBulkDelete}
-                disabled={bulkActionLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
-              >
-                <Trash2 className="w-4 h-4" />
-                Usuń
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1350,6 +1350,75 @@ export function InvoiceList() {
             loadInvoices();
           }}
         />
+      )}
+
+      {selectionMode && selectedInvoiceIds.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-light-surface dark:bg-dark-surface border-t-2 border-brand-primary dark:border-brand-primary shadow-2xl z-50">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-2 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg">
+                  <CheckCircle2 className="w-5 h-5 text-brand-primary" />
+                  <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                    Zaznaczono: <span className="text-brand-primary">{selectedInvoiceIds.length}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBulkTransfer}
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  Prześlij
+                </button>
+
+                {canApproveSelected && (
+                  <>
+                    <button
+                      onClick={handleBulkAccept}
+                      disabled={bulkActionLoading}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                    >
+                      <Check className="w-4 h-4" />
+                      Zaakceptuj
+                    </button>
+                    <button
+                      onClick={handleBulkReject}
+                      disabled={bulkActionLoading}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Odrzuć
+                    </button>
+                  </>
+                )}
+
+                {canMarkAsPaidSelected && (
+                  <button
+                    onClick={handleBulkMarkAsPaid}
+                    disabled={bulkActionLoading}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    Oznacz jako opłacone
+                  </button>
+                )}
+
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Usuń
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
