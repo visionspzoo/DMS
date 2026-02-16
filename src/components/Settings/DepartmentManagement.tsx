@@ -7,6 +7,7 @@ import DepartmentFlowChart from './DepartmentFlowChart';
 interface Department {
   id: string;
   name: string;
+  mpk_code: string | null;
   parent_department_id: string | null;
   manager_id: string | null;
   director_id: string | null;
@@ -53,6 +54,7 @@ export default function DepartmentManagement() {
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [newDept, setNewDept] = useState({
     name: '',
+    mpk_code: '',
     parent_department_id: '',
     manager_id: '',
     director_id: '',
@@ -133,6 +135,7 @@ export default function DepartmentManagement() {
     try {
       const { error } = await supabase.from('departments').insert({
         name: newDept.name,
+        mpk_code: newDept.mpk_code || null,
         parent_department_id: newDept.parent_department_id || null,
         manager_id: newDept.manager_id || null,
         director_id: newDept.director_id || null,
@@ -163,6 +166,7 @@ export default function DepartmentManagement() {
         .from('departments')
         .update({
           name: editingDept.name,
+          mpk_code: editingDept.mpk_code || null,
           parent_department_id: editingDept.parent_department_id || null,
           manager_id: editingDept.manager_id || null,
           director_id: editingDept.director_id || null,
@@ -516,6 +520,19 @@ export default function DepartmentManagement() {
 
               <div>
                 <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Numer MPK
+                </label>
+                <input
+                  type="text"
+                  value={newDept.mpk_code}
+                  onChange={(e) => setNewDept({ ...newDept, mpk_code: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                  placeholder="np. 1234"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
                   Dział nadrzędny (opcjonalnie)
                 </label>
                 <select
@@ -712,6 +729,19 @@ export default function DepartmentManagement() {
                   value={editingDept.name}
                   onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
                   className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Numer MPK
+                </label>
+                <input
+                  type="text"
+                  value={editingDept.mpk_code || ''}
+                  onChange={(e) => setEditingDept({ ...editingDept, mpk_code: e.target.value || null })}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                  placeholder="np. 1234"
                 />
               </div>
 

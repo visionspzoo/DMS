@@ -1953,7 +1953,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Dział główny
+                        Dział główny (MPK)
                       </label>
                       {isEditing ? (
                         <select
@@ -2050,7 +2050,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Miejsce powstawania kosztu (MPK)
+                        Opis MPK
                       </label>
                       {isEditing ? (
                         <div className="relative mt-1">
