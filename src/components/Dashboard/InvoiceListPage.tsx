@@ -594,19 +594,32 @@ export function InvoiceList() {
 
       const dbCheck = await checkDuplicateInDb(hash, user.id);
       if (dbCheck.isDuplicate) {
+        if (dbCheck.isOtherDepartment) {
+          newEntries.push({
+            file, hash,
+            status: 'pending',
+            progress: `OSTRZEŻENIE: Duplikat w dziale "${dbCheck.departmentName}" (dodane przez: ${dbCheck.uploaderName})`,
+            duplicateInfo: {
+              departmentName: dbCheck.departmentName || 'Nieznany dział',
+              uploaderName: dbCheck.uploaderName || 'Nieznany użytkownik',
+              invoiceNumber: dbCheck.invoiceNumber,
+            },
+          });
+        } else {
+          newEntries.push({
+            file, hash,
+            status: 'duplicate',
+            progress: `Duplikat: ${dbCheck.label}`,
+          });
+          continue;
+        }
+      } else {
         newEntries.push({
           file, hash,
-          status: 'duplicate',
-          progress: `Duplikat: ${dbCheck.label}`,
+          status: 'pending',
+          progress: 'Oczekuje...',
         });
-        continue;
       }
-
-      newEntries.push({
-        file, hash,
-        status: 'pending',
-        progress: 'Oczekuje...',
-      });
     }
 
     const next = [...uploadQueueRef.current, ...newEntries];
@@ -637,18 +650,43 @@ export function InvoiceList() {
 
       try {
         const dbCheck = await checkDuplicateInDb(entry.hash, user.id);
-        if (dbCheck.isDuplicate) {
+        if (dbCheck.isDuplicate && !dbCheck.isOtherDepartment) {
           updateEntry(idx, { status: 'duplicate', progress: `Duplikat: ${dbCheck.label}` });
           continue;
+        }
+
+        const hasDuplicateWarning = dbCheck.isDuplicate && dbCheck.isOtherDepartment;
+        if (hasDuplicateWarning) {
+          updateEntry(idx, {
+            progress: `⚠️ Duplikat w "${dbCheck.departmentName}" - przesyłanie...`,
+            duplicateInfo: {
+              departmentName: dbCheck.departmentName || 'Nieznany dział',
+              uploaderName: dbCheck.uploaderName || 'Nieznany użytkownik',
+              invoiceNumber: dbCheck.invoiceNumber,
+            },
+          });
         }
 
         await uploadInvoiceFile(
           entry.file,
           entry.hash,
           user.id,
-          (msg) => updateEntry(idx, { progress: msg }),
+          (msg) => updateEntry(idx, { progress: hasDuplicateWarning ? `⚠️ Duplikat w innym dziale - ${msg}` : msg }),
         );
-        updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
+
+        if (hasDuplicateWarning) {
+          updateEntry(idx, {
+            status: 'duplicate_other_department',
+            progress: `Przesłano (duplikat w dziale: ${dbCheck.departmentName})`,
+            duplicateInfo: {
+              departmentName: dbCheck.departmentName || 'Nieznany dział',
+              uploaderName: dbCheck.uploaderName || 'Nieznany użytkownik',
+              invoiceNumber: dbCheck.invoiceNumber,
+            },
+          });
+        } else {
+          updateEntry(idx, { status: 'success', progress: 'Gotowe!' });
+        }
       } catch (err: any) {
         updateEntry(idx, {
           status: 'error',
@@ -899,6 +937,7 @@ export function InvoiceList() {
 
   const successCount = uploadQueue.filter(e => e.status === 'success').length;
   const duplicateCount = uploadQueue.filter(e => e.status === 'duplicate').length;
+  const duplicateOtherDeptCount = uploadQueue.filter(e => e.status === 'duplicate_other_department').length;
   const errorCount = uploadQueue.filter(e => e.status === 'error').length;
   const queueDone = uploadQueue.length > 0 && !isUploading && uploadQueue.every(e => e.status !== 'pending');
 
@@ -1048,6 +1087,7 @@ export function InvoiceList() {
                     Zakończono
                     {successCount > 0 && ` -- przesłano: ${successCount}`}
                     {duplicateCount > 0 && ` -- duplikaty: ${duplicateCount}`}
+                    {duplicateOtherDeptCount > 0 && ` -- duplikaty w innych działach: ${duplicateOtherDeptCount}`}
                     {errorCount > 0 && ` -- błędy: ${errorCount}`}
                   </span>
                 </div>
@@ -1071,8 +1111,12 @@ export function InvoiceList() {
                       ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
                       : entry.status === 'duplicate'
                       ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800'
+                      : entry.status === 'duplicate_other_department'
+                      ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
                       : entry.status === 'uploading'
                       ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
+                      : entry.duplicateInfo
+                      ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
                       : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
                   }`}
                 >
@@ -1081,10 +1125,17 @@ export function InvoiceList() {
                       <Loader className="w-4 h-4 text-blue-600 animate-spin" />
                     ) : entry.status === 'success' ? (
                       <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    ) : entry.status === 'duplicate_other_department' ? (
+                      <div className="relative">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        <AlertTriangle className="w-2.5 h-2.5 text-orange-500 absolute -top-0.5 -right-0.5 bg-white dark:bg-slate-800 rounded-full" />
+                      </div>
                     ) : entry.status === 'error' ? (
                       <X className="w-4 h-4 text-red-500" />
                     ) : entry.status === 'duplicate' ? (
                       <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    ) : entry.duplicateInfo ? (
+                      <AlertTriangle className="w-4 h-4 text-orange-500" />
                     ) : (
                       <FileText className="w-4 h-4 text-slate-400" />
                     )}
@@ -1095,12 +1146,20 @@ export function InvoiceList() {
                     </span>
                     <span className={`text-[11px] ${
                       entry.status === 'duplicate' ? 'text-amber-600 dark:text-amber-400'
+                        : entry.status === 'duplicate_other_department' ? 'text-orange-600 dark:text-orange-400'
                         : entry.status === 'error' ? 'text-red-600 dark:text-red-400'
+                        : entry.duplicateInfo ? 'text-orange-600 dark:text-orange-400'
                         : 'text-text-secondary-light dark:text-text-secondary-dark'
                     }`}>
                       {entry.progress}
                       {entry.error && ` - ${entry.error}`}
                     </span>
+                    {(entry.status === 'duplicate_other_department' || (entry.duplicateInfo && entry.status === 'pending')) && entry.duplicateInfo && (
+                      <div className="mt-0.5 text-[10px] text-orange-700 dark:text-orange-300 font-medium">
+                        {entry.duplicateInfo.invoiceNumber && `Nr faktury: ${entry.duplicateInfo.invoiceNumber} • `}
+                        Dział: {entry.duplicateInfo.departmentName} • Dodane przez: {entry.duplicateInfo.uploaderName}
+                      </div>
+                    )}
                   </div>
                   {!isUploading && entry.status !== 'uploading' && !queueDone && (
                     <button

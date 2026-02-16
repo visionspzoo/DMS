@@ -3,9 +3,14 @@ import { supabase } from './supabase';
 export interface FileUploadEntry {
   file: File;
   hash: string;
-  status: 'pending' | 'hashing' | 'uploading' | 'success' | 'error' | 'duplicate';
+  status: 'pending' | 'hashing' | 'uploading' | 'success' | 'error' | 'duplicate' | 'duplicate_other_department';
   progress: string;
   error?: string;
+  duplicateInfo?: {
+    departmentName: string;
+    uploaderName: string;
+    invoiceNumber?: string;
+  };
 }
 
 export async function computeFileHash(file: File): Promise<string> {
@@ -15,20 +20,49 @@ export async function computeFileHash(file: File): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function checkDuplicateInDb(hash: string, _userId: string): Promise<{
+export async function checkDuplicateInDb(hash: string, userId: string): Promise<{
   isDuplicate: boolean;
   label?: string;
+  isOtherDepartment?: boolean;
+  departmentName?: string;
+  uploaderName?: string;
+  invoiceNumber?: string;
 }> {
+  const { data: currentUserProfile } = await supabase
+    .from('profiles')
+    .select('department_id, is_admin')
+    .eq('id', userId)
+    .maybeSingle();
+
   const { data } = await supabase
     .from('invoices')
-    .select('id, invoice_number, supplier_name')
+    .select(`
+      id,
+      invoice_number,
+      supplier_name,
+      department_id,
+      uploaded_by,
+      uploader:profiles!uploaded_by(full_name),
+      department:departments!department_id(name)
+    `)
     .eq('file_hash', hash)
     .limit(1)
     .maybeSingle();
 
   if (data) {
     const label = data.invoice_number || data.supplier_name || data.id;
-    return { isDuplicate: true, label };
+    const isOtherDepartment = currentUserProfile &&
+      !currentUserProfile.is_admin &&
+      data.department_id !== currentUserProfile.department_id;
+
+    return {
+      isDuplicate: true,
+      label,
+      isOtherDepartment,
+      departmentName: data.department?.name || 'Nieznany dział',
+      uploaderName: data.uploader?.full_name || 'Nieznany użytkownik',
+      invoiceNumber: data.invoice_number,
+    };
   }
   return { isDuplicate: false };
 }
