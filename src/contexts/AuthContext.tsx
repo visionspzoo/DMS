@@ -10,7 +10,11 @@ interface Profile {
   role: UserRole;
   is_admin: boolean;
   department_id: string | null;
+  monthly_invoice_limit?: number | null;
+  single_invoice_limit?: number | null;
   last_login_at?: string;
+  created_at?: string;
+  can_access_ksef_config?: boolean;
 }
 
 interface AuthContextType {

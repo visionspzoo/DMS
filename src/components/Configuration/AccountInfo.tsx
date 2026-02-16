@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Building2, Shield, Key, Clock, Calendar } from 'lucide-react';
+import { User, Building2, Shield, Key, Clock, Calendar, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -173,6 +173,81 @@ export default function AccountInfo() {
           </div>
         </div>
       </div>
+
+      {profile?.role === 'Dyrektor' && (
+        <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+          <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
+              <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+                Limity zatwierdzania faktur
+              </h2>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-4">
+            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+              Jako Dyrektor możesz zatwierdzać faktury bez przekazywania do CEO, jeśli mieszczą się w poniższych limitach
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/50">
+                <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-2">
+                  Limit miesięczny
+                </label>
+                {profile.monthly_invoice_limit !== null && profile.monthly_invoice_limit !== undefined ? (
+                  <div className="text-2xl font-bold text-brand-primary">
+                    {new Intl.NumberFormat('pl-PL', {
+                      style: 'currency',
+                      currency: 'PLN'
+                    }).format(profile.monthly_invoice_limit)}
+                  </div>
+                ) : (
+                  <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                    Brak limitu - wszystkie faktury wymagają CEO
+                  </div>
+                )}
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                  Maksymalna suma faktur w miesiącu
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/50">
+                <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-2">
+                  Limit pojedynczej faktury
+                </label>
+                {profile.single_invoice_limit !== null && profile.single_invoice_limit !== undefined ? (
+                  <div className="text-2xl font-bold text-brand-primary">
+                    {new Intl.NumberFormat('pl-PL', {
+                      style: 'currency',
+                      currency: 'PLN'
+                    }).format(profile.single_invoice_limit)}
+                  </div>
+                ) : (
+                  <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                    Brak limitu - wszystkie faktury wymagają CEO
+                  </div>
+                )}
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                  Maksymalna kwota pojedynczej faktury
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs text-blue-800 dark:text-blue-400">
+                    <strong>Jak to działa:</strong> Gdy zatwierdzisz fakturę, system automatycznie sprawdza czy mieści się w Twoich limitach.
+                    Jeśli tak - faktura zostaje ostatecznie zatwierdzona. Jeśli nie - zostaje przekazana do CEO.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">

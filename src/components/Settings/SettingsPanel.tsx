@@ -16,6 +16,8 @@ interface Profile {
   department_id: string | null;
   is_admin: boolean;
   can_access_ksef_config: boolean;
+  monthly_invoice_limit: number | null;
+  single_invoice_limit: number | null;
   created_at: string;
   last_login_at: string | null;
   department?: {
@@ -76,6 +78,8 @@ export default function SettingsPanel() {
           department_id,
           is_admin,
           can_access_ksef_config,
+          monthly_invoice_limit,
+          single_invoice_limit,
           created_at,
           last_login_at,
           department:department_id(id, name)
@@ -259,6 +263,20 @@ export default function SettingsPanel() {
     }
   }
 
+  function handleMonthlyLimitChange(value: string) {
+    if (editingUser) {
+      const numValue = value === '' ? null : parseFloat(value);
+      setEditingUser({ ...editingUser, monthly_invoice_limit: numValue });
+    }
+  }
+
+  function handleSingleLimitChange(value: string) {
+    if (editingUser) {
+      const numValue = value === '' ? null : parseFloat(value);
+      setEditingUser({ ...editingUser, single_invoice_limit: numValue });
+    }
+  }
+
   function handleSaveUser() {
     if (!editingUser) return;
 
@@ -267,7 +285,9 @@ export default function SettingsPanel() {
       role: editingUser.role,
       department_id: editingUser.department_id,
       is_admin: editingUser.is_admin,
-      can_access_ksef_config: editingUser.can_access_ksef_config
+      can_access_ksef_config: editingUser.can_access_ksef_config,
+      monthly_invoice_limit: editingUser.monthly_invoice_limit,
+      single_invoice_limit: editingUser.single_invoice_limit
     });
   }
 
@@ -663,6 +683,55 @@ export default function SettingsPanel() {
                     Dostęp do konfiguracji KSEF
                   </label>
                 </div>
+
+                {editingUser.role === 'Dyrektor' && (
+                  <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+                        Limity zatwierdzania faktur
+                      </h3>
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+                        Jeśli faktura mieści się w limitach, Dyrektor może ją zatwierdzić bez przekazywania do CEO
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                        Limit miesięczny (PLN)
+                      </label>
+                      <input
+                        type="number"
+                        value={editingUser.monthly_invoice_limit ?? ''}
+                        onChange={(e) => handleMonthlyLimitChange(e.target.value)}
+                        placeholder="np. 50000"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                      />
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                        Maksymalna suma faktur w PLN którą Dyrektor może zatwierdzić w miesiącu
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                        Limit pojedynczej faktury (PLN)
+                      </label>
+                      <input
+                        type="number"
+                        value={editingUser.single_invoice_limit ?? ''}
+                        onChange={(e) => handleSingleLimitChange(e.target.value)}
+                        placeholder="np. 10000"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                      />
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                        Maksymalna kwota pojedynczej faktury w PLN którą Dyrektor może zatwierdzić
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4">
                   <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
