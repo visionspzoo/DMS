@@ -1466,6 +1466,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
+                {!currentInvoice.paid_at && (profile?.is_admin || profile?.role === 'dyrektor') && (
+                  <button
+                    onClick={() => setShowPaidConfirm(true)}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Oznacz jako opłaconą</span>
+                  </button>
+                )}
                 {isFromKSEF && currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && (
                   <>
                     <button
@@ -1525,16 +1535,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   >
                     <ArrowRight className="w-4 h-4" />
                     <span>Prześlij</span>
-                  </button>
-                )}
-                {!currentInvoice.paid_at && (profile?.is_admin || profile?.role === 'dyrektor') && (
-                  <button
-                    onClick={() => setShowPaidConfirm(true)}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
                 {((currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && !isFromKSEF && (
