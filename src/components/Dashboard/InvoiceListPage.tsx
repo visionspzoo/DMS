@@ -904,6 +904,8 @@ export function InvoiceList() {
           .from('invoices')
           .update({
             status: 'paid',
+            paid_at: new Date().toISOString(),
+            paid_by: profile?.id,
           })
           .eq('id', invoice.id);
 
@@ -1416,6 +1418,16 @@ export function InvoiceList() {
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setSelectionMode(false);
+                    setSelectedInvoiceIds([]);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg transition-colors font-medium text-sm shadow-sm"
+                >
+                  <X className="w-4 h-4" />
+                  Anuluj
+                </button>
                 <div className="flex items-center gap-2 px-3 py-2 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg">
                   <CheckCircle2 className="w-5 h-5 text-brand-primary" />
                   <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
