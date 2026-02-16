@@ -167,11 +167,14 @@ export function TransferInvoiceModal({
       }
 
       setLoading(true);
+      setError(null);
       try {
         await onTransferToDepartment(selectedDepartment, selectedUser);
         onClose();
-      } catch (err) {
-        setError('Nie udało się przesłać do innego działu');
+      } catch (err: any) {
+        console.error('Transfer error details:', err);
+        const errorMessage = err?.message || err?.toString() || 'Nie udało się przesłać do innego działu';
+        setError(`Błąd: ${errorMessage}`);
       } finally {
         setLoading(false);
       }
