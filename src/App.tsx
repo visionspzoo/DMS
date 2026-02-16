@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginForm } from './components/Auth/LoginForm';
+import { AcceptInvitation } from './components/Auth/AcceptInvitation';
 import { Dashboard } from './components/Dashboard/Dashboard';
 import SettingsPanel from './components/Settings/SettingsPanel';
 import { UploadInvoice } from './components/Dashboard/UploadInvoicePage';
@@ -64,6 +65,10 @@ function AppContent() {
   }
 
   if (!user || !profile) {
+    // Check if user is on accept-invitation page
+    if (window.location.pathname === '/accept-invitation') {
+      return <AcceptInvitation />;
+    }
     return <LoginForm />;
   }
 
