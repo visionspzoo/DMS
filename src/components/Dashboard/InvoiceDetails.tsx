@@ -1466,7 +1466,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {!currentInvoice.paid_at && (profile?.is_admin || profile?.role === 'dyrektor') && (
+                {!currentInvoice.paid_at && (
+                  profile?.is_admin ||
+                  profile?.role === 'dyrektor' ||
+                  (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id)
+                ) && (
                   <button
                     onClick={() => setShowPaidConfirm(true)}
                     disabled={loading}
