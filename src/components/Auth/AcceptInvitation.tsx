@@ -62,6 +62,13 @@ export function AcceptInvitation() {
     setSigningIn(true);
 
     try {
+      // Zapisz token zaproszenia w localStorage przed przekierowaniem
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (token) {
+        localStorage.setItem('invitation_token', token);
+      }
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

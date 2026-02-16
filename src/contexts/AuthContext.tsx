@@ -66,8 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadProfile = async (userId: string, email?: string | null, retryCount = 0) => {
-    const MAX_RETRIES = 5;
-    const RETRY_DELAY = 1000;
+    const MAX_RETRIES = 10; // Zwiększ z 5 do 10 dla zaproszeń
+    const RETRY_DELAY = 1500; // Zwiększ z 1000ms do 1500ms
 
     try {
       let { data, error } = await supabase
@@ -102,6 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         await supabase.rpc('update_last_login');
+
+        // Wyczyść token zaproszenia jeśli był zapisany
+        const invitationToken = localStorage.getItem('invitation_token');
+        if (invitationToken) {
+          localStorage.removeItem('invitation_token');
+        }
 
         setProfile(data);
         setLoading(false);
