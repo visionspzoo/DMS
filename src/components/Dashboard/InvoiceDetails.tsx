@@ -1478,6 +1478,175 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleDirectApproval = async () => {
+    if (!profile || !currentInvoice.department_id) return;
+
+    setLoading(true);
+    try {
+      // Pobierz informacje o dziale
+      const { data: department, error: deptError } = await supabase
+        .from('departments')
+        .select('manager_id, director_id')
+        .eq('id', currentInvoice.department_id)
+        .single();
+
+      if (deptError) throw deptError;
+
+      const isManager = profile.role === 'Kierownik';
+      const isDirector = profile.role === 'Dyrektor';
+
+      if (!isManager && !isDirector) {
+        alert('Tylko Kierownik lub Dyrektor może użyć tej opcji');
+        setLoading(false);
+        return;
+      }
+
+      // Sprawdź czy użytkownik jest uprawniony do akceptacji tej faktury
+      const canApproveAsManager = isManager &&
+        department?.manager_id === profile.id &&
+        invoiceDepartmentInfo?.uploader_role === 'Specjalista';
+
+      const canApproveAsDirector = isDirector &&
+        department?.director_id === profile.id &&
+        (invoiceDepartmentInfo?.uploader_role === 'Specjalista' ||
+         invoiceDepartmentInfo?.uploader_role === 'Kierownik');
+
+      if (!canApproveAsManager && !canApproveAsDirector) {
+        alert('Nie masz uprawnień do bezpośredniej akceptacji tej faktury');
+        setLoading(false);
+        return;
+      }
+
+      // Dodaj wpisy approval dla pominiętych osób
+      const approvalsToInsert = [];
+
+      if (isDirector && invoiceDepartmentInfo?.uploader_role === 'Specjalista') {
+        // Dyrektor akceptuje fakturę Specjalisty - dodaj approval za Kierownika i Dyrektora
+        if (department?.manager_id) {
+          approvalsToInsert.push({
+            invoice_id: currentInvoice.id,
+            approver_id: department.manager_id,
+            approver_role: 'Kierownik',
+            action: 'approved',
+            comment: `Automatycznie zaakceptowane przez Dyrektora ${profile.full_name}`,
+          });
+        }
+        approvalsToInsert.push({
+          invoice_id: currentInvoice.id,
+          approver_id: profile.id,
+          approver_role: 'Dyrektor',
+          action: 'approved',
+          comment: comment || 'Bezpośrednia akceptacja przez Dyrektora',
+        });
+      } else if (isDirector && invoiceDepartmentInfo?.uploader_role === 'Kierownik') {
+        // Dyrektor akceptuje fakturę Kierownika - dodaj approval za Dyrektora
+        approvalsToInsert.push({
+          invoice_id: currentInvoice.id,
+          approver_id: profile.id,
+          approver_role: 'Dyrektor',
+          action: 'approved',
+          comment: comment || 'Bezpośrednia akceptacja przez Dyrektora',
+        });
+      } else if (isManager && invoiceDepartmentInfo?.uploader_role === 'Specjalista') {
+        // Kierownik akceptuje fakturę Specjalisty - dodaj approval za Kierownika
+        approvalsToInsert.push({
+          invoice_id: currentInvoice.id,
+          approver_id: profile.id,
+          approver_role: 'Kierownik',
+          action: 'approved',
+          comment: comment || 'Bezpośrednia akceptacja przez Kierownika',
+        });
+      }
+
+      if (approvalsToInsert.length > 0) {
+        const { error: approvalError } = await supabase
+          .from('approvals')
+          .insert(approvalsToInsert);
+
+        if (approvalError) throw approvalError;
+      }
+
+      // Określ następnego approvera
+      const { data: nextApprover, error: approverError } = await supabase
+        .rpc('get_next_approver_in_department', {
+          dept_id: currentInvoice.department_id,
+          user_role: profile.role,
+        });
+
+      if (approverError) {
+        console.error('Error getting next approver:', approverError);
+      }
+
+      let newStatus = 'accepted';
+      if (nextApprover) {
+        newStatus = 'waiting';
+      }
+
+      // Zaktualizuj fakturę
+      const { data, error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: newStatus })
+        .eq('id', currentInvoice.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      Object.assign(invoice, data);
+
+      // Move file to unpaid folder when fully accepted
+      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
+      if (newStatus === 'accepted' && fileId && currentInvoice.department_id) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const { data: deptData } = await supabase
+          .from('departments')
+          .select('google_drive_unpaid_folder_id')
+          .eq('id', currentInvoice.department_id)
+          .single();
+
+        if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
+          try {
+            const moveResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId: fileId,
+                  targetFolderId: deptData.google_drive_unpaid_folder_id,
+                }),
+              }
+            );
+
+            if (!moveResponse.ok) {
+              console.error('Failed to move file to unpaid folder:', await moveResponse.text());
+            } else {
+              console.log('✓ File moved to unpaid folder on Google Drive');
+            }
+          } catch (moveError) {
+            console.error('Error moving file on Google Drive:', moveError);
+          }
+        }
+      }
+
+      await loadApprovals();
+      await loadAuditLogs();
+
+      setComment('');
+      alert('Faktura została zaakceptowana');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error processing direct approval:', error);
+      alert('Nie udało się zaakceptować faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConfirmAIData = async () => {
     if (!profile) return;
 
@@ -2625,9 +2794,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         <TransferInvoiceModal
           invoiceId={currentInvoice.id}
           currentDepartmentId={currentInvoice.department_id}
+          currentInvoiceStatus={currentInvoice.status}
+          uploadedBy={currentInvoice.uploaded_by}
           onClose={() => setShowTransferModal(false)}
           onTransferToApproval={handleForwardToCirculation}
           onTransferToDepartment={handleTransferToDepartment}
+          onDirectApproval={handleDirectApproval}
         />
       )}
     </div>

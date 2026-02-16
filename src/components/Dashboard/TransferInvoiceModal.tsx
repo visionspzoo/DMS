@@ -19,26 +19,39 @@ interface DepartmentUser {
 interface TransferInvoiceModalProps {
   invoiceId: string;
   currentDepartmentId: string | null;
+  currentInvoiceStatus: string;
+  uploadedBy: string;
   onClose: () => void;
   onTransferToApproval: () => Promise<void>;
   onTransferToDepartment: (departmentId: string, userId: string) => Promise<void>;
+  onDirectApproval?: () => Promise<void>;
 }
 
 export function TransferInvoiceModal({
   invoiceId,
   currentDepartmentId,
+  currentInvoiceStatus,
+  uploadedBy,
   onClose,
   onTransferToApproval,
   onTransferToDepartment,
+  onDirectApproval,
 }: TransferInvoiceModalProps) {
   const { profile } = useAuth();
-  const [transferMode, setTransferMode] = useState<'approval' | 'department' | null>(null);
+  const [transferMode, setTransferMode] = useState<'approval' | 'department' | 'direct_approval' | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploaderRole, setUploaderRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (uploadedBy && uploadedBy !== profile?.id) {
+      loadUploaderRole();
+    }
+  }, [uploadedBy, profile?.id]);
 
   useEffect(() => {
     loadDepartments();
@@ -60,6 +73,22 @@ export function TransferInvoiceModal({
     } catch (err) {
       console.error('Error loading departments:', err);
       setError('Nie udało się załadować działów');
+    }
+  }
+
+  async function loadUploaderRole() {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', uploadedBy)
+        .single();
+
+      if (error) throw error;
+      setUploaderRole(data?.role || null);
+    } catch (err) {
+      console.error('Error loading uploader role:', err);
+      setUploaderRole(null);
     }
   }
 
@@ -174,6 +203,24 @@ export function TransferInvoiceModal({
       } finally {
         setLoading(false);
       }
+    } else if (transferMode === 'direct_approval') {
+      if (!onDirectApproval) {
+        setError('Funkcja akceptacji nie jest dostępna');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        await onDirectApproval();
+        onClose();
+      } catch (err: any) {
+        console.error('Direct approval error details:', err);
+        const errorMessage = err?.message || err?.toString() || 'Nie udało się zaakceptować faktury';
+        setError(`Błąd: ${errorMessage}`);
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
@@ -238,6 +285,31 @@ export function TransferInvoiceModal({
                 </p>
               </div>
             </button>
+
+            {onDirectApproval &&
+              currentInvoiceStatus === 'draft' &&
+              uploadedBy !== profile?.id &&
+              (
+                (profile?.role === 'Kierownik' && uploaderRole === 'Specjalista') ||
+                (profile?.role === 'Dyrektor' && (uploaderRole === 'Specjalista' || uploaderRole === 'Kierownik'))
+              ) && (
+              <button
+                onClick={() => setTransferMode('direct_approval')}
+                className="w-full flex items-center gap-3 p-4 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:border-brand-primary dark:hover:border-brand-primary hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition group"
+              >
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/50 transition">
+                  <User className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                    Zaakceptuj fakturę
+                  </p>
+                  <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                    Zaakceptuj w imieniu podwładnego i w swoim
+                  </p>
+                </div>
+              </button>
+            )}
           </div>
         ) : transferMode === 'department' ? (
           <div className="space-y-4">
@@ -316,7 +388,7 @@ export function TransferInvoiceModal({
               </button>
             </div>
           </div>
-        ) : (
+        ) : transferMode === 'approval' ? (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
               Faktura zostanie przesłana do następnej osoby w hierarchii akceptacji w Twoim dziale.
@@ -349,7 +421,47 @@ export function TransferInvoiceModal({
               </button>
             </div>
           </div>
-        )}
+        ) : transferMode === 'direct_approval' ? (
+          <div className="space-y-4">
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+              <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                <strong>Bezpośrednia akceptacja</strong>
+              </p>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-2">
+                {profile?.role === 'Dyrektor'
+                  ? 'Faktura zostanie zaakceptowana automatycznie w imieniu Kierownika i w Twoim imieniu jako Dyrektor. Przejdzie dalej w workflow jeśli wymagana jest jeszcze akceptacja CEO.'
+                  : 'Faktura zostanie zaakceptowana w Twoim imieniu jako Kierownik i przejdzie dalej do Dyrektora.'}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTransferMode(null)}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Wstecz
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Akceptuję...</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="w-4 h-4" />
+                    <span>Zaakceptuj</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
