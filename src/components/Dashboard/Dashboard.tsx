@@ -72,15 +72,29 @@ export function Dashboard() {
     )
   );
 
-  const myInReviewInvoices = myInvoices.filter(i =>
-    i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review'
+  const myInReviewInvoices = invoices.filter(i =>
+    (i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review') &&
+    i.uploaded_by === profile?.id &&
+    (
+      i.current_approver_id === profile?.id ||
+      i.department_id === profile?.department_id ||
+      profile?.is_admin === true
+    )
   );
 
   const waitingForMyApprovalInvoices = invoices.filter(i =>
     i.current_approver_id === profile?.id && (i.status === 'waiting' || i.status === 'pending')
   );
 
-  const myRejectedInvoices = myInvoices.filter(i => i.status === 'rejected');
+  const myRejectedInvoices = invoices.filter(i =>
+    i.status === 'rejected' &&
+    i.uploaded_by === profile?.id &&
+    (
+      i.current_approver_id === profile?.id ||
+      i.department_id === profile?.department_id ||
+      profile?.is_admin === true
+    )
+  );
 
   const stats = {
     draft: myDraftInvoices.length,
@@ -92,7 +106,14 @@ export function Dashboard() {
   const draftInvoices = myDraftInvoices.slice(0, 5);
   const inReviewInvoices = myInReviewInvoices.slice(0, 5);
   const waitingInvoices = waitingForMyApprovalInvoices.slice(0, 5);
-  const acceptedInvoices = myInvoices.filter(i => i.status === 'accepted').slice(0, 5);
+  const acceptedInvoices = invoices.filter(i =>
+    i.status === 'accepted' &&
+    (
+      i.uploaded_by === profile?.id ||
+      i.current_approver_id === profile?.id ||
+      i.department_id === profile?.department_id
+    )
+  ).slice(0, 5);
 
   if (loading) {
     return (
