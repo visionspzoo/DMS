@@ -758,16 +758,26 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('invoices')
         .update({
           paid_at: new Date().toISOString(),
           paid_by: profile.id,
           status: 'paid',
         })
-        .eq('id', currentInvoice.id);
+        .eq('id', currentInvoice.id)
+        .select('id, status, paid_at, paid_by')
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating invoice as paid:', error);
+        throw error;
+      }
+
+      if (!data || data.status !== 'paid') {
+        console.error('Invoice status not updated correctly:', data);
+        throw new Error('Status faktury nie został zaktualizowany na "paid"');
+      }
 
       // Move file to paid folder on Google Drive
       const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
