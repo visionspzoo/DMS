@@ -150,39 +150,29 @@ export function InvoiceList({
         const hasError = isInvalidSupplier || isInvalidBuyer || isDuplicate;
         const isSelected = selectedInvoices.includes(invoice.id);
         return (
-          <div
+          <button
             key={invoice.id}
-            className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full flex items-start gap-2 ${
-              hasError
-                ? 'border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'
-                : isSelected
-                ? 'border-2 border-brand-primary dark:border-brand-primary'
-                : 'border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40'
-            }`}
-          >
-            {selectionMode && onToggleSelect && (
-              <div className="flex items-center pt-1">
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onToggleSelect(invoice.id);
-                  }}
-                  className="w-4 h-4 text-brand-primary bg-light-surface dark:bg-dark-surface border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary cursor-pointer"
-                />
-              </div>
-            )}
-            <button
-              onClick={() => onSelectInvoice(invoice)}
-              title={
-                isDuplicate ? 'DUPLIKAT' :
-                isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
-                isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
-                ''
+            onClick={() => {
+              if (selectionMode && onToggleSelect) {
+                onToggleSelect(invoice.id);
+              } else {
+                onSelectInvoice(invoice);
               }
-              className="flex-1 text-left"
-            >
+            }}
+            title={
+              isDuplicate ? 'DUPLIKAT' :
+              isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
+              isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
+              ''
+            }
+            className={`rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full ${
+              hasError
+                ? 'bg-light-surface dark:bg-dark-surface border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'
+                : isSelected
+                ? 'bg-brand-primary/5 dark:bg-brand-primary/10 border-2 border-brand-primary dark:border-brand-primary shadow-lg'
+                : 'bg-light-surface dark:bg-dark-surface border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40'
+            } ${selectionMode ? 'cursor-pointer' : ''}`}
+          >
               <div className="flex items-center justify-between gap-3">
                 {/* Left section - Dates */}
                 <div className="flex flex-col gap-1 min-w-[90px]">
@@ -297,8 +287,7 @@ export function InvoiceList({
                 </div>
               </div>
             </div>
-            </button>
-          </div>
+          </button>
         );
       })}
     </div>
