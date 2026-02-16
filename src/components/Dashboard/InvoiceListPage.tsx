@@ -545,26 +545,32 @@ export function InvoiceList() {
     setFilteredInvoices(filtered);
   };
 
-  const currencyBreakdown = useMemo(() => {
+  const { totalAcceptedAmount, totalPaidAmount, currencyBreakdownAccepted, currencyBreakdownPaid } = useMemo(() => {
     const accepted = filteredInvoices.filter(inv => inv.status === 'accepted');
-    const byCurrency: Record<string, { total: number; count: number }> = {};
-    for (const inv of accepted) {
-      const cur = inv.currency || 'PLN';
-      if (!byCurrency[cur]) {
-        byCurrency[cur] = { total: 0, count: 0 };
-      }
-      byCurrency[cur].total += Number(inv.gross_amount) || 0;
-      byCurrency[cur].count++;
-    }
-    return Object.entries(byCurrency)
-      .filter(([cur]) => cur !== 'PLN')
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredInvoices]);
+    const paid = filteredInvoices.filter(inv => inv.status === 'paid');
 
-  const totalAcceptedAmount = useMemo(() => {
-    return filteredInvoices
-      .filter(inv => inv.status === 'accepted')
-      .reduce((sum, inv) => sum + (Number(inv.pln_gross_amount || inv.gross_amount) || 0), 0);
+    const buildBreakdown = (invoices: typeof filteredInvoices) => {
+      const byCurrency: Record<string, { total: number; count: number }> = {};
+      for (const inv of invoices) {
+        const cur = inv.currency || 'PLN';
+        if (!byCurrency[cur]) byCurrency[cur] = { total: 0, count: 0 };
+        byCurrency[cur].total += Number(inv.gross_amount) || 0;
+        byCurrency[cur].count++;
+      }
+      return Object.entries(byCurrency)
+        .filter(([cur]) => cur !== 'PLN')
+        .sort(([a], [b]) => a.localeCompare(b));
+    };
+
+    const sumPln = (invoices: typeof filteredInvoices) =>
+      invoices.reduce((sum, inv) => sum + (Number(inv.pln_gross_amount || inv.gross_amount) || 0), 0);
+
+    return {
+      totalAcceptedAmount: sumPln(accepted),
+      totalPaidAmount: sumPln(paid),
+      currencyBreakdownAccepted: buildBreakdown(accepted),
+      currencyBreakdownPaid: buildBreakdown(paid),
+    };
   }, [filteredInvoices]);
 
   const updateEntry = (index: number, update: Partial<FileUploadEntry>) => {
@@ -1315,39 +1321,77 @@ export function InvoiceList() {
       </div>
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-ai-accent/10 dark:bg-ai-accent/20 rounded-lg">
-              <TrendingUp className="w-4 h-4 text-ai-accent" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-lg">
+                <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  Zaakceptowane
+                </h3>
+                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  Suma zatwierdzonych
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark">
-                Łączna wartość zaakceptowanych
-              </h3>
-              <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-                Suma zatwierdzonych faktur
-              </p>
+            <div className="text-right">
+              <div className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {totalAcceptedAmount.toLocaleString('pl-PL', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{' '}
+                PLN
+              </div>
+              {currencyBreakdownAccepted.length > 0 && (
+                <div className="mt-1 flex flex-wrap justify-end gap-x-3 gap-y-0.5">
+                  {currencyBreakdownAccepted.map(([cur, data]) => (
+                    <div key={cur} className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">
+                        {data.total.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {cur}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
-              {totalAcceptedAmount.toLocaleString('pl-PL', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              PLN
-            </div>
-            {currencyBreakdown.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap justify-end gap-x-4 gap-y-1">
-                {currencyBreakdown.map(([cur, data]) => (
-                  <div key={cur} className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
-                    <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">
-                      {data.total.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {cur}
-                    </span>
-                  </div>
-                ))}
+
+          <div className="flex items-center justify-between sm:border-l sm:border-slate-200 sm:dark:border-slate-700/50 sm:pl-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-500/10 dark:bg-blue-500/20 rounded-lg">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
-            )}
+              <div>
+                <h3 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  Opłacone
+                </h3>
+                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  Suma opłaconych
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark font-mono">
+                {totalPaidAmount.toLocaleString('pl-PL', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{' '}
+                PLN
+              </div>
+              {currencyBreakdownPaid.length > 0 && (
+                <div className="mt-1 flex flex-wrap justify-end gap-x-3 gap-y-0.5">
+                  {currencyBreakdownPaid.map(([cur, data]) => (
+                    <div key={cur} className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">
+                      <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">
+                        {data.total.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {cur}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
