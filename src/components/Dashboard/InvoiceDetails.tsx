@@ -1527,10 +1527,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Prześlij</span>
                   </button>
                 )}
-                {!currentInvoice.paid_at && (
+                {!currentInvoice.paid_at && (profile?.is_admin || profile?.role === 'dyrektor') && (
                   <button
                     onClick={() => setShowPaidConfirm(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition font-medium"
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <CreditCard className="w-4 h-4" />
                     <span>Oznacz jako opłaconą</span>
