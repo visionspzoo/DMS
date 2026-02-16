@@ -1467,16 +1467,15 @@ export function InvoiceList() {
                   </>
                 )}
 
-                {canMarkAsPaidSelected && (
-                  <button
-                    onClick={handleBulkMarkAsPaid}
-                    disabled={bulkActionLoading}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
-                  >
-                    <DollarSign className="w-4 h-4" />
-                    Oznacz jako opłacone
-                  </button>
-                )}
+                <button
+                  onClick={handleBulkMarkAsPaid}
+                  disabled={bulkActionLoading || !canMarkAsPaidSelected}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 shadow-sm"
+                  title={!canMarkAsPaidSelected ? 'Zaznacz faktury ze statusem "Zaakceptowana"' : ''}
+                >
+                  <DollarSign className="w-4 h-4" />
+                  Oznacz jako opłacone
+                </button>
 
                 <button
                   onClick={handleBulkDelete}
