@@ -215,10 +215,12 @@ export default function GmailWorkspaceConfig() {
     setEmailMessage(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No active session');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
       }
+
+      const session = refreshData.session;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-oauth-status`,
@@ -331,12 +333,19 @@ export default function GmailWorkspaceConfig() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji uzytkownika');
 
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
+      }
+
+      const finalSession = refreshData.session;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${finalSession.access_token}`,
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
@@ -374,51 +383,12 @@ export default function GmailWorkspaceConfig() {
     setDebugResults(null);
 
     try {
-      console.log('🔍 Starting Drive debug...');
-
-      // Get current session
-      console.log('🔄 Getting current session...');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      console.log('📋 Session data:', {
-        hasSession: !!session,
-        hasError: !!sessionError,
-        error: sessionError,
-        userId: session?.user?.id,
-        expiresAt: session?.expires_at,
-        now: Math.floor(Date.now() / 1000),
-      });
-
-      if (sessionError || !session) {
-        console.error('❌ Session get failed:', sessionError);
-        throw new Error('Nie udalo sie pobrac sesji. Prosze sie wylogowac i zalogowac ponownie.');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
       }
 
-      console.log('✅ Session obtained successfully');
-      console.log('🔐 Token details:', {
-        tokenStart: session.access_token.substring(0, 30),
-        tokenLength: session.access_token.length,
-        expiresAt: session.expires_at,
-        expiresAtDate: new Date((session.expires_at || 0) * 1000).toISOString(),
-        now: Math.floor(Date.now() / 1000),
-        isExpired: (session.expires_at || 0) < Math.floor(Date.now() / 1000),
-      });
-
-      // Verify token works by calling getUser
-      console.log('🔍 Verifying token with getUser...');
-      const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
-      console.log('👤 User verification:', {
-        hasUser: !!userData?.user,
-        userId: userData?.user?.id,
-        error: userError?.message,
-      });
-
-      if (userError) {
-        console.error('❌ Token verification failed:', userError);
-        throw new Error(`Token nieprawidlowy: ${userError.message}. Prosze sie wylogowac i zalogowac ponownie.`);
-      }
-
-      console.log('🚀 Sending request to debug function...');
+      const session = refreshData.session;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/debug-drive-folder`,
