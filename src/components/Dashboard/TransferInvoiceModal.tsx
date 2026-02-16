@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, ArrowRight, Building2, User, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 interface Department {
   id: string;
@@ -54,13 +55,8 @@ export function TransferInvoiceModal({
 
   async function loadDepartments() {
     try {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('id, name')
-        .order('name');
-
-      if (error) throw error;
-      setDepartments(data || []);
+      const depts = await getAccessibleDepartments(profile);
+      setDepartments(depts);
     } catch (err) {
       console.error('Error loading departments:', err);
       setError('Nie udało się załadować działów');

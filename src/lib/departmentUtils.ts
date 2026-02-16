@@ -45,33 +45,52 @@ export async function getAccessibleDepartments(
       return data || [];
     }
 
-    // Dyrektor widzi swój dział + wszystkie poddziały
-    if (role === 'Dyrektor' && department_id) {
-      const { data, error } = await supabase.rpc('get_department_hierarchy', {
-        dept_id: department_id,
-      });
+    // Dyrektor widzi działy, których jest dyrektorem + swój dział + wszystkie poddziały
+    if (role === 'Dyrektor') {
+      const deptIds: string[] = [];
 
-      if (error) {
-        console.error('Error fetching department hierarchy:', error);
-        // Fallback: pokaż tylko swój dział
-        const { data: deptData, error: deptError } = await supabase
-          .from('departments')
-          .select('id, name')
-          .eq('id', department_id);
-
-        if (deptError) throw deptError;
-        return deptData || [];
-      }
-
-      const deptIds = data.map((d: any) => d.department_id);
-      const { data: depts, error: deptsError } = await supabase
+      // 1. Pobierz działy, których Dyrektor jest dyrektorem (director_id)
+      const { data: directorDepts, error: directorError } = await supabase
         .from('departments')
         .select('id, name')
-        .in('id', deptIds)
-        .order('name');
+        .eq('director_id', userId);
 
-      if (deptsError) throw deptsError;
-      return depts || [];
+      if (!directorError && directorDepts) {
+        deptIds.push(...directorDepts.map(d => d.id));
+      }
+
+      // 2. Pobierz hierarchię działów jeśli ma przypisany department_id
+      if (department_id) {
+        const { data, error } = await supabase.rpc('get_department_hierarchy', {
+          dept_id: department_id,
+        });
+
+        if (!error && data) {
+          const hierarchyIds = data.map((d: any) => d.department_id);
+          hierarchyIds.forEach((id: string) => {
+            if (!deptIds.includes(id)) {
+              deptIds.push(id);
+            }
+          });
+        } else if (!deptIds.includes(department_id)) {
+          // Fallback: dodaj przynajmniej swój dział
+          deptIds.push(department_id);
+        }
+      }
+
+      // Pobierz wszystkie działy
+      if (deptIds.length > 0) {
+        const { data: depts, error: deptsError } = await supabase
+          .from('departments')
+          .select('id, name')
+          .in('id', deptIds)
+          .order('name');
+
+        if (deptsError) throw deptsError;
+        return depts || [];
+      }
+
+      return [];
     }
 
     // Kierownik lub Specjalista: sprawdź user_department_access
