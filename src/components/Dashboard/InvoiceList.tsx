@@ -25,10 +25,10 @@ const statusColors = {
   draft: 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:bg-slate-500/20 dark:text-slate-400',
   waiting: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30 dark:bg-yellow-500/20 dark:text-yellow-400',
   pending: 'bg-brand-primary/10 text-brand-primary border-brand-primary/30 dark:bg-brand-primary/20',
-  accepted: 'bg-status-success/10 text-status-success border-status-success/30 dark:bg-status-success/20',
+  accepted: 'bg-green-500/10 text-green-600 border-green-500/30 dark:bg-green-500/20 dark:text-green-400',
   rejected: 'bg-status-error/10 text-status-error border-status-error/30 dark:bg-status-error/20',
   in_review: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:bg-blue-500/20 dark:text-blue-400',
-  paid: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-400',
+  paid: 'bg-emerald-700/10 text-emerald-800 border-emerald-700/30 dark:bg-emerald-700/20 dark:text-emerald-400',
 };
 
 const statusLabels = {
