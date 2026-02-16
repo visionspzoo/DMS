@@ -16,6 +16,9 @@ type Invoice = Database['public']['Tables']['invoices']['Row'] & {
 interface InvoiceListProps {
   invoices: Invoice[];
   onSelectInvoice: (invoice: Invoice) => void;
+  selectedInvoices?: string[];
+  onToggleSelect?: (invoiceId: string) => void;
+  selectionMode?: boolean;
 }
 
 const statusColors = {
@@ -84,7 +87,13 @@ function getUserSpecificStatus(invoice: Invoice, currentUserId: string): keyof t
 
 const AURA_HERBALS_NIP = '5851490834';
 
-export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
+export function InvoiceList({
+  invoices,
+  onSelectInvoice,
+  selectedInvoices = [],
+  onToggleSelect,
+  selectionMode = false
+}: InvoiceListProps) {
   const { user } = useAuth();
 
   if (invoices.length === 0) {
@@ -139,25 +148,44 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
           invoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
         const isDuplicate = checkDuplicate(invoice);
         const hasError = isInvalidSupplier || isInvalidBuyer || isDuplicate;
+        const isSelected = selectedInvoices.includes(invoice.id);
         return (
-          <button
+          <div
             key={invoice.id}
-            onClick={() => onSelectInvoice(invoice)}
-            title={
-              isDuplicate ? 'DUPLIKAT' :
-              isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
-              isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
-              ''
-            }
-            className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full ${
+            className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm hover:shadow-md transition-all p-2 text-left w-full flex items-start gap-2 ${
               hasError
                 ? 'border-2 border-red-600 dark:border-red-500 hover:border-red-700 dark:hover:border-red-600'
+                : isSelected
+                ? 'border-2 border-brand-primary dark:border-brand-primary'
                 : 'border border-slate-200/50 hover:border-brand-primary/40 dark:border-slate-700/50 dark:hover:border-brand-primary/40'
             }`}
           >
-            <div className="flex items-center justify-between gap-3">
-              {/* Left section - Dates */}
-              <div className="flex flex-col gap-1 min-w-[90px]">
+            {selectionMode && onToggleSelect && (
+              <div className="flex items-center pt-1">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onToggleSelect(invoice.id);
+                  }}
+                  className="w-4 h-4 text-brand-primary bg-light-surface dark:bg-dark-surface border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary cursor-pointer"
+                />
+              </div>
+            )}
+            <button
+              onClick={() => onSelectInvoice(invoice)}
+              title={
+                isDuplicate ? 'DUPLIKAT' :
+                isInvalidBuyer ? 'BŁĘDNY ODBIORCA' :
+                isInvalidSupplier ? 'BŁĘDNY SPRZEDAWCA' :
+                ''
+              }
+              className="flex-1 text-left"
+            >
+              <div className="flex items-center justify-between gap-3">
+                {/* Left section - Dates */}
+                <div className="flex flex-col gap-1 min-w-[90px]">
                 <div className="flex items-center gap-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
                   <Calendar className="w-3 h-3" />
                   <span>{invoice.issue_date ? new Date(invoice.issue_date).toLocaleDateString('pl-PL') : '—'}</span>
@@ -269,7 +297,8 @@ export function InvoiceList({ invoices, onSelectInvoice }: InvoiceListProps) {
                 </div>
               </div>
             </div>
-          </button>
+            </button>
+          </div>
         );
       })}
     </div>

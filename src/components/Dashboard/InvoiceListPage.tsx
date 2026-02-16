@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail } from 'lucide-react';
+import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
 import { InvoiceDetails } from './InvoiceDetails';
+import { BulkTransferModal } from './BulkTransferModal';
 import type { Database } from '../../lib/database.types';
 import {
   computeFileHash,
@@ -60,6 +61,10 @@ export function InvoiceList() {
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>(String(currentDate.getFullYear()));
@@ -722,6 +727,135 @@ export function InvoiceList() {
     );
   };
 
+  const toggleSelectInvoice = (invoiceId: string) => {
+    setSelectedInvoiceIds(prev =>
+      prev.includes(invoiceId) ? prev.filter(id => id !== invoiceId) : [...prev, invoiceId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedInvoiceIds.length === filteredInvoices.length) {
+      setSelectedInvoiceIds([]);
+    } else {
+      setSelectedInvoiceIds(filteredInvoices.map(inv => inv.id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+
+    const confirmMsg = `Czy na pewno chcesz usunąć ${selectedInvoiceIds.length} faktur?`;
+    if (!confirm(confirmMsg)) return;
+
+    setBulkActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .in('id', selectedInvoiceIds);
+
+      if (error) throw error;
+
+      setSelectedInvoiceIds([]);
+      setSelectionMode(false);
+      loadInvoices();
+    } catch (error: any) {
+      alert('Błąd podczas usuwania faktur: ' + error.message);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkTransfer = () => {
+    if (selectedInvoiceIds.length === 0) return;
+    setShowTransferModal(true);
+  };
+
+  const handleBulkAccept = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+
+    const confirmMsg = `Czy na pewno chcesz zaakceptować ${selectedInvoiceIds.length} faktur?`;
+    if (!confirm(confirmMsg)) return;
+
+    setBulkActionLoading(true);
+    try {
+      const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+
+      for (const invoice of selectedInvs) {
+        if (invoice.current_approver_id !== profile?.id && !profile?.is_admin) {
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('invoices')
+          .update({
+            status: 'accepted',
+            current_approver_id: null,
+          })
+          .eq('id', invoice.id);
+
+        if (error) throw error;
+      }
+
+      setSelectedInvoiceIds([]);
+      setSelectionMode(false);
+      loadInvoices();
+    } catch (error: any) {
+      alert('Błąd podczas akceptacji faktur: ' + error.message);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+
+    const reason = prompt('Podaj powód odrzucenia (opcjonalnie):');
+    if (reason === null) return;
+
+    const confirmMsg = `Czy na pewno chcesz odrzucić ${selectedInvoiceIds.length} faktur?`;
+    if (!confirm(confirmMsg)) return;
+
+    setBulkActionLoading(true);
+    try {
+      const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+
+      for (const invoice of selectedInvs) {
+        if (invoice.current_approver_id !== profile?.id && !profile?.is_admin) {
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('invoices')
+          .update({
+            status: 'rejected',
+            current_approver_id: null,
+            description: reason ? `${invoice.description || ''}\nOdrzucono: ${reason}`.trim() : invoice.description,
+          })
+          .eq('id', invoice.id);
+
+        if (error) throw error;
+      }
+
+      setSelectedInvoiceIds([]);
+      setSelectionMode(false);
+      loadInvoices();
+    } catch (error: any) {
+      alert('Błąd podczas odrzucania faktur: ' + error.message);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const canApproveSelected = useMemo(() => {
+    if (selectedInvoiceIds.length === 0) return false;
+    const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+    return selectedInvs.some(inv =>
+      (inv.current_approver_id === profile?.id || profile?.is_admin) &&
+      (inv.status === 'waiting' || inv.status === 'pending')
+    );
+  }, [selectedInvoiceIds, filteredInvoices, profile]);
+
   const successCount = uploadQueue.filter(e => e.status === 'success').length;
   const duplicateCount = uploadQueue.filter(e => e.status === 'duplicate').length;
   const errorCount = uploadQueue.filter(e => e.status === 'error').length;
@@ -1110,9 +1244,89 @@ export function InvoiceList() {
         </div>
       </div>
 
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {!selectionMode ? (
+            <button
+              onClick={() => setSelectionMode(true)}
+              className="px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm"
+            >
+              Zaznacz wiele
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => {
+                  setSelectionMode(false);
+                  setSelectedInvoiceIds([]);
+                }}
+                className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg transition-colors font-medium text-sm"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={toggleSelectAll}
+                className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-sm"
+              >
+                {selectedInvoiceIds.length === filteredInvoices.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+              </button>
+              {selectedInvoiceIds.length > 0 && (
+                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                  Zaznaczono: <span className="font-semibold text-brand-primary">{selectedInvoiceIds.length}</span>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        {selectionMode && selectedInvoiceIds.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkTransfer}
+              disabled={bulkActionLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" />
+              Prześlij
+            </button>
+            {canApproveSelected && (
+              <>
+                <button
+                  onClick={handleBulkAccept}
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  Zaakceptuj
+                </button>
+                <button
+                  onClick={handleBulkReject}
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Odrzuć
+                </button>
+              </>
+            )}
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkActionLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Usuń
+            </button>
+          </div>
+        )}
+      </div>
+
       <InvoiceListComponent
         invoices={filteredInvoices}
         onSelectInvoice={setSelectedInvoice}
+        selectedInvoices={selectedInvoiceIds}
+        onToggleSelect={toggleSelectInvoice}
+        selectionMode={selectionMode}
       />
 
       {selectedInvoice && (
@@ -1120,6 +1334,21 @@ export function InvoiceList() {
           invoice={selectedInvoice}
           onClose={() => setSelectedInvoice(null)}
           onUpdate={loadInvoices}
+        />
+      )}
+
+      {showTransferModal && selectedInvoiceIds.length > 0 && (
+        <BulkTransferModal
+          invoiceIds={selectedInvoiceIds}
+          onClose={() => {
+            setShowTransferModal(false);
+          }}
+          onTransferComplete={() => {
+            setShowTransferModal(false);
+            setSelectedInvoiceIds([]);
+            setSelectionMode(false);
+            loadInvoices();
+          }}
         />
       )}
     </div>
