@@ -1232,93 +1232,93 @@ export function InvoiceList() {
       </div>
 
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-          <input
-            type="text"
-            placeholder="Szukaj faktur po numerze, dostawcy, NIP, opisie lub osobie przesyłającej..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
-          />
-        </div>
-      </div>
-
-      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {!selectionMode ? (
-            <button
-              onClick={() => setSelectionMode(true)}
-              className="px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm"
-            >
-              Zaznacz wiele
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => {
-                  setSelectionMode(false);
-                  setSelectedInvoiceIds([]);
-                }}
-                className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg transition-colors font-medium text-sm"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={toggleSelectAll}
-                className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-sm"
-              >
-                {selectedInvoiceIds.length === filteredInvoices.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
-              </button>
-              {selectedInvoiceIds.length > 0 && (
-                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                  Zaznaczono: <span className="font-semibold text-brand-primary">{selectedInvoiceIds.length}</span>
-                </span>
-              )}
-            </>
-          )}
-        </div>
-
-        {selectionMode && selectedInvoiceIds.length > 0 && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleBulkTransfer}
-              disabled={bulkActionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              Prześlij
-            </button>
-            {canApproveSelected && (
+            {!selectionMode ? (
+              <button
+                onClick={() => setSelectionMode(true)}
+                className="px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+              >
+                Zaznacz wiele
+              </button>
+            ) : (
               <>
                 <button
-                  onClick={handleBulkAccept}
-                  disabled={bulkActionLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+                  onClick={() => {
+                    setSelectionMode(false);
+                    setSelectedInvoiceIds([]);
+                  }}
+                  className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
                 >
-                  <Check className="w-4 h-4" />
-                  Zaakceptuj
+                  Anuluj
                 </button>
                 <button
-                  onClick={handleBulkReject}
-                  disabled={bulkActionLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
+                  onClick={toggleSelectAll}
+                  className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-sm whitespace-nowrap"
                 >
-                  <XCircle className="w-4 h-4" />
-                  Odrzuć
+                  {selectedInvoiceIds.length === filteredInvoices.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
                 </button>
+                {selectedInvoiceIds.length > 0 && (
+                  <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">
+                    Zaznaczono: <span className="font-semibold text-brand-primary">{selectedInvoiceIds.length}</span>
+                  </span>
+                )}
               </>
             )}
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkActionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4" />
-              Usuń
-            </button>
           </div>
-        )}
+
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <input
+              type="text"
+              placeholder="Szukaj faktur po numerze, dostawcy, NIP, opisie lub osobie przesyłającej..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+            />
+          </div>
+
+          {selectionMode && selectedInvoiceIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBulkTransfer}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
+              >
+                <Send className="w-4 h-4" />
+                Prześlij
+              </button>
+              {canApproveSelected && (
+                <>
+                  <button
+                    onClick={handleBulkAccept}
+                    disabled={bulkActionLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Check className="w-4 h-4" />
+                    Zaakceptuj
+                  </button>
+                  <button
+                    onClick={handleBulkReject}
+                    disabled={bulkActionLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Odrzuć
+                  </button>
+                </>
+              )}
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50 whitespace-nowrap"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <InvoiceListComponent
