@@ -896,9 +896,14 @@ export function InvoiceList() {
       const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
 
       for (const invoice of selectedInvs) {
-        if (invoice.status !== 'accepted') {
-          continue;
-        }
+        const canMark =
+          invoice.status !== 'paid' && (
+            profile?.is_admin ||
+            profile?.role === 'dyrektor' ||
+            (invoice.status === 'draft' && invoice.uploaded_by === profile?.id) ||
+            invoice.status === 'accepted'
+          );
+        if (!canMark) continue;
 
         const { error } = await supabase
           .from('invoices')
@@ -934,8 +939,15 @@ export function InvoiceList() {
   const canMarkAsPaidSelected = useMemo(() => {
     if (selectedInvoiceIds.length === 0) return false;
     const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
-    return selectedInvs.some(inv => inv.status === 'accepted');
-  }, [selectedInvoiceIds, filteredInvoices]);
+    return selectedInvs.some(inv =>
+      inv.status !== 'paid' && (
+        profile?.is_admin ||
+        profile?.role === 'dyrektor' ||
+        (inv.status === 'draft' && inv.uploaded_by === profile?.id) ||
+        inv.status === 'accepted'
+      )
+    );
+  }, [selectedInvoiceIds, filteredInvoices, profile]);
 
   const successCount = uploadQueue.filter(e => e.status === 'success').length;
   const duplicateCount = uploadQueue.filter(e => e.status === 'duplicate').length;
