@@ -43,18 +43,11 @@ const statusLabels = {
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): keyof typeof statusLabels {
   if (invoice.status === 'draft') {
-    // Draft is visible only to current_approver or uploader (if no approver assigned)
-    if (invoice.current_approver_id === currentUserId) {
-      return 'draft';
-    }
-    if (!invoice.current_approver_id && invoice.uploaded_by === currentUserId) {
-      return 'draft';
-    }
-    // If I uploaded it but it's assigned to someone else, show as "in_review"
-    if (invoice.uploaded_by === currentUserId) {
-      return 'in_review';
-    }
-    // Otherwise (admin viewing), show as draft but shouldn't appear in "My Drafts" filter
+    // Draft jest zawsze wyświetlany jako "Robocze" dla:
+    // - Uploadera
+    // - Current approver
+    // - Przełożonych (Kierownik widzi drafty Specjalistów, Dyrektor widzi drafty Kierowników i Specjalistów)
+    // Wszyscy widzą status "Robocze"
     return 'draft';
   }
 

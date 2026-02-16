@@ -68,7 +68,9 @@ export function Dashboard() {
   const myDraftInvoices = invoices.filter(i =>
     i.status === 'draft' && (
       i.current_approver_id === profile?.id ||
-      (i.uploaded_by === profile?.id && !i.current_approver_id)
+      (i.uploaded_by === profile?.id && !i.current_approver_id) ||
+      // Przełożeni widzą drafty ze swojego działu (RLS już to filtruje)
+      (profile?.department_id && i.department_id === profile.department_id)
     )
   );
 

@@ -22,19 +22,12 @@ const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string {
   if (invoice.status === 'draft') {
-    // Draft is visible only to current_approver or uploader (if no approver assigned)
-    if (invoice.current_approver_id === currentUserId) {
-      return 'draft';
-    }
-    if (!invoice.current_approver_id && invoice.uploaded_by === currentUserId) {
-      return 'draft';
-    }
-    // If I uploaded it but it's assigned to someone else, show as "in_review"
-    if (invoice.uploaded_by === currentUserId) {
-      return 'in_review';
-    }
-    // Otherwise, admin should see it but not as their draft
-    return 'draft'; // Will be filtered out by RLS or other logic
+    // Draft jest zawsze wyświetlany jako "Robocze" dla:
+    // - Uploadera
+    // - Current approver
+    // - Przełożonych (Kierownik widzi drafty Specjalistów, Dyrektor widzi drafty Kierowników i Specjalistów)
+    // Wszyscy widzą status "Robocze"
+    return 'draft';
   }
 
   if (invoice.status === 'accepted') return 'accepted';
