@@ -92,6 +92,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{id: string, invoice_number: string, created_at: string}>>([]);
+  const [invoiceDepartmentInfo, setInvoiceDepartmentInfo] = useState<{director_id: string | null, uploader_role: string | null} | null>(null);
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -112,6 +113,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadKsefPdfIfNeeded();
     loadCostCenters();
     checkDuplicates();
+    loadInvoiceDepartmentInfo();
   }, [currentInvoice.id]);
 
   const checkDuplicates = async () => {
@@ -383,6 +385,39 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const loadInvoiceDepartmentInfo = async () => {
+    try {
+      if (!currentInvoice.department_id) {
+        setInvoiceDepartmentInfo(null);
+        return;
+      }
+
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('director_id')
+        .eq('id', currentInvoice.department_id)
+        .maybeSingle();
+
+      if (deptError) throw deptError;
+
+      const { data: uploaderData, error: uploaderError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', currentInvoice.uploaded_by)
+        .maybeSingle();
+
+      if (uploaderError) throw uploaderError;
+
+      setInvoiceDepartmentInfo({
+        director_id: deptData?.director_id || null,
+        uploader_role: uploaderData?.role || null,
+      });
+    } catch (error) {
+      console.error('Error loading invoice department info:', error);
+      setInvoiceDepartmentInfo(null);
+    }
+  };
+
   const loadCostCenters = async () => {
     try {
       const { data, error } = await supabase
@@ -522,13 +557,77 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     // Can edit draft if I'm current_approver or (no approver assigned and I'm uploader)
     if (currentInvoice.status === 'draft') {
-      return currentInvoice.current_approver_id === profile.id ||
-             (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile.id);
+      if (currentInvoice.current_approver_id === profile.id ||
+          (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile.id)) {
+        return true;
+      }
+
+      // Dyrektor może edytować faktury draft z działów, których jest dyrektorem
+      if (profile.role === 'Dyrektor' && invoiceDepartmentInfo) {
+        if (invoiceDepartmentInfo.director_id === profile.id) {
+          return true;
+        }
+      }
+
+      // Kierownik może edytować faktury draft Specjalistów ze swojego działu
+      if (profile.role === 'Kierownik' && invoiceDepartmentInfo) {
+        if (
+          currentInvoice.department_id === profile.department_id &&
+          invoiceDepartmentInfo.uploader_role === 'Specjalista'
+        ) {
+          return true;
+        }
+      }
     }
 
     // Can edit waiting/pending if I'm current_approver
     if ((currentInvoice.status === 'waiting' || currentInvoice.status === 'pending') &&
         currentInvoice.current_approver_id === profile.id) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const canTransfer = () => {
+    if (!profile) {
+      return false;
+    }
+
+    // Admin może zawsze
+    if (profile.is_admin) {
+      return true;
+    }
+
+    // Uploader może transferować swoje faktury draft
+    if (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile.id) {
+      return true;
+    }
+
+    // Current approver może transferować faktury
+    if (currentInvoice.current_approver_id === profile.id) {
+      return true;
+    }
+
+    // Dyrektor może transferować faktury draft z działów, których jest dyrektorem
+    if (profile.role === 'Dyrektor' && currentInvoice.status === 'draft' && invoiceDepartmentInfo) {
+      if (invoiceDepartmentInfo.director_id === profile.id) {
+        return true;
+      }
+    }
+
+    // Kierownik może transferować faktury draft Specjalistów ze swojego działu
+    if (profile.role === 'Kierownik' && currentInvoice.status === 'draft' && invoiceDepartmentInfo) {
+      if (
+        currentInvoice.department_id === profile.department_id &&
+        invoiceDepartmentInfo.uploader_role === 'Specjalista'
+      ) {
+        return true;
+      }
+    }
+
+    // Accepted invoices - admin or non-uploader can transfer
+    if (currentInvoice.status === 'accepted' && currentInvoice.uploaded_by !== profile.id) {
       return true;
     }
 
@@ -844,10 +943,19 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           return;
         }
 
+        // Sprawdź czy przełożony przejmuje fakturę podwładnego
+        // Jeśli tak, użyj roli uploadera aby rozpocząć workflow od początku
+        let roleForWorkflow = profile.role;
+
+        if (currentInvoice.uploaded_by !== profile.id && invoiceDepartmentInfo?.uploader_role) {
+          // Przełożony przejmuje fakturę - użyj roli uploadera
+          roleForWorkflow = invoiceDepartmentInfo.uploader_role;
+        }
+
         const { data: nextApprover, error: approverError } = await supabase
           .rpc('get_next_approver_in_department', {
             dept_id: currentInvoice.department_id,
-            user_role: profile.role,
+            user_role: roleForWorkflow,
           });
 
         if (approverError) {
@@ -1490,7 +1598,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
-                {isFromKSEF && currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && (
+                {isFromKSEF && currentInvoice.status === 'draft' && canTransfer() && (
                   <>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -1509,7 +1617,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {currentInvoice.status === 'draft' && (currentInvoice.current_approver_id === profile?.id || (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && !isFromKSEF && (
+                {currentInvoice.status === 'draft' && canTransfer() && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
@@ -1541,7 +1649,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Cofnij</span>
                   </button>
                 )}
-                {currentInvoice.status === 'accepted' && (currentInvoice.uploaded_by !== profile?.id || profile?.is_admin) && (
+                {currentInvoice.status === 'accepted' && canTransfer() && (
                   <button
                     onClick={() => setShowTransferModal(true)}
                     disabled={loading}
