@@ -1304,16 +1304,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     if (!profile) return;
 
     try {
-      // Update invoice in database - trigger will automatically set status to 'draft'
-      const { error: updateError } = await supabase
-        .from('invoices')
-        .update({
-          department_id: departmentId,
-          current_approver_id: userId,
-        })
-        .eq('id', currentInvoice.id);
+      const { error: rpcError } = await supabase.rpc('transfer_invoice_to_department', {
+        p_invoice_id: currentInvoice.id,
+        p_department_id: departmentId,
+        p_approver_id: userId,
+      });
 
-      if (updateError) throw updateError;
+      if (rpcError) throw rpcError;
 
       // Move file on Google Drive if applicable
       if (currentInvoice.user_drive_file_id) {
