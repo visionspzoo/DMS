@@ -64,8 +64,6 @@ export default function NipAutomationRules() {
   const [formTagSearch, setFormTagSearch] = useState('');
   const [formCostCenterSearch, setFormCostCenterSearch] = useState('');
 
-  const isAdmin = profile?.is_admin === true;
-
   const loadRules = useCallback(async () => {
     try {
       const { data, error: fetchError } = await supabase
@@ -136,13 +134,14 @@ export default function NipAutomationRules() {
   const loadSuggestions = useCallback(async () => {
     if (!profile?.id) return;
     try {
-      const { data: invoices } = await supabase
+      let query = supabase
         .from('invoices')
         .select('supplier_nip, supplier_name, cost_center_id')
-        .eq('uploaded_by', profile.id)
         .not('supplier_nip', 'is', null)
         .order('created_at', { ascending: false })
         .limit(500);
+
+      const { data: invoices } = await query;
 
       if (!invoices || invoices.length === 0) return;
 
@@ -408,16 +407,6 @@ export default function NipAutomationRules() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-text-secondary-light dark:text-text-secondary-dark">Ladowanie...</div>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <p className="text-sm text-red-800 dark:text-red-200">
-          Tylko administratorzy moga zarzadzac automatyzacjami.
-        </p>
       </div>
     );
   }
