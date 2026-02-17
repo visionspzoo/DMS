@@ -30,6 +30,21 @@ Deno.serve(async (req: Request) => {
     const { ksefInvoiceId, departmentId, userId }: TransferRequest = await req.json();
     console.log(`🔄 Transfer request:`, { ksefInvoiceId, departmentId, userId });
 
+    // Get auth user ID from JWT early (needed for various operations)
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace("Bearer ", "");
+    let uploaderId = null;
+
+    if (token) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser(token);
+        uploaderId = user?.id;
+        console.log(`✓ Authenticated user ID: ${uploaderId}`);
+      } catch (error) {
+        console.warn("Could not extract user from token, will use fetched_by instead");
+      }
+    }
+
     // 1. Get KSEF invoice
     const { data: ksefInvoice, error: ksefError } = await supabase
       .from("ksef_invoices")
@@ -235,21 +250,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 7. Get auth user ID from JWT (optional, fallback to fetched_by)
-    const authHeader = req.headers.get("Authorization");
-    const token = authHeader?.replace("Bearer ", "");
-    let uploaderId = null;
-
-    if (token) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser(token);
-        uploaderId = user?.id;
-      } catch (error) {
-        console.warn("Could not extract user from token, will use fetched_by instead");
-      }
-    }
-
-    // 8. Find appropriate approver for department if userId not provided
+    // 7. Find appropriate approver for department if userId not provided
     let appropriateApproverId = userId || null;
 
     if (!appropriateApproverId) {
@@ -274,7 +275,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 9. Create invoice record
+    // 8. Create invoice record
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
 
     const invoiceData: any = {
@@ -301,6 +302,13 @@ Deno.serve(async (req: Request) => {
       current_approver_id: appropriateApproverId,
     };
 
+    console.log(`📝 Creating invoice with data:`, {
+      uploaded_by: invoiceData.uploaded_by,
+      department_id: invoiceData.department_id,
+      invoice_number: invoiceData.invoice_number,
+      status: invoiceData.status
+    });
+
     const { data: newInvoice, error: insertError } = await supabase
       .from("invoices")
       .insert(invoiceData)
@@ -308,8 +316,11 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insertError) {
+      console.error('❌ Invoice insert error:', insertError);
       throw insertError;
     }
+
+    console.log(`✓ Invoice created successfully with ID: ${newInvoice.id}`);
 
     // 9. Update KSEF invoice record
     const updateData: any = {
