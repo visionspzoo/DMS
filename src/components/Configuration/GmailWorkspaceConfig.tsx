@@ -541,7 +541,22 @@ export default function GmailWorkspaceConfig() {
         expiresAt: new Date((finalSession.expires_at || 0) * 1000).toISOString(),
       });
 
+      // Verify token is valid by checking current user
+      console.log('🔍 Verifying token validity...');
+      const { data: verifyData, error: verifyError } = await supabase.auth.getUser(finalSession.access_token);
+      if (verifyError) {
+        console.error('❌ Token verification failed:', verifyError);
+        throw new Error('Token jest nieważny po odświeżeniu. Proszę wylogować się i zalogować ponownie.');
+      }
+      console.log('✅ Token verified, user ID:', verifyData.user?.id);
+
       console.log('🚀 Sending request to edge function...');
+      console.log('📤 Request details:', {
+        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`,
+        method: 'POST',
+        authHeader: `Bearer ${finalSession.access_token.substring(0, 30)}...`,
+      });
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`,
         {

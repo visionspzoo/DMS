@@ -164,6 +164,8 @@ Deno.serve(async (req: Request) => {
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     console.log("Supabase client imported");
 
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const token = authHeader.replace("Bearer ", "");
     let userId: string;
 
@@ -178,27 +180,17 @@ Deno.serve(async (req: Request) => {
       userId = body.user_id;
       console.log("Cron mode - syncing for user:", userId);
     } else {
-      // Use service role to verify the JWT token
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       if (userError || !user) {
         console.error("JWT verification failed:", userError?.message);
         return new Response(
-          JSON.stringify({
-            code: 401,
-            message: "Invalid JWT",
-            error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika")
-          }),
+          JSON.stringify({ error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika") }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       userId = user.id;
-      console.log("User authenticated via JWT:", userId);
+      console.log("User authenticated, ID:", userId);
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("Using service role for data operations");
 
     // Load folder mappings (new system with department assignments and default assignees)
     const { data: folderMappings, error: mappingError } = await supabase
