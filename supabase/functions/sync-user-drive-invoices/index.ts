@@ -328,11 +328,33 @@ Deno.serve(async (req: Request) => {
         console.log("Fetching files from Drive folder:", folderId);
         console.log("Using access token (first 20 chars):", accessToken.substring(0, 20) + "...");
 
-        const filesResponse = await fetch(filesUrl, {
+        let filesResponse = await fetch(filesUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         console.log("Drive API response status:", filesResponse.status);
+
+        // If 401, try to refresh token and retry once
+        if (filesResponse.status === 401) {
+          console.log("Received 401 from Drive API - attempting to refresh token...");
+          try {
+            const newAccessToken = await refreshAccessToken(supabase, oauthConfig);
+            console.log("Token refreshed successfully, retrying request...");
+
+            filesResponse = await fetch(filesUrl, {
+              headers: { Authorization: `Bearer ${newAccessToken}` },
+            });
+
+            console.log("Retry response status:", filesResponse.status);
+
+            // Update accessToken for subsequent file downloads
+            accessToken = newAccessToken;
+          } catch (refreshError: any) {
+            console.error("Failed to refresh token:", refreshError.message);
+            errors.push(`Nie udalo sie odswiezyc tokena Google: ${refreshError.message}. Odlacz i polacz ponownie konto Google w Konfiguracji.`);
+            continue;
+          }
+        }
 
         if (!filesResponse.ok) {
           const errBody = await filesResponse.text();
@@ -340,12 +362,16 @@ Deno.serve(async (req: Request) => {
           console.error("Drive API status:", filesResponse.status);
           console.error("Folder ID attempted:", folderId);
 
-          if (filesResponse.status === 403 || filesResponse.status === 401) {
+          if (filesResponse.status === 403) {
             errors.push(
-              `Brak dostepu do folderu Drive (${filesResponse.status}). Szczegoly: ${errBody.substring(0, 200)}`
+              `Brak dostepu do folderu Drive (403). Upewnij sie, ze masz dostep do tego folderu. Szczegoly: ${errBody.substring(0, 200)}`
+            );
+          } else if (filesResponse.status === 401) {
+            errors.push(
+              `Autoryzacja Google Drive wygasla (401). Odlacz i polacz ponownie konto Google w sekcji Konfiguracja.`
             );
           } else {
-            errors.push(`Blad Google Drive API: ${filesResponse.status}`);
+            errors.push(`Blad Google Drive API (${filesResponse.status}): ${errBody.substring(0, 200)}`);
           }
           continue;
         }
