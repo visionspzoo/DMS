@@ -948,29 +948,35 @@ export function KSEFInvoicesPage() {
         console.log('✓ Waluta PLN, pomijam pobieranie kursu');
       }
 
-      // Step 7: Find the appropriate approver for this department
-      console.log('👤 Szukanie właściwego akceptującego dla działu...');
-      let appropriateApproverId = null;
+      // Step 7: Determine the appropriate approver
+      // Use the user-selected approver if provided, otherwise find default
+      console.log('👤 Określanie właściciela faktury...');
+      let appropriateApproverId = userId || null;
 
-      try {
-        // Call the SQL function to get the next approver
-        // Pass null as user_role to start workflow from the beginning (Kierownik)
-        const { data: approverData, error: approverError } = await supabase
-          .rpc('get_next_approver_in_department', {
-            dept_id: departmentId,
-            user_role: null
-          });
+      if (appropriateApproverId) {
+        console.log('✓ Użytkownik wybrał właściciela:', appropriateApproverId);
+      } else {
+        console.log('Szukanie domyślnego właściciela dla działu...');
+        try {
+          // Call the SQL function to get the next approver
+          // Pass null as user_role to start workflow from the beginning (Kierownik)
+          const { data: approverData, error: approverError } = await supabase
+            .rpc('get_next_approver_in_department', {
+              dept_id: departmentId,
+              user_role: null
+            });
 
-        if (approverError) {
-          console.error('⚠️ Błąd przy wyszukiwaniu akceptującego:', approverError);
-        } else if (approverData) {
-          appropriateApproverId = approverData;
-          console.log('✓ Znaleziono właściwego akceptującego:', appropriateApproverId);
-        } else {
-          console.warn('⚠️ Nie znaleziono akceptującego dla działu');
+          if (approverError) {
+            console.error('⚠️ Błąd przy wyszukiwaniu akceptującego:', approverError);
+          } else if (approverData) {
+            appropriateApproverId = approverData;
+            console.log('✓ Znaleziono domyślnego akceptującego:', appropriateApproverId);
+          } else {
+            console.warn('⚠️ Nie znaleziono akceptującego dla działu');
+          }
+        } catch (err) {
+          console.error('⚠️ Błąd przy wywołaniu get_next_approver_in_department:', err);
         }
-      } catch (err) {
-        console.error('⚠️ Błąd przy wywołaniu get_next_approver_in_department:', err);
       }
 
       // Step 8: Create invoice record with file URL and base64
