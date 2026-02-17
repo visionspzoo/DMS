@@ -452,6 +452,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (approvalError) throw approvalError;
 
       let newStatus = action === 'approved' ? 'accepted' : 'rejected';
+      let nextApproverId = null;
 
       if (action === 'approved' && currentInvoice.department_id) {
         const { data: nextApprover, error: approverError } = await supabase
@@ -466,14 +467,21 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
         if (nextApprover) {
           newStatus = 'waiting';
+          nextApproverId = nextApprover;
         } else {
           newStatus = 'accepted';
+          nextApproverId = null;
         }
+      }
+
+      const updateData: any = { status: newStatus };
+      if (action === 'approved') {
+        updateData.current_approver_id = nextApproverId;
       }
 
       const { data, error: updateError } = await supabase
         .from('invoices')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', currentInvoice.id)
         .select()
         .single();
@@ -975,6 +983,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           .from('invoices')
           .update({
             status: 'waiting',
+            current_approver_id: nextApprover,
           })
           .eq('id', currentInvoice.id);
 
@@ -1050,6 +1059,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           .from('invoices')
           .update({
             status: 'waiting',
+            current_approver_id: nextApprover,
           })
           .eq('id', currentInvoice.id);
 
@@ -1578,14 +1588,19 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
 
       let newStatus = 'accepted';
+      let nextApproverId = null;
       if (nextApprover) {
         newStatus = 'waiting';
+        nextApproverId = nextApprover;
       }
 
       // Zaktualizuj fakturę
       const { data, error: updateError } = await supabase
         .from('invoices')
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          current_approver_id: nextApproverId
+        })
         .eq('id', currentInvoice.id)
         .select()
         .single();
