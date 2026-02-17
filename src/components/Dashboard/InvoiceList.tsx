@@ -104,29 +104,8 @@ export function InvoiceList({
   }
 
   const checkDuplicate = (currentInvoice: Invoice): boolean => {
-    if (!currentInvoice.invoice_number) return false;
-
-    const duplicates = invoices.filter((inv) => {
-      if (inv.id === currentInvoice.id) return false;
-      if (!inv.invoice_number) return false;
-      if (inv.invoice_number !== currentInvoice.invoice_number) return false;
-
-      if (currentInvoice.supplier_nip && inv.supplier_nip) {
-        const cleanCurrentNip = currentInvoice.supplier_nip.replace(/[^0-9]/g, '');
-        const cleanInvNip = inv.supplier_nip.replace(/[^0-9]/g, '');
-        return cleanCurrentNip === cleanInvNip;
-      }
-
-      if (currentInvoice.supplier_name && inv.supplier_name) {
-        const cleanCurrentName = currentInvoice.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
-        const cleanInvName = inv.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim().toLowerCase();
-        return cleanCurrentName === cleanInvName;
-      }
-
-      return false;
-    });
-
-    return duplicates.length > 0;
+    // Używamy flagi is_duplicate z bazy danych
+    return (currentInvoice as any).is_duplicate === true;
   };
 
   return (

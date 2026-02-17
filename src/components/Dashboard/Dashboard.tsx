@@ -18,7 +18,7 @@ export function Dashboard() {
       try {
         let query = supabase
           .from('invoices')
-          .select('*')
+          .select('*, is_duplicate, duplicate_invoice_ids')
           .order('created_at', { ascending: false });
 
         if (profile.department_id) {

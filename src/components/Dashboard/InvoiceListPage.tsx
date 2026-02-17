@@ -362,7 +362,9 @@ export function InvoiceList() {
           *,
           uploader:profiles!uploaded_by(full_name, role),
           current_approver:profiles!current_approver_id(full_name, role),
-          department:departments!department_id(id, name, parent_department_id)
+          department:departments!department_id(id, name, parent_department_id),
+          is_duplicate,
+          duplicate_invoice_ids
         `)
         .order('created_at', { ascending: false });
 
