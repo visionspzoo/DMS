@@ -230,7 +230,7 @@ export function InvoiceList({
                   <div className="flex items-center gap-0.5">
                     <User className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {(invoice as any).current_approver?.full_name || invoice.uploader?.full_name || '—'}
+                      {invoice.uploader?.full_name || '—'}
                     </span>
                   </div>
                 </div>
