@@ -473,7 +473,19 @@ Deno.serve(async (req: Request) => {
 
           if (insertError) {
             console.error(`❌ Failed to insert invoice ${file.name}:`, insertError);
-            errors.push(`Nie udało się zapisać faktury ${file.name}: ${insertError.message}`);
+
+            // Check if it's a duplicate file hash error
+            if (insertError.message && insertError.message.includes('idx_invoices_file_hash_per_user')) {
+              errors.push(`Pominięto ${file.name} - ten plik został już wcześniej dodany`);
+            }
+            // Check if it's a foreign key constraint error (notifications)
+            else if (insertError.message && insertError.message.includes('notifications_invoice_id_fkey')) {
+              errors.push(`Błąd zapisu ${file.name} - problem z notyfikacjami. Spróbuj ponownie.`);
+            }
+            // Generic error
+            else {
+              errors.push(`Nie udało się zapisać faktury ${file.name}: ${insertError.message}`);
+            }
             continue;
           }
 

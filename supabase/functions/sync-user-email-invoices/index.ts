@@ -401,6 +401,19 @@ async function syncEmailAccount(
 
           if (insertError) {
             console.error("Insert error:", insertError);
+
+            // Check if it's a duplicate file hash error
+            if (insertError.message && insertError.message.includes('idx_invoices_file_hash_per_user')) {
+              warnings.push(`Pominięto załącznik z emaila - plik został już wcześniej dodany`);
+            }
+            // Check if it's a foreign key constraint error (notifications)
+            else if (insertError.message && insertError.message.includes('notifications_invoice_id_fkey')) {
+              warnings.push(`Błąd zapisu załącznika z emaila - problem z notyfikacjami`);
+            }
+            // Generic error
+            else {
+              warnings.push(`Nie udało się zapisać załącznika z emaila: ${insertError.message}`);
+            }
             continue;
           }
 
