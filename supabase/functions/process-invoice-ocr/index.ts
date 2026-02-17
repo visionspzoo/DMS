@@ -561,9 +561,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // Only update fields if OCR found a value OR the field is currently empty
-    const updateData: any = {
-      status: "draft",
-    };
+    // IMPORTANT: Preserve existing status unless the invoice is new or currently null
+    const updateData: any = {};
+
+    // Only set status to draft if it's currently null or empty
+    // This prevents overwriting the status when reprocessing an existing invoice
+    if (!existingInvoice?.status || existingInvoice.status === '') {
+      updateData.status = "draft";
+    }
 
     // Update invoice_number only if OCR found it OR it's currently empty
     if (parsedData.invoice_number) {
