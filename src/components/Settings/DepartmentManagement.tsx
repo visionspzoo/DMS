@@ -771,11 +771,23 @@ export default function DepartmentManagement() {
                   className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
-                  {users.filter(u => u.role === 'Kierownik').map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name}
-                    </option>
-                  ))}
+                  {(() => {
+                    const managers = users.filter(u => u.role === 'Kierownik');
+                    const currentManager = editingDept.manager_id
+                      ? users.find(u => u.id === editingDept.manager_id)
+                      : null;
+
+                    const allOptions = [...managers];
+                    if (currentManager && !managers.find(m => m.id === currentManager.id)) {
+                      allOptions.unshift(currentManager);
+                    }
+
+                    return allOptions.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name} {user.role !== 'Kierownik' ? `(${user.role})` : ''}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
 
@@ -789,11 +801,23 @@ export default function DepartmentManagement() {
                   className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
-                  {users.filter(u => u.role === 'Dyrektor').map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name}
-                    </option>
-                  ))}
+                  {(() => {
+                    const directors = users.filter(u => u.role === 'Dyrektor');
+                    const currentDirector = editingDept.director_id
+                      ? users.find(u => u.id === editingDept.director_id)
+                      : null;
+
+                    const allOptions = [...directors];
+                    if (currentDirector && !directors.find(d => d.id === currentDirector.id)) {
+                      allOptions.unshift(currentDirector);
+                    }
+
+                    return allOptions.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name} {user.role !== 'Dyrektor' ? `(${user.role})` : ''}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
 
