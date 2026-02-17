@@ -33,6 +33,7 @@ interface FolderMapping {
   google_drive_folder_url: string;
   google_drive_folder_id: string | null;
   department_id: string;
+  default_assignee_id: string | null;
   is_active: boolean;
   last_sync_at: string | null;
   created_at: string;
@@ -40,11 +41,21 @@ interface FolderMapping {
   department?: {
     name: string;
   };
+  default_assignee?: {
+    full_name: string;
+    role: string;
+  };
 }
 
 interface Department {
   id: string;
   name: string;
+}
+
+interface DepartmentUser {
+  id: string;
+  full_name: string;
+  role: string;
 }
 
 export default function GmailWorkspaceConfig() {
@@ -68,12 +79,14 @@ export default function GmailWorkspaceConfig() {
 
   const [folderMappings, setFolderMappings] = useState<FolderMapping[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [showAddMappingForm, setShowAddMappingForm] = useState(false);
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [mappingFormData, setMappingFormData] = useState({
     folder_name: '',
     google_drive_folder_url: '',
     department_id: '',
+    default_assignee_id: '',
     is_active: true,
   });
 
@@ -188,7 +201,8 @@ export default function GmailWorkspaceConfig() {
         .from('user_drive_folder_mappings')
         .select(`
           *,
-          department:departments(name)
+          department:departments(name),
+          default_assignee:profiles!user_drive_folder_mappings_default_assignee_id_fkey(full_name, role)
         `)
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
@@ -209,6 +223,35 @@ export default function GmailWorkspaceConfig() {
       console.error('Error loading departments:', error);
     }
   };
+
+  const loadDepartmentUsers = async (departmentId: string) => {
+    if (!departmentId) {
+      setDepartmentUsers([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .eq('department_id', departmentId)
+        .order('full_name');
+
+      if (error) throw error;
+      setDepartmentUsers(data || []);
+    } catch (error) {
+      console.error('Error loading department users:', error);
+      setDepartmentUsers([]);
+    }
+  };
+
+  useEffect(() => {
+    if (mappingFormData.department_id) {
+      loadDepartmentUsers(mappingFormData.department_id);
+    } else {
+      setDepartmentUsers([]);
+    }
+  }, [mappingFormData.department_id]);
 
   const handleCheckOAuthStatus = async () => {
     setCheckingStatus(true);
@@ -599,8 +642,10 @@ export default function GmailWorkspaceConfig() {
       folder_name: '',
       google_drive_folder_url: '',
       department_id: '',
+      default_assignee_id: '',
       is_active: true,
     });
+    setDepartmentUsers([]);
     setShowAddMappingForm(false);
     setEditingMappingId(null);
   };
@@ -646,6 +691,7 @@ export default function GmailWorkspaceConfig() {
             folder_name: mappingFormData.folder_name,
             google_drive_folder_url: mappingFormData.google_drive_folder_url,
             department_id: mappingFormData.department_id,
+            default_assignee_id: mappingFormData.default_assignee_id || null,
             is_active: mappingFormData.is_active,
           })
           .eq('id', editingMappingId);
@@ -660,6 +706,7 @@ export default function GmailWorkspaceConfig() {
             folder_name: mappingFormData.folder_name,
             google_drive_folder_url: mappingFormData.google_drive_folder_url,
             department_id: mappingFormData.department_id,
+            default_assignee_id: mappingFormData.default_assignee_id || null,
             is_active: mappingFormData.is_active,
           });
 
@@ -677,16 +724,22 @@ export default function GmailWorkspaceConfig() {
     }
   };
 
-  const handleEditMapping = (mapping: FolderMapping) => {
+  const handleEditMapping = async (mapping: FolderMapping) => {
     setMappingFormData({
       folder_name: mapping.folder_name,
       google_drive_folder_url: mapping.google_drive_folder_url,
       department_id: mapping.department_id,
+      default_assignee_id: mapping.default_assignee_id || '',
       is_active: mapping.is_active,
     });
     setEditingMappingId(mapping.id);
     setShowAddMappingForm(true);
     setDriveMessage(null);
+
+    // Załaduj użytkowników działu dla edycji
+    if (mapping.department_id) {
+      await loadDepartmentUsers(mapping.department_id);
+    }
   };
 
   const handleDeleteMapping = async (id: string) => {
@@ -1040,7 +1093,7 @@ export default function GmailWorkspaceConfig() {
                 </label>
                 <select
                   value={mappingFormData.department_id}
-                  onChange={(e) => setMappingFormData({ ...mappingFormData, department_id: e.target.value })}
+                  onChange={(e) => setMappingFormData({ ...mappingFormData, department_id: e.target.value, default_assignee_id: '' })}
                   className="w-full px-3 py-2 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="">Wybierz dzial</option>
@@ -1055,6 +1108,28 @@ export default function GmailWorkspaceConfig() {
                     Brak dostepnych dzialow. Skontaktuj sie z administratorem.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+                  Domyslny wlasciciel faktury (opcjonalnie)
+                </label>
+                <select
+                  value={mappingFormData.default_assignee_id}
+                  onChange={(e) => setMappingFormData({ ...mappingFormData, default_assignee_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  disabled={!mappingFormData.department_id}
+                >
+                  <option value="">Automatycznie (Kierownik → Dyrektor)</option>
+                  {departmentUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name} ({user.role})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  Wybierz uzytkownika, do ktorego faktury z tego folderu beda przypisane. Jesli nie wybierzesz, faktury beda przypisane do kierownika lub dyrektora dzialu.
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1138,6 +1213,13 @@ export default function GmailWorkspaceConfig() {
                       </div>
                       <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
                         Dzial: <span className="font-medium">{mapping.department?.name || 'Brak'}</span>
+                      </p>
+                      <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                        Wlasciciel: <span className="font-medium">
+                          {mapping.default_assignee
+                            ? `${mapping.default_assignee.full_name} (${mapping.default_assignee.role})`
+                            : 'Automatycznie (Kierownik → Dyrektor)'}
+                        </span>
                       </p>
                       <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5 truncate">
                         Folder ID: {mapping.google_drive_folder_id || 'Nie wyodrebniono'}

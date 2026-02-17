@@ -31,6 +31,7 @@ interface FolderMapping {
   folder_name: string;
   google_drive_folder_id: string;
   department_id: string;
+  default_assignee_id: string | null;
   is_active: boolean;
   last_sync_at: string | null;
 }
@@ -194,10 +195,10 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     console.log("User authenticated:", userId);
 
-    // Load folder mappings (new system with department assignments)
+    // Load folder mappings (new system with department assignments and default assignees)
     const { data: folderMappings, error: mappingError } = await supabase
       .from("user_drive_folder_mappings")
-      .select("*")
+      .select("*, departments(manager_id, director_id)")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -292,10 +293,34 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        // Get department ID from mapping or fallback to user's default department
+        // Get department ID and default assignee from mapping or fallback to user's default department
         const mappedDepartmentId = isUsingMappings
           ? (folderConfig as FolderMapping).department_id
           : profile?.department_id;
+
+        // Determine uploaded_by: default_assignee_id > manager_id > director_id > userId
+        let uploadedBy = userId; // Default to current user
+
+        if (isUsingMappings) {
+          const mapping = folderConfig as FolderMapping;
+
+          if (mapping.default_assignee_id) {
+            // Priorytet 1: użytkownik wybrany w mapowaniu
+            uploadedBy = mapping.default_assignee_id;
+            console.log(`Using default assignee from mapping: ${uploadedBy}`);
+          } else if (mapping.departments) {
+            // Priorytet 2: kierownik działu
+            const dept = Array.isArray(mapping.departments) ? mapping.departments[0] : mapping.departments;
+            if (dept?.manager_id) {
+              uploadedBy = dept.manager_id;
+              console.log(`Using department manager: ${uploadedBy}`);
+            } else if (dept?.director_id) {
+              // Priorytet 3: dyrektor działu
+              uploadedBy = dept.director_id;
+              console.log(`Using department director: ${uploadedBy}`);
+            }
+          }
+        }
 
         const filesUrl =
           `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType='application/pdf'+and+trashed=false&fields=files(id,name,modifiedTime)&pageSize=50`;
@@ -401,7 +426,8 @@ Deno.serve(async (req: Request) => {
           console.log(`💾 Inserting invoice to database...`);
           console.log(`   - Invoice number: ${file.name.replace(".pdf", "")}`);
           console.log(`   - Department ID: ${mappedDepartmentId || 'null'}`);
-          console.log(`   - User ID: ${userId}`);
+          console.log(`   - Uploaded by (owner): ${uploadedBy}`);
+          console.log(`   - Synced by user: ${userId}`);
           console.log(`   - File hash: ${fileHash}`);
 
           const { data: invoiceData, error: insertError } = await supabase
@@ -410,7 +436,7 @@ Deno.serve(async (req: Request) => {
               invoice_number: file.name.replace(".pdf", ""),
               supplier_name: null,
               gross_amount: null,
-              uploaded_by: userId,
+              uploaded_by: uploadedBy,
               department_id: mappedDepartmentId || null,
               status: "draft",
               pdf_base64: base64,
