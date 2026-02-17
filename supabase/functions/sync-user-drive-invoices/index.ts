@@ -178,22 +178,27 @@ Deno.serve(async (req: Request) => {
       userId = body.user_id;
       console.log("Cron mode - syncing for user:", userId);
     } else {
-      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      // Use service role to verify the JWT token
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
 
       if (userError || !user) {
+        console.error("JWT verification failed:", userError?.message);
         return new Response(
-          JSON.stringify({ error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika") }),
+          JSON.stringify({
+            code: 401,
+            message: "Invalid JWT",
+            error: "Nieautoryzowany: " + (userError?.message || "brak uzytkownika")
+          }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       userId = user.id;
+      console.log("User authenticated via JWT:", userId);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("User authenticated:", userId);
+    console.log("Using service role for data operations");
 
     // Load folder mappings (new system with department assignments and default assignees)
     const { data: folderMappings, error: mappingError } = await supabase
