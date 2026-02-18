@@ -17,6 +17,7 @@ interface ApiToken {
 }
 
 const BASE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/invoices-export-api';
+const PAID_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/mark-invoice-paid';
 
 export default function APISettings() {
   const { profile } = useAuth();
@@ -521,6 +522,125 @@ export default function APISettings() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+            <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                Endpoint oznaczania faktury jako oplacona
+              </h2>
+            </div>
+            <div className="p-4 space-y-5">
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  URL
+                </p>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="flex-1 text-xs font-mono text-text-primary-light dark:text-text-primary-dark break-all">
+                    POST {PAID_URL}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(PAID_URL, 'paid-url')}
+                    className="p-1 text-text-secondary-light dark:text-text-secondary-dark hover:text-brand-primary flex-shrink-0"
+                  >
+                    {copied === 'paid-url' ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  Autoryzacja
+                </p>
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="text-xs font-mono text-text-primary-light dark:text-text-primary-dark">
+                    Authorization: Bearer aurs_...
+                  </code>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  Body (JSON)
+                </p>
+                <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-light-surface-variant dark:bg-dark-surface-variant">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Pole</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Wymagane</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                      {[
+                        { field: 'invoice_number', required: 'tak*', desc: 'Numer faktury (wymagane jesli brak invoice_id)' },
+                        { field: 'invoice_id', required: 'tak*', desc: 'UUID faktury (wymagane jesli brak invoice_number)' },
+                        { field: 'paid_at', required: 'nie', desc: 'Data i czas oplacenia (ISO 8601). Domyslnie: czas wywolania' },
+                      ].map(row => (
+                        <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-2">
+                            <code className="text-xs font-mono text-brand-primary">{row.field}</code>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.required}</td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
+                  * Wymagane jest podanie co najmniej jednego: <code className="font-mono">invoice_number</code> lub <code className="font-mono">invoice_id</code>
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  Przyklad zapytania
+                </p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <button
+                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z"}' \\\n  "${PAID_URL}"`, 'paid-curl')}
+                    className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
+                  >
+                    {copied === 'paid-curl' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all">
+{`curl -X POST \\
+  -H "Authorization: Bearer aurs_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z"}' \\
+  "${PAID_URL}"`}
+                  </pre>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  Przykladowa odpowiedz
+                </p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <pre className="text-xs font-mono text-slate-300 overflow-x-auto">
+{`{
+  "success": true,
+  "data": {
+    "invoice_id": "uuid-faktury",
+    "invoice_number": "FV/2024/001",
+    "status": "paid",
+    "paid_at": "2024-02-01T10:00:00.000Z"
+  }
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Endpoint zmienia status tylko faktur z aktualnym statusem <code className="font-mono font-semibold">accepted</code>. Faktury w innym statusie zwroca blad 404.
+                </p>
               </div>
             </div>
           </div>
