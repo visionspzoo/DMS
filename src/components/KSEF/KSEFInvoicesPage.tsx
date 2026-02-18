@@ -830,288 +830,33 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      console.log('📄 Pobieranie PDF base64 z faktury KSEF...');
-      const { data: ksefData, error: ksefFetchError } = await supabase
-        .from('ksef_invoices')
-        .select('pdf_base64')
-        .eq('id', selectedInvoice.id)
-        .maybeSingle();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak aktywnej sesji');
 
-      if (ksefFetchError) {
-        console.error('❌ Błąd pobierania faktury KSEF:', ksefFetchError);
-        throw ksefFetchError;
-      }
-
-      const base64Pdf = ksefData?.pdf_base64;
-      if (!base64Pdf) {
-        console.error('❌ Brak PDF base64 w fakturze');
-        throw new Error('Brak danych PDF (base64) dla tej faktury. Pobierz faktury ponownie.');
-      }
-      console.log('✓ Pobrano PDF base64 (długość:', base64Pdf.length, 'znaków)');
-
-      console.log('📂 Pobieranie informacji o dziale...');
-      const { data: department, error: folderError } = await supabase
-        .from('departments')
-        .select('name, google_drive_draft_folder_id')
-        .eq('id', departmentId)
-        .maybeSingle();
-
-      if (folderError) {
-        console.error('❌ Błąd pobierania działu:', folderError);
-        throw folderError;
-      }
-      if (!department) {
-        console.error('❌ Nie znaleziono działu');
-        throw new Error('Nie znaleziono działu');
-      }
-      console.log('✓ Znaleziono dział:', department.name);
-      console.log('Google Drive folder ID:', department.google_drive_draft_folder_id || 'BRAK');
-
-      // Step 5: Upload PDF to Google Drive (optional, if configured)
-      let driveFileUrl = null;
-      let googleDriveId = null;
-
-      if (department.google_drive_draft_folder_id) {
-        try {
-          console.log('📤 Rozpoczynam upload PDF do Google Drive...');
-          console.log('Folder ID:', department.google_drive_draft_folder_id);
-          console.log('File name:', `${selectedInvoice.invoice_number}.pdf`);
-          console.log('Base64 length:', base64Pdf.length);
-
-          if (!user) {
-            throw new Error('Brak zalogowanego użytkownika');
-          }
-
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('No active session');
-          }
-
-          const uploadResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                fileName: `${selectedInvoice.invoice_number}.pdf`,
-                fileBase64: base64Pdf,
-                folderId: department.google_drive_draft_folder_id,
-                mimeType: 'application/pdf',
-                userId: user.id,
-              }),
-            }
-          );
-
-          console.log('📊 Upload response status:', uploadResponse.status);
-
-          if (uploadResponse.ok) {
-            const uploadResult = await uploadResponse.json();
-            googleDriveId = uploadResult.fileId;
-            driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
-            console.log('✓ PDF przesłany na Google Drive:', driveFileUrl);
-          } else {
-            const errorText = await uploadResponse.text();
-            console.warn('⚠️ Nie udało się przesłać PDF na Google Drive:', errorText);
-            console.warn('Faktura zostanie utworzona bez pliku na Google Drive');
-          }
-        } catch (uploadError) {
-          console.error('❌ Google Drive upload failed:', uploadError);
-          console.warn('Faktura zostanie utworzona bez pliku na Google Drive');
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ksefInvoiceId: selectedInvoice.id,
+            departmentId,
+            userId: userId || undefined,
+          }),
         }
-      } else {
-        console.warn('⚠️ Brak skonfigurowanego folderu Google Drive dla tego działu');
-      }
+      );
 
-      // Step 6: Get exchange rate if needed
-      console.log('💱 Sprawdzanie kursu wymiany...');
-      let exchangeRate = 1;
-      let plnGrossAmount = selectedInvoice.gross_amount;
+      const result = await response.json();
 
-      if (selectedInvoice.currency !== 'PLN' && selectedInvoice.issue_date) {
-        try {
-          console.log(`Pobieranie kursu ${selectedInvoice.currency} na dzień ${selectedInvoice.issue_date}`);
-          const rateResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-exchange-rate`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                currency: selectedInvoice.currency,
-                date: selectedInvoice.issue_date,
-              }),
-            }
-          );
-
-          if (rateResponse.ok) {
-            const rateData = await rateResponse.json();
-            exchangeRate = rateData.rate;
-            plnGrossAmount = selectedInvoice.gross_amount * exchangeRate;
-            console.log('✓ Kurs wymiany:', exchangeRate, 'PLN =', plnGrossAmount);
-          } else {
-            console.warn('⚠️ Nie udało się pobrać kursu wymiany, używam 1:1');
-          }
-        } catch (rateError) {
-          console.error('❌ Błąd pobierania kursu wymiany:', rateError);
-        }
-      } else {
-        console.log('✓ Waluta PLN, pomijam pobieranie kursu');
-      }
-
-      // Step 7: Determine the appropriate approver
-      // Use the user-selected approver if provided, otherwise find default
-      console.log('👤 Określanie właściciela faktury...');
-      let appropriateApproverId = userId || null;
-
-      if (appropriateApproverId) {
-        console.log('✓ Użytkownik wybrał właściciela:', appropriateApproverId);
-      } else {
-        console.log('Szukanie domyślnego właściciela dla działu...');
-        try {
-          // Call the SQL function to get the next approver
-          // Pass null as user_role to start workflow from the beginning (Kierownik)
-          const { data: approverData, error: approverError } = await supabase
-            .rpc('get_next_approver_in_department', {
-              dept_id: departmentId,
-              user_role: null
-            });
-
-          if (approverError) {
-            console.error('⚠️ Błąd przy wyszukiwaniu akceptującego:', approverError);
-          } else if (approverData) {
-            appropriateApproverId = approverData;
-            console.log('✓ Znaleziono domyślnego akceptującego:', appropriateApproverId);
-          } else {
-            console.warn('⚠️ Nie znaleziono akceptującego dla działu');
-          }
-        } catch (err) {
-          console.error('⚠️ Błąd przy wywołaniu get_next_approver_in_department:', err);
-        }
-      }
-
-      // Step 8: Create invoice record with file URL and base64
-      console.log('💾 Tworzenie faktury w systemie...');
-      const taxAmount = selectedInvoice.tax_amount != null ? selectedInvoice.tax_amount : (selectedInvoice.gross_amount - selectedInvoice.net_amount);
-
-      const invoiceData: any = {
-        invoice_number: selectedInvoice.invoice_number,
-        supplier_name: selectedInvoice.supplier_name || 'Brak nazwy',
-        supplier_nip: selectedInvoice.supplier_nip,
-        buyer_name: selectedInvoice.buyer_name || null,
-        buyer_nip: selectedInvoice.buyer_nip || null,
-        gross_amount: selectedInvoice.gross_amount,
-        net_amount: selectedInvoice.net_amount,
-        tax_amount: taxAmount,
-        currency: selectedInvoice.currency,
-        issue_date: selectedInvoice.issue_date,
-        status: 'draft',
-        uploaded_by: profile?.id,
-        department_id: departmentId,
-        file_url: driveFileUrl,
-        google_drive_id: googleDriveId,
-        pdf_base64: base64Pdf,
-        description: `Faktura z KSEF - dodana jako wersja robocza`,
-        pln_gross_amount: plnGrossAmount,
-        exchange_rate: exchangeRate,
-        source: 'ksef',
-        current_approver_id: appropriateApproverId,
-      };
-
-      console.log('✓ Ustawiono akceptującego:', appropriateApproverId || 'BRAK');
-
-      console.log('📝 Dane faktury do zapisu:', {
-        invoice_number: invoiceData.invoice_number,
-        department_id: invoiceData.department_id,
-        status: invoiceData.status,
-        has_file_url: !!invoiceData.file_url,
-        has_google_drive_id: !!invoiceData.google_drive_id,
-        has_pdf_base64: !!invoiceData.pdf_base64,
-        pdf_base64_length: invoiceData.pdf_base64?.length || 0
-      });
-
-      const { data: newInvoice, error: insertError } = await supabase
-        .from('invoices')
-        .insert(invoiceData)
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error('❌ Błąd tworzenia faktury:', insertError);
-        throw insertError;
-      }
-      console.log('✓ Faktura utworzona pomyślnie, ID:', newInvoice.id);
-
-      // Step 9: Update KSEF invoice to link it with the created invoice
-      console.log('🔗 Aktualizacja linku w KSEF invoice...');
-      const { error: updateError } = await supabase
-        .from('ksef_invoices')
-        .update({
-          transferred_to_invoice_id: newInvoice.id,
-          transferred_to_department_id: departmentId,
-          transferred_at: new Date().toISOString(),
-          assigned_to_department_at: new Date().toISOString(),
-        })
-        .eq('id', selectedInvoice.id);
-
-      if (updateError) {
-        console.error('❌ Błąd aktualizacji KSEF invoice:', updateError);
-        throw updateError;
-      }
-      console.log('✓ KSEF invoice zaktualizowany pomyślnie');
-
-      // Step 10: Run OCR on the transferred invoice (only if uploaded to Google Drive)
-      if (driveFileUrl) {
-        try {
-          console.log('🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===');
-          console.log('Invoice ID:', newInvoice.id);
-          console.log('File URL:', driveFileUrl);
-
-          const ocrResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                fileUrl: driveFileUrl,
-                invoiceId: newInvoice.id,
-              }),
-            }
-          );
-
-          if (ocrResponse.ok) {
-            const ocrData = await ocrResponse.json();
-            console.log('✓ OCR zakończone pomyślnie:', ocrData);
-          } else {
-            const ocrError = await ocrResponse.text();
-            console.error('❌ OCR nie powiodło się:', ocrError);
-          }
-        } catch (ocrError) {
-          console.error('❌ Błąd OCR (non-blocking):', ocrError);
-        }
-      } else {
-        console.log('ℹ️ Pomijam OCR - brak pliku na Google Drive');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Nie udało się przenieść faktury');
       }
 
       console.log('✅ === TRANSFER FAKTURY ZAKOŃCZONY POMYŚLNIE ===');
-
-      let successMsg: string;
-      if (driveFileUrl) {
-        successMsg = 'Faktura została dodana do Moich Faktur z PDF na Google Drive i przetworzona przez OCR';
-      } else if (!department.google_drive_draft_folder_id) {
-        successMsg = 'Faktura została dodana do Moich Faktur z PDF. Uwaga: Dział nie ma skonfigurowanego folderu Google Drive dla roboczych faktur.';
-      } else {
-        successMsg = 'Faktura została dodana do Moich Faktur z PDF. Uwaga: Nie udało się przesłać na Google Drive - sprawdź czy masz połączone konto Google w Konfiguracji.';
-      }
-
-      setSuccessMessage(successMsg);
+      setSuccessMessage('Faktura została dodana do obszaru roboczego');
       await loadInvoices();
     } catch (err: any) {
       console.error('❌ === BŁĄD PODCZAS TRANSFERU FAKTURY ===');
