@@ -179,8 +179,23 @@ export function KSEFInvoicesPage() {
     if (!profile) return;
 
     try {
-      const accessibleDepts = await getAccessibleDepartments(profile);
-      setDepartments(accessibleDepts);
+      const canSeeAllDepts =
+        profile.is_admin ||
+        profile.role === 'CEO' ||
+        profile.role === 'Dyrektor' ||
+        profile.role === 'Kierownik';
+
+      if (canSeeAllDepts) {
+        const { data, error } = await supabase
+          .from('departments')
+          .select('id, name')
+          .order('name');
+        if (error) throw error;
+        setDepartments(data || []);
+      } else {
+        const accessibleDepts = await getAccessibleDepartments(profile);
+        setDepartments(accessibleDepts);
+      }
     } catch (error) {
       console.error('Error loading departments:', error);
     }
