@@ -814,6 +814,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               },
               body: JSON.stringify({
                 fileId: currentInvoice.user_drive_file_id,
+                ownerUserId: currentInvoice.drive_owner_user_id ?? undefined,
               }),
             }
           );

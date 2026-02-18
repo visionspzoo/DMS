@@ -9,6 +9,7 @@ const corsHeaders = {
 
 interface DeleteRequest {
   fileId: string;
+  ownerUserId?: string;
 }
 
 interface EmailConfig {
@@ -144,7 +145,7 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Authenticated user: ${user.id}`);
 
-    const { fileId }: DeleteRequest = await req.json();
+    const { fileId, ownerUserId }: DeleteRequest = await req.json();
 
     if (!fileId) {
       throw new Error("fileId is required");
@@ -152,15 +153,43 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Request to delete file: ${fileId}`);
 
-    // Get user's Google OAuth config
+    // Use ownerUserId (Drive file owner) if provided, otherwise fall back to the calling user
+    const lookupUserId = ownerUserId || user.id;
+    console.log(`Looking up Google OAuth for user: ${lookupUserId}${ownerUserId ? ' (drive owner override)' : ''}`);
+
+    // Get Google OAuth config for the file owner
     const { data: emailConfigs, error: configError } = await supabase
       .from("user_email_configs")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", lookupUserId)
       .eq("is_active", true)
       .eq("provider", "google_workspace");
 
     if (configError || !emailConfigs || emailConfigs.length === 0) {
+      // If the owner user has no OAuth, fall back to the calling user's credentials
+      if (ownerUserId && ownerUserId !== user.id) {
+        console.log(`No OAuth for owner user ${ownerUserId}, trying calling user ${user.id}`);
+        const { data: fallbackConfigs, error: fallbackError } = await supabase
+          .from("user_email_configs")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .eq("provider", "google_workspace");
+
+        if (fallbackError || !fallbackConfigs || fallbackConfigs.length === 0) {
+          throw new Error("No active Google account connected. Please connect your Google account in Configuration.");
+        }
+
+        const fallbackOauthConfig = fallbackConfigs[0] as EmailConfig;
+        const fallbackAccessToken = await getValidAccessToken(supabase, fallbackOauthConfig);
+        await deleteFileFromGoogleDrive(fileId, fallbackAccessToken);
+
+        console.log("=== DELETE FROM GOOGLE DRIVE COMPLETED (fallback credentials) ===");
+        return new Response(
+          JSON.stringify({ success: true, message: "File deleted from Google Drive", fileId }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       throw new Error("No active Google account connected. Please connect your Google account in Configuration.");
     }
 

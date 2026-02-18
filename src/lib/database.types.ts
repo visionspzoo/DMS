@@ -78,6 +78,7 @@ export interface Database {
           pdf_base64: string | null;
           google_drive_id: string | null;
           user_drive_file_id: string | null;
+          drive_owner_user_id: string | null;
           ocr_data: Json | null;
           status: InvoiceStatus;
           uploaded_by: string;
@@ -118,6 +119,7 @@ export interface Database {
           pdf_base64?: string | null;
           google_drive_id?: string | null;
           user_drive_file_id?: string | null;
+          drive_owner_user_id?: string | null;
           ocr_data?: Json | null;
           status?: InvoiceStatus;
           uploaded_by: string;
@@ -154,6 +156,7 @@ export interface Database {
           pdf_base64?: string | null;
           google_drive_id?: string | null;
           user_drive_file_id?: string | null;
+          drive_owner_user_id?: string | null;
           ocr_data?: Json | null;
           status?: InvoiceStatus;
           uploaded_by?: string;
