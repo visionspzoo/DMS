@@ -536,13 +536,6 @@ Deno.serve(async (req: Request) => {
 
     console.log("Updating invoice with:", JSON.stringify(updateData));
 
-    if (existingInvoice?.status === 'draft') {
-      updateData.status = 'waiting';
-    } else if (existingInvoice?.status === 'waiting') {
-      updateData.status = 'draft';
-      updateData.current_approver_id = null;
-    }
-
     if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase
         .from("invoices")
