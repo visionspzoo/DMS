@@ -177,7 +177,7 @@ function InfoBox({ type, children }: InfoBoxProps) {
 
 function WorkflowSection() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 pt-3">
       <div>
         <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Statusy faktur</h3>
         <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-4">
@@ -368,7 +368,7 @@ function WorkflowSection() {
 
 function KSEFSection() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 pt-3">
       <div>
         <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Czym są faktury KSEF?</h3>
         <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
@@ -469,7 +469,7 @@ function KSEFSection() {
 
 function AutomationSection() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 pt-3">
       <div>
         <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Czym są automatyzacje?</h3>
         <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
@@ -572,7 +572,7 @@ function AutomationSection() {
 
 function IntegrationsSection() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 pt-3">
       <div>
         <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-4">Google Drive — synchronizacja plików</h3>
 
@@ -680,23 +680,19 @@ export function InstructionsPage() {
   };
 
   return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg overflow-auto">
-      <div className="max-w-4xl mx-auto p-6">
+    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-primary p-2 rounded-xl">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">Instrukcje</h1>
-              <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Przewodnik użytkownika systemu Aura DMS</p>
-            </div>
-          </div>
+        <div className="mb-4">
+          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            Instrukcje
+          </h1>
+          <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
+            Przewodnik użytkownika systemu Aura DMS
+          </p>
         </div>
 
         {/* Quick Nav */}
-        <div className="grid grid-cols-2 gap-3 mb-8 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-4">
           {sections.map(section => {
             const Icon = section.icon;
             const isActive = activeSection === section.id;
@@ -712,13 +708,13 @@ export function InstructionsPage() {
                     document.getElementById(`section-${section.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }, 50);
                 }}
-                className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all text-center ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left ${
                   isActive
                     ? `${section.bgColor} ${section.borderColor}`
                     : 'bg-light-surface dark:bg-dark-surface border-slate-200 dark:border-slate-700/50 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
                 }`}
               >
-                <Icon className={`w-5 h-5 ${isActive ? section.color : 'text-text-secondary-light dark:text-text-secondary-dark'}`} />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? section.color : 'text-text-secondary-light dark:text-text-secondary-dark'}`} />
                 <span className={`text-xs font-medium leading-tight ${isActive ? section.color : 'text-text-secondary-light dark:text-text-secondary-dark'}`}>
                   {section.title}
                 </span>
@@ -728,7 +724,7 @@ export function InstructionsPage() {
         </div>
 
         {/* Accordion Sections */}
-        <div className="space-y-4">
+        <div className="space-y-2">
           {sections.map(section => {
             const Icon = section.icon;
             const isExpanded = expandedCards.has(section.id);
@@ -736,18 +732,18 @@ export function InstructionsPage() {
               <div
                 key={section.id}
                 id={`section-${section.id}`}
-                className="bg-light-surface dark:bg-dark-surface rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm"
+                className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden"
               >
                 <button
                   onClick={() => toggleCard(section.id)}
-                  className={`w-full flex items-center justify-between p-5 transition-colors hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant`}
+                  className={`w-full flex items-center justify-between p-4 transition-colors hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-xl ${section.bgColor} ${section.borderColor} border`}>
-                      <Icon className={`w-5 h-5 ${section.color}`} />
+                    <div className={`p-1.5 rounded-lg ${section.bgColor} ${section.borderColor} border`}>
+                      <Icon className={`w-4 h-4 ${section.color}`} />
                     </div>
                     <div className="text-left">
-                      <h2 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark">{section.title}</h2>
+                      <h2 className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark">{section.title}</h2>
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
                         {section.id === 'workflow' && 'Statusy, przyciski, przepływ faktur przez system'}
                         {section.id === 'ksef' && 'Pobieranie, synchronizacja i przekazywanie faktur KSEF'}
@@ -756,16 +752,16 @@ export function InstructionsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-0' : ''}`}>
+                  <div className="flex-shrink-0">
                     {isExpanded
-                      ? <ChevronUp className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-                      : <ChevronDown className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
+                      ? <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+                      : <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
                     }
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className={`px-5 pb-6 pt-1 border-t ${section.borderColor}`}>
+                  <div className={`px-4 pb-4 pt-1 border-t ${section.borderColor}`}>
                     {renderContent(section.id)}
                   </div>
                 )}
@@ -775,12 +771,11 @@ export function InstructionsPage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 p-4 rounded-xl bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 text-center">
+        <div className="mt-4 p-3 rounded-lg bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 text-center">
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
             Masz pytania lub problemy? Skontaktuj się z Administratorem systemu.
           </p>
         </div>
-      </div>
     </div>
   );
 }
