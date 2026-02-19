@@ -372,7 +372,7 @@ export function InvoiceList() {
             gross_amount, net_amount, tax_amount, currency, pln_gross_amount, exchange_rate,
             issue_date, due_date, status, source, created_at, updated_at,
             uploaded_by, current_approver_id, department_id,
-            description, file_url, is_duplicate, duplicate_invoice_ids,
+            description, file_url, is_duplicate, duplicate_invoice_ids, pz_number,
             uploader:profiles!uploaded_by(full_name, role),
             current_approver:profiles!current_approver_id(full_name, role),
             department:departments!department_id(id, name, parent_department_id),
