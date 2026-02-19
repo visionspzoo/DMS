@@ -993,13 +993,94 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           return;
         }
 
-        // Sprawdź czy przełożony przejmuje fakturę podwładnego
-        // Jeśli tak, użyj roli uploadera aby rozpocząć workflow od początku
         let roleForWorkflow = profile.role;
 
         if (currentInvoice.uploaded_by !== profile.id && invoiceDepartmentInfo?.uploader_role) {
-          // Przełożony przejmuje fakturę - użyj roli uploadera
           roleForWorkflow = invoiceDepartmentInfo.uploader_role;
+        }
+
+        const uploaderRole = roleForWorkflow;
+        const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
+
+        if (uploaderRole === 'Kierownik' || uploaderRole === 'Dyrektor') {
+          const { data: limitsResult, error: limitsError } = await supabase
+            .rpc('check_department_limits', {
+              p_department_id: currentInvoice.department_id,
+              p_invoice_amount: invoiceAmount,
+              p_invoice_date: currentInvoice.issue_date ?? new Date().toISOString(),
+              p_exclude_invoice_id: currentInvoice.id,
+            });
+
+          if (!limitsError && limitsResult?.within_limits === true) {
+            const { data: dept } = await supabase
+              .from('departments')
+              .select('director_id')
+              .eq('id', currentInvoice.department_id)
+              .maybeSingle();
+
+            const directorId = dept?.director_id ?? null;
+
+            if (uploaderRole === 'Kierownik') {
+              const { error: updateError } = await supabase
+                .from('invoices')
+                .update({
+                  status: 'accepted',
+                  current_approver_id: null,
+                  approved_by_manager_at: new Date().toISOString(),
+                })
+                .eq('id', currentInvoice.id);
+
+              if (updateError) throw updateError;
+
+              alert('Faktura zaakceptowana automatycznie — mieści się w limitach działu');
+              onUpdate();
+              onClose();
+              return;
+            }
+
+            if (uploaderRole === 'Dyrektor') {
+              const { error: updateError } = await supabase
+                .from('invoices')
+                .update({
+                  status: 'accepted',
+                  current_approver_id: null,
+                  approved_by_director_at: new Date().toISOString(),
+                })
+                .eq('id', currentInvoice.id);
+
+              if (updateError) throw updateError;
+
+              alert('Faktura zaakceptowana automatycznie — mieści się w limitach');
+              onUpdate();
+              onClose();
+              return;
+            }
+          }
+
+          if (uploaderRole === 'Dyrektor' && !limitsError && limitsResult?.within_limits === false) {
+            const { data: ceoProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('role', 'CEO')
+              .maybeSingle();
+
+            if (ceoProfile?.id) {
+              const { error: updateError } = await supabase
+                .from('invoices')
+                .update({
+                  status: 'waiting',
+                  current_approver_id: ceoProfile.id,
+                })
+                .eq('id', currentInvoice.id);
+
+              if (updateError) throw updateError;
+
+              alert('Faktura przesłana do CEO — przekroczono limity dyrektora');
+              onUpdate();
+              onClose();
+              return;
+            }
+          }
         }
 
         const { data: nextApprover, error: approverError } = await supabase
