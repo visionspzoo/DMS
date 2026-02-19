@@ -65,6 +65,13 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
+const CLAUDE_MODELS = [
+  'claude-opus-4-5',
+  'claude-sonnet-4-5',
+  'claude-3-5-sonnet-20241022',
+  'claude-3-opus-20240229',
+];
+
 async function callClaudeWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
   const isPDF = mimeType === 'application/pdf';
 
@@ -100,41 +107,70 @@ async function callClaudeWithDocument(base64Data: string, mimeType: string, apiK
     };
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2000,
-      system: INVOICE_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            mediaBlock,
-            {
-              type: 'text',
-              text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.',
-            },
-          ],
-        },
-      ],
-      temperature: 0,
-    }),
-  });
+  let lastError = '';
+  for (const model of CLAUDE_MODELS) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        max_tokens: 2000,
+        system: INVOICE_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              mediaBlock,
+              {
+                type: 'text',
+                text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.',
+              },
+            ],
+          },
+        ],
+        temperature: 0,
+      }),
+    });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${err}`);
+    if (response.status === 404) {
+      const err = await response.text();
+      console.warn(`Claude model ${model} not found, trying next...`);
+      lastError = `${model}: 404`;
+      continue;
+    }
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Claude API error: ${response.status} - ${err}`);
+    }
+
+    const data = await response.json();
+    console.log(`✓ Claude model ${model} succeeded`);
+    return data.content[0].text;
   }
 
-  const data = await response.json();
-  return data.content[0].text;
+  throw new Error(`All Claude models failed. Last error: ${lastError}`);
 }
 
 async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
-  const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-  const dataUrl = `data:${imageMime};base64,${base64Data}`;
+  const isPDF = mimeType === 'application/pdf';
+
+  let mediaBlock: Record<string, unknown>;
+  if (isPDF) {
+    mediaBlock = {
+      type: 'file',
+      file: {
+        filename: 'invoice.pdf',
+        file_data: `data:application/pdf;base64,${base64Data}`,
+      },
+    };
+  } else {
+    const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    mediaBlock = {
+      type: 'image_url',
+      image_url: { url: `data:${imageMime};base64,${base64Data}`, detail: 'high' },
+    };
+  }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -152,10 +188,7 @@ async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKe
               type: 'text',
               text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
             },
-            {
-              type: 'image_url',
-              image_url: { url: dataUrl, detail: 'high' },
-            },
+            mediaBlock,
           ],
         },
       ],
@@ -325,20 +358,19 @@ Deno.serve(async (req: Request) => {
       try {
         console.log("Calling Claude API...");
         content = await callClaudeWithDocument(base64Data, resolvedMimeType, claudeApiKey);
-        usedApi = isPDF ? "Claude 3.5 Sonnet (PDF)" : "Claude 3.5 Sonnet (Image)";
+        usedApi = isPDF ? "Claude (PDF)" : "Claude (Image)";
         console.log("✓ Claude success");
       } catch (err: any) {
         console.error("Claude failed:", err.message);
-
-        if (!isPDF && openaiApiKey) {
+        if (openaiApiKey) {
           try {
             console.log("Fallback to GPT-4o...");
             content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
-            usedApi = "GPT-4o Vision (fallback)";
+            usedApi = isPDF ? "GPT-4o (PDF fallback)" : "GPT-4o Vision (fallback)";
             console.log("✓ GPT-4o success");
           } catch (gErr: any) {
             console.error("GPT-4o also failed:", gErr.message);
-            if (mistralApiKey) {
+            if (!isPDF && mistralApiKey) {
               try {
                 content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
                 usedApi = "Mistral Pixtral (fallback)";
@@ -348,7 +380,7 @@ Deno.serve(async (req: Request) => {
               }
             } else {
               content = JSON.stringify(createFallback());
-              usedApi = "Fallback (Claude + GPT-4o failed)";
+              usedApi = `Fallback (Claude+GPT-4o failed: ${gErr.message})`;
             }
           }
         } else if (!isPDF && mistralApiKey) {
@@ -364,13 +396,15 @@ Deno.serve(async (req: Request) => {
           usedApi = `Fallback (Claude failed: ${err.message})`;
         }
       }
-    } else if (!isPDF && openaiApiKey) {
+    } else if (openaiApiKey) {
       try {
+        console.log("Calling GPT-4o...");
         content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
-        usedApi = "GPT-4o Vision";
+        usedApi = isPDF ? "GPT-4o (PDF)" : "GPT-4o Vision";
+        console.log("✓ GPT-4o success");
       } catch (err: any) {
         console.error("GPT-4o failed:", err.message);
-        if (mistralApiKey) {
+        if (!isPDF && mistralApiKey) {
           try {
             content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
             usedApi = "Mistral Pixtral (fallback from GPT-4o)";
@@ -380,7 +414,7 @@ Deno.serve(async (req: Request) => {
           }
         } else {
           content = JSON.stringify(createFallback());
-          usedApi = "Fallback (GPT-4o failed)";
+          usedApi = `Fallback (GPT-4o failed: ${err.message})`;
         }
       }
     } else if (!isPDF && mistralApiKey) {
@@ -393,7 +427,7 @@ Deno.serve(async (req: Request) => {
       }
     } else {
       content = JSON.stringify(createFallback());
-      usedApi = "Fallback (PDF requires Claude, no Claude key available)";
+      usedApi = "Fallback (no usable API key for this file type)";
     }
 
     console.log(`Used API: ${usedApi}`);
