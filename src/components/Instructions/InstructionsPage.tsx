@@ -229,7 +229,7 @@ function WorkflowSection() {
           Standardowy przepływ faktury w systemie — od przesłania do opłacenia.
         </p>
         <div>
-          <Step number={1} title="Przesłanie faktury (Specjalista / Pracownik)" description='Użytkownik wchodzi w "Moje Faktury" → "Prześlij fakturę". Wgrywa plik PDF lub JPG. System automatycznie odczytuje dane (OCR) — numer, dostawcę, kwotę, daty. Użytkownik weryfikuje dane i wybiera dział oraz centrum kosztów.' />
+          <Step number={1} title="Przesłanie faktury (Specjalista)" description='Użytkownik wchodzi w "Moje Faktury" → "Prześlij fakturę". Wgrywa plik PDF lub JPG. System automatycznie odczytuje dane (OCR) — numer, dostawcę, kwotę, daty. Użytkownik weryfikuje dane i wybiera dział oraz centrum kosztów.' />
           <Step number={2} title='Przekazanie do obiegu (przycisk "Wyślij do obiegu")' description="Faktura zmienia status na Oczekujące i trafia do Kierownika działu jako osoba zatwierdzająca. Kierownik otrzymuje powiadomienie." />
           <Step number={3} title="Decyzja Kierownika" description="Kierownik widzi fakturę w swoim dashboardzie. Może ją zaakceptować (jeśli kwota mieści się w jego limicie), odrzucić z komentarzem lub przekazać wyżej do Dyrektora gdy kwota przekracza jego limit zatwierdzania." />
           <Step number={4} title="Decyzja Dyrektora (jeśli wymagana)" description="Gdy Kierownik przekaże fakturę wyżej lub gdy kwota przekracza limit Kierownika, Dyrektor zatwierdza lub odrzuca fakturę. Status zmienia się na Zaakceptowana." />
@@ -252,7 +252,7 @@ function WorkflowSection() {
             label="Wyślij do obiegu"
             description="Przekazuje fakturę ze statusu Robocze do kolejki zatwierdzania. Faktura trafia do wybranego zatwierdzającego. Akcja nieodwracalna — po wysłaniu nie można edytować faktury."
             color="bg-blue-600"
-            roles={['Specjalista', 'Pracownik']}
+            roles={['Specjalista']}
           />
           <ButtonDoc
             icon={CheckCircle}
