@@ -263,7 +263,10 @@ Deno.serve(async (req: Request) => {
     let resolvedMimeType = requestMimeType || 'application/pdf';
     let base64Data: string;
 
-    if (fileUrl) {
+    if (fileBase64 || pdfBase64) {
+      base64Data = fileBase64 || pdfBase64!;
+      console.log(`Using provided base64, mimeType: ${resolvedMimeType}, length: ${base64Data.length}`);
+    } else if (fileUrl) {
       console.log("Fetching file from URL:", fileUrl);
       const fileResponse = await fetch(fileUrl);
       if (!fileResponse.ok) {
@@ -284,11 +287,8 @@ Deno.serve(async (req: Request) => {
 
       console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
       base64Data = await blobToBase64(fileBlob);
-    } else if (fileBase64 || pdfBase64) {
-      base64Data = fileBase64 || pdfBase64!;
-      console.log(`Using provided base64, mimeType: ${resolvedMimeType}`);
     } else {
-      throw new Error("Neither fileUrl nor base64 data provided");
+      throw new Error("Neither base64 data nor fileUrl provided");
     }
 
     const isPDF = resolvedMimeType === 'application/pdf';
