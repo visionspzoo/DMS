@@ -9,6 +9,30 @@ import { TransferInvoiceModal } from './TransferInvoiceModal';
 
 const AURA_HERBALS_NIP = '5851490834';
 
+function PdfBase64Viewer({ base64 }: { base64: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [base64]);
+
+  if (!blobUrl) return null;
+  return (
+    <iframe
+      src={blobUrl}
+      className="w-full h-full"
+      title="Podgląd faktury PDF"
+      style={{ border: 'none', minHeight: '600px' }}
+    />
+  );
+}
+
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 type Approval = Database['public']['Tables']['approvals']['Row'];
 type AuditLog = Database['public']['Tables']['audit_logs']['Row'];
@@ -2073,12 +2097,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <p className="text-slate-600 dark:text-slate-400">Pobieranie PDF z KSEF...</p>
                     </div>
                   ) : (currentInvoice.pdf_base64 || ksefPdfBase64) ? (
-                    <iframe
-                      src={`data:application/pdf;base64,${currentInvoice.pdf_base64 || ksefPdfBase64}`}
-                      className="w-full h-full"
-                      title="Podgląd faktury PDF"
-                      style={{ border: 'none', minHeight: '600px' }}
-                    />
+                    <PdfBase64Viewer base64={currentInvoice.pdf_base64 || ksefPdfBase64!} />
                   ) : isFromKSEF && currentInvoice.status === 'draft' ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileCheck className="w-20 h-20 text-blue-400 dark:text-blue-500" />

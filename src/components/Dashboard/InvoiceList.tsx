@@ -193,28 +193,6 @@ export function InvoiceList({
                     {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                   </span>
                 </div>
-                {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <Tag className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
-                    {invoice.invoice_tags.slice(0, 3).map((invoiceTag) => (
-                      <span
-                        key={invoiceTag.id}
-                        className="px-1.5 py-0 rounded-full text-[10px] font-medium"
-                        style={{
-                          backgroundColor: `${invoiceTag.tags.color}15`,
-                          color: invoiceTag.tags.color,
-                        }}
-                      >
-                        {invoiceTag.tags.name}
-                      </span>
-                    ))}
-                    {invoice.invoice_tags.length > 3 && (
-                      <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-                        +{invoice.invoice_tags.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Right section - Department, User, Amounts */}
