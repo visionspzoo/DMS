@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import pdfParse from "npm:pdf-parse@1.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,22 +53,6 @@ DODATKOWE UWAGI:
 - Walutę zapisz jako 3-literowy kod ISO
 - Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
 
-async function extractTextFromPDF(pdfBlob: Blob): Promise<string> {
-  try {
-    const arrayBuffer = await pdfBlob.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
-    const data = await pdfParse(buffer);
-    return data.text || "";
-  } catch (error) {
-    console.error("PDF parsing error:", error);
-    return "";
-  }
-}
-
-function isTextSufficient(text: string): boolean {
-  return text.replace(/\s+/g, ' ').trim().length >= 100;
-}
-
 async function blobToBase64(blob: Blob): Promise<string> {
   const ab = await blob.arrayBuffer();
   const bytes = new Uint8Array(ab);
@@ -82,59 +65,8 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-async function interpretWithClaudeText(extractedText: string, apiKey: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2000,
-      system: INVOICE_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Przeanalizuj poniższy tekst wyekstraktowany z faktury PDF i wyciągnij wszystkie dane.\n\nKRYTYCZNE: Kwoty ze spacjami (np. "7 564,62") zamień na "7564.62".\n\nOdpowiedz TYLKO z JSON.\n\nTekst faktury:\n${extractedText}`
-        }
-      ],
-      temperature: 0,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Claude text API error: ${response.status} - ${err}`);
-  }
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function interpretWithClaudeVision(base64Data: string, resolvedMimeType: string, apiKey: string): Promise<string> {
-  let mediaBlock: any;
-
-  if (resolvedMimeType === 'application/pdf') {
-    mediaBlock = {
-      type: 'document',
-      source: {
-        type: 'base64',
-        media_type: 'application/pdf',
-        data: base64Data,
-      }
-    };
-  } else {
-    const imageMime = resolvedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-    mediaBlock = {
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: imageMime,
-        data: base64Data,
-      }
-    };
-  }
+async function callClaudeWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+  const isPDF = mimeType === 'application/pdf';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -142,8 +74,30 @@ async function interpretWithClaudeVision(base64Data: string, resolvedMimeType: s
     'anthropic-version': '2023-06-01',
   };
 
-  if (resolvedMimeType === 'application/pdf') {
+  if (isPDF) {
     headers['anthropic-beta'] = 'pdfs-2024-09-25';
+  }
+
+  let mediaBlock: Record<string, unknown>;
+  if (isPDF) {
+    mediaBlock = {
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: base64Data,
+      },
+    };
+  } else {
+    const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    mediaBlock = {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: imageMime,
+        data: base64Data,
+      },
+    };
   }
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -160,10 +114,10 @@ async function interpretWithClaudeVision(base64Data: string, resolvedMimeType: s
             mediaBlock,
             {
               type: 'text',
-              text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.'
-            }
-          ]
-        }
+              text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.',
+            },
+          ],
+        },
       ],
       temperature: 0,
     }),
@@ -171,14 +125,15 @@ async function interpretWithClaudeVision(base64Data: string, resolvedMimeType: s
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Claude vision API error: ${response.status} - ${err}`);
+    throw new Error(`Claude API error: ${response.status} - ${err}`);
   }
+
   const data = await response.json();
   return data.content[0].text;
 }
 
-async function interpretWithGPT4oVision(base64Data: string, resolvedMimeType: string, apiKey: string): Promise<string> {
-  const imageMime = resolvedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+  const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
   const dataUrl = `data:${imageMime};base64,${base64Data}`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -195,17 +150,14 @@ async function interpretWithGPT4oVision(base64Data: string, resolvedMimeType: st
           content: [
             {
               type: 'text',
-              text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`
+              text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
             },
             {
               type: 'image_url',
-              image_url: {
-                url: dataUrl,
-                detail: 'high',
-              }
-            }
-          ]
-        }
+              image_url: { url: dataUrl, detail: 'high' },
+            },
+          ],
+        },
       ],
       max_tokens: 2000,
       temperature: 0,
@@ -216,12 +168,13 @@ async function interpretWithGPT4oVision(base64Data: string, resolvedMimeType: st
     const err = await response.text();
     throw new Error(`GPT-4o API error: ${response.status} - ${err}`);
   }
+
   const data = await response.json();
   return data.choices[0].message.content;
 }
 
-async function interpretWithMistralVision(base64Data: string, resolvedMimeType: string, apiKey: string): Promise<string> {
-  const imageMime = resolvedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+async function callMistralWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+  const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
   const dataUrl = `data:${imageMime};base64,${base64Data}`;
 
   const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
@@ -238,14 +191,14 @@ async function interpretWithMistralVision(base64Data: string, resolvedMimeType: 
           content: [
             {
               type: "text",
-              text: INVOICE_SYSTEM_PROMPT + "\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON."
+              text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
             },
             {
               type: "image_url",
-              image_url: dataUrl
-            }
-          ]
-        }
+              image_url: dataUrl,
+            },
+          ],
+        },
       ],
       temperature: 0.1,
       max_tokens: 1000,
@@ -256,11 +209,12 @@ async function interpretWithMistralVision(base64Data: string, resolvedMimeType: 
     const err = await response.text();
     throw new Error(`Mistral API error: ${response.status} - ${err}`);
   }
+
   const data = await response.json();
   return data.choices[0].message.content;
 }
 
-function createFallbackInterpretation() {
+function createFallback() {
   return {
     invoice_number: null,
     supplier_name: null,
@@ -282,7 +236,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    console.log("=== OCR PROCESSING STARTED ===");
+    console.log("=== OCR STARTED ===");
 
     const claudeApiKey = Deno.env.get("ANTHROPIC_API_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -290,258 +244,148 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    console.log("API Keys:", { claude: !!claudeApiKey, openai: !!openaiApiKey, mistral: !!mistralApiKey });
+    console.log("API Keys available:", { claude: !!claudeApiKey, openai: !!openaiApiKey, mistral: !!mistralApiKey });
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const body: OCRRequest = await req.json();
     const { fileUrl, invoiceId, pdfBase64, fileBase64, mimeType: requestMimeType } = body;
 
-    console.log("Invoice:", invoiceId, "mimeType:", requestMimeType, "hasBase64:", !!(fileBase64 || pdfBase64), "hasUrl:", !!fileUrl);
+    console.log("Request:", { invoiceId, hasBase64: !!(fileBase64 || pdfBase64), hasUrl: !!fileUrl, mimeType: requestMimeType });
+
+    if (!claudeApiKey && !openaiApiKey && !mistralApiKey) {
+      console.warn("No AI API keys configured — skipping OCR");
+      return new Response(
+        JSON.stringify({ success: true, data: createFallback(), usedApi: "None (no API keys)", suggestedTags: [] }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let resolvedMimeType = requestMimeType || 'application/pdf';
+    let base64Data: string;
+
+    if (fileUrl) {
+      console.log("Fetching file from URL:", fileUrl);
+      const fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to fetch file from URL: ${fileResponse.status} ${fileResponse.statusText}`);
+      }
+      const fileBlob = await fileResponse.blob();
+
+      const ct = fileResponse.headers.get('content-type') || '';
+      if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
+        resolvedMimeType = ct.split(';')[0].trim();
+      } else if (fileUrl.match(/\.(jpg|jpeg)(\?|$)/i)) {
+        resolvedMimeType = 'image/jpeg';
+      } else if (fileUrl.match(/\.png(\?|$)/i)) {
+        resolvedMimeType = 'image/png';
+      } else {
+        resolvedMimeType = requestMimeType || 'application/pdf';
+      }
+
+      console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
+      base64Data = await blobToBase64(fileBlob);
+    } else if (fileBase64 || pdfBase64) {
+      base64Data = fileBase64 || pdfBase64!;
+      console.log(`Using provided base64, mimeType: ${resolvedMimeType}`);
+    } else {
+      throw new Error("Neither fileUrl nor base64 data provided");
+    }
+
+    const isPDF = resolvedMimeType === 'application/pdf';
+    console.log(`Processing as: ${isPDF ? 'PDF document' : 'image'}, mimeType: ${resolvedMimeType}`);
 
     let content: string;
     let usedApi: string;
-    let errorDetails: any = null;
 
-    if (!claudeApiKey && !openaiApiKey && !mistralApiKey) {
-      console.log("No API keys - using fallback");
-      content = JSON.stringify(createFallbackInterpretation());
-      usedApi = "Fallback (no AI keys)";
-    } else {
-      // Determine MIME type
-      let resolvedMimeType = requestMimeType || 'application/pdf';
+    if (claudeApiKey) {
+      try {
+        console.log("Calling Claude API...");
+        content = await callClaudeWithDocument(base64Data, resolvedMimeType, claudeApiKey);
+        usedApi = isPDF ? "Claude 3.5 Sonnet (PDF)" : "Claude 3.5 Sonnet (Image)";
+        console.log("✓ Claude success");
+      } catch (err: any) {
+        console.error("Claude failed:", err.message);
 
-      // Fetch file blob — always fetch from URL for PDFs so pdf-parse can work reliably,
-      // for images use provided base64 or fetch from URL
-      let fileBlob: Blob;
-
-      if (fileUrl) {
-        console.log("Fetching file from URL...");
-        const fileResponse = await fetch(fileUrl);
-        if (!fileResponse.ok) {
-          throw new Error(`Failed to fetch file: ${fileResponse.status}`);
-        }
-        fileBlob = await fileResponse.blob();
-
-        // Detect MIME type from response headers or URL extension
-        const ct = fileResponse.headers.get('content-type') || '';
-        if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
-          resolvedMimeType = ct.split(';')[0].trim();
-        } else if (fileUrl.match(/\.(jpg|jpeg)(\?|$)/i)) {
-          resolvedMimeType = 'image/jpeg';
-        } else if (fileUrl.match(/\.png(\?|$)/i)) {
-          resolvedMimeType = 'image/png';
-        } else {
-          resolvedMimeType = requestMimeType || 'application/pdf';
-        }
-        console.log(`Fetched file: ${resolvedMimeType}, ${fileBlob.size} bytes`);
-      } else if (fileBase64 || pdfBase64) {
-        const b64 = fileBase64 || pdfBase64!;
-        const binaryString = atob(b64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        fileBlob = new Blob([bytes], { type: resolvedMimeType });
-        console.log(`Decoded base64 blob: ${resolvedMimeType}, ${fileBlob.size} bytes`);
-      } else {
-        throw new Error("Neither fileUrl nor base64 provided");
-      }
-
-      const isPDF = resolvedMimeType === 'application/pdf';
-      console.log(`isPDF: ${isPDF}, resolvedMimeType: ${resolvedMimeType}`);
-
-      if (isPDF) {
-        // Extract text to decide: text path (Claude text) vs vision path (Claude PDF vision)
-        console.log("Extracting text from PDF...");
-        const extractedText = await extractTextFromPDF(fileBlob);
-        console.log(`Extracted ${extractedText.length} chars`);
-        const hasEnoughText = isTextSufficient(extractedText);
-        console.log(`Text sufficient: ${hasEnoughText}`);
-
-        if (hasEnoughText && claudeApiKey) {
-          // Regular PDF with readable text → Claude text (fast and reliable)
+        if (!isPDF && openaiApiKey) {
           try {
-            console.log("Regular PDF → Claude text analysis...");
-            content = await interpretWithClaudeText(extractedText, claudeApiKey);
-            usedApi = "Claude 3.5 Sonnet (PDF text)";
-            console.log("✓ Claude text success");
-          } catch (err: any) {
-            console.error("Claude text failed:", err.message);
-            errorDetails = { api: 'Claude text', message: err.message };
-
-            // Fallback: Claude vision on PDF
-            if (claudeApiKey) {
-              try {
-                console.log("Fallback: Claude PDF vision...");
-                const b64 = await blobToBase64(fileBlob);
-                content = await interpretWithClaudeVision(b64, 'application/pdf', claudeApiKey);
-                usedApi = "Claude 3.5 Sonnet Vision PDF (fallback)";
-                errorDetails = null;
-                console.log("✓ Claude PDF vision success");
-              } catch (vErr: any) {
-                console.error("Claude PDF vision also failed:", vErr.message);
-                content = JSON.stringify(createFallbackInterpretation());
-                usedApi = "Fallback (Claude text + vision failed)";
-              }
-            } else {
-              content = JSON.stringify(createFallbackInterpretation());
-              usedApi = "Fallback (Claude failed, no alternative)";
-            }
-          }
-        } else {
-          // Scanned PDF (little/no extractable text) → Claude PDF vision (native PDF support)
-          if (!hasEnoughText) {
-            console.log("Scanned PDF detected → Claude PDF vision...");
-          } else {
-            console.log("No Claude key for PDF text → Claude PDF vision or GPT-4o...");
-          }
-
-          if (claudeApiKey) {
-            try {
-              const b64 = await blobToBase64(fileBlob);
-              content = await interpretWithClaudeVision(b64, 'application/pdf', claudeApiKey);
-              usedApi = "Claude 3.5 Sonnet Vision (scanned PDF)";
-              console.log("✓ Claude PDF vision success");
-            } catch (err: any) {
-              console.error("Claude PDF vision failed:", err.message);
-              errorDetails = { api: 'Claude PDF vision', message: err.message };
-
-              // GPT-4o can't directly read PDFs via image_url, so we fallback to text if available
-              if (hasEnoughText && claudeApiKey) {
-                try {
-                  content = await interpretWithClaudeText(extractedText, claudeApiKey);
-                  usedApi = "Claude 3.5 Sonnet text (fallback from vision)";
-                  errorDetails = null;
-                } catch {
-                  content = JSON.stringify(createFallbackInterpretation());
-                  usedApi = "Fallback (all PDF paths failed)";
-                }
-              } else {
-                content = JSON.stringify(createFallbackInterpretation());
-                usedApi = "Fallback (Claude PDF vision failed)";
-              }
-            }
-          } else if (openaiApiKey && hasEnoughText) {
-            // No Claude but have GPT-4o: only works for text extraction path
-            console.log("No Claude, using extracted text with... no GPT-4o text path. Fallback.");
-            content = JSON.stringify(createFallbackInterpretation());
-            usedApi = "Fallback (no Claude for PDF vision)";
-            errorDetails = { message: "Scanned PDF processing requires ANTHROPIC_API_KEY for Claude PDF Vision" };
-          } else {
-            content = JSON.stringify(createFallbackInterpretation());
-            usedApi = "Fallback (no suitable AI for scanned PDF)";
-          }
-        }
-      } else {
-        // Image file (JPG, PNG) → Claude vision first, then GPT-4o, then Mistral
-        console.log(`Image file (${resolvedMimeType}) - preparing for vision...`);
-        const b64 = await blobToBase64(fileBlob);
-
-        if (claudeApiKey) {
-          try {
-            console.log("Image → Claude vision...");
-            content = await interpretWithClaudeVision(b64, resolvedMimeType, claudeApiKey);
-            usedApi = "Claude 3.5 Sonnet Vision (image)";
-            console.log("✓ Claude image vision success");
-          } catch (err: any) {
-            console.error("Claude image vision failed:", err.message);
-            errorDetails = { api: 'Claude image', message: err.message };
-
-            if (openaiApiKey) {
-              try {
-                console.log("Fallback: GPT-4o vision...");
-                content = await interpretWithGPT4oVision(b64, resolvedMimeType, openaiApiKey);
-                usedApi = "GPT-4o Vision (image fallback)";
-                errorDetails = null;
-                console.log("✓ GPT-4o vision success");
-              } catch (gErr: any) {
-                console.error("GPT-4o also failed:", gErr.message);
-                errorDetails.gptError = gErr.message;
-
-                if (mistralApiKey) {
-                  try {
-                    content = await interpretWithMistralVision(b64, resolvedMimeType, mistralApiKey);
-                    usedApi = "Mistral Pixtral (image fallback)";
-                    errorDetails = null;
-                  } catch {
-                    content = JSON.stringify(createFallbackInterpretation());
-                    usedApi = "Fallback (all image vision APIs failed)";
-                  }
-                } else {
-                  content = JSON.stringify(createFallbackInterpretation());
-                  usedApi = "Fallback (Claude + GPT-4o failed)";
-                }
-              }
-            } else if (mistralApiKey) {
-              try {
-                content = await interpretWithMistralVision(b64, resolvedMimeType, mistralApiKey);
-                usedApi = "Mistral Pixtral (image fallback from Claude)";
-                errorDetails = null;
-              } catch {
-                content = JSON.stringify(createFallbackInterpretation());
-                usedApi = "Fallback (Claude + Mistral failed)";
-              }
-            } else {
-              content = JSON.stringify(createFallbackInterpretation());
-              usedApi = "Fallback (Claude failed, no alternative)";
-            }
-          }
-        } else if (openaiApiKey) {
-          try {
-            console.log("No Claude → GPT-4o vision for image...");
-            content = await interpretWithGPT4oVision(b64, resolvedMimeType, openaiApiKey);
-            usedApi = "GPT-4o Vision (image)";
-            console.log("✓ GPT-4o vision success");
-          } catch (err: any) {
-            console.error("GPT-4o failed:", err.message);
-            errorDetails = { api: 'GPT-4o', message: err.message };
-
+            console.log("Fallback to GPT-4o...");
+            content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
+            usedApi = "GPT-4o Vision (fallback)";
+            console.log("✓ GPT-4o success");
+          } catch (gErr: any) {
+            console.error("GPT-4o also failed:", gErr.message);
             if (mistralApiKey) {
               try {
-                content = await interpretWithMistralVision(b64, resolvedMimeType, mistralApiKey);
-                usedApi = "Mistral Pixtral (image fallback from GPT-4o)";
-                errorDetails = null;
+                content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
+                usedApi = "Mistral Pixtral (fallback)";
               } catch {
-                content = JSON.stringify(createFallbackInterpretation());
-                usedApi = "Fallback (GPT-4o + Mistral failed)";
+                content = JSON.stringify(createFallback());
+                usedApi = "Fallback (all APIs failed)";
               }
             } else {
-              content = JSON.stringify(createFallbackInterpretation());
-              usedApi = "Fallback (GPT-4o failed)";
+              content = JSON.stringify(createFallback());
+              usedApi = "Fallback (Claude + GPT-4o failed)";
             }
           }
-        } else if (mistralApiKey) {
+        } else if (!isPDF && mistralApiKey) {
           try {
-            console.log("Using Mistral Pixtral for image...");
-            content = await interpretWithMistralVision(b64, resolvedMimeType, mistralApiKey);
-            usedApi = "Mistral Pixtral (image)";
-            console.log("✓ Mistral vision success");
-          } catch (err: any) {
-            console.error("Mistral failed:", err.message);
-            content = JSON.stringify(createFallbackInterpretation());
-            usedApi = "Fallback (Mistral failed)";
+            content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
+            usedApi = "Mistral Pixtral (fallback from Claude)";
+          } catch {
+            content = JSON.stringify(createFallback());
+            usedApi = "Fallback (Claude + Mistral failed)";
           }
         } else {
-          content = JSON.stringify(createFallbackInterpretation());
-          usedApi = "Fallback";
+          content = JSON.stringify(createFallback());
+          usedApi = `Fallback (Claude failed: ${err.message})`;
         }
       }
+    } else if (!isPDF && openaiApiKey) {
+      try {
+        content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
+        usedApi = "GPT-4o Vision";
+      } catch (err: any) {
+        console.error("GPT-4o failed:", err.message);
+        if (mistralApiKey) {
+          try {
+            content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
+            usedApi = "Mistral Pixtral (fallback from GPT-4o)";
+          } catch {
+            content = JSON.stringify(createFallback());
+            usedApi = "Fallback (GPT-4o + Mistral failed)";
+          }
+        } else {
+          content = JSON.stringify(createFallback());
+          usedApi = "Fallback (GPT-4o failed)";
+        }
+      }
+    } else if (!isPDF && mistralApiKey) {
+      try {
+        content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
+        usedApi = "Mistral Pixtral";
+      } catch (err: any) {
+        content = JSON.stringify(createFallback());
+        usedApi = `Fallback (Mistral failed: ${err.message})`;
+      }
+    } else {
+      content = JSON.stringify(createFallback());
+      usedApi = "Fallback (PDF requires Claude, no Claude key available)";
     }
 
     console.log(`Used API: ${usedApi}`);
-    console.log(`Raw response:`, content.substring(0, 300));
+    console.log(`Raw response (first 300 chars): ${content.substring(0, 300)}`);
 
-    let parsedData;
+    let parsedData: Record<string, unknown>;
     try {
       const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsedData = JSON.parse(clean);
     } catch (e) {
-      console.error("Failed to parse AI response:", content);
-      parsedData = createFallbackInterpretation();
+      console.error("JSON parse failed:", content);
+      parsedData = createFallback();
       usedApi = `${usedApi} (parse error)`;
     }
 
-    console.log("Parsed data:", JSON.stringify(parsedData));
+    console.log("Parsed OCR data:", JSON.stringify(parsedData));
 
     const { data: existingInvoice } = await supabase
       .from("invoices")
@@ -552,15 +396,12 @@ Deno.serve(async (req: Request) => {
     const COMPANY_NIPS = ['5851490834', '8222407812'];
     const CORRECT_BUYER_NIP = '5851490834';
 
-    let hasSupplierError = false;
-    let hasBuyerError = false;
-    let supplierErrorMessage = null;
-    let buyerErrorMessage = null;
+    let supplierErrorMessage: string | null = null;
+    let buyerErrorMessage: string | null = null;
 
     if (parsedData.supplier_nip) {
-      const clean = parsedData.supplier_nip.replace(/[^0-9]/g, '');
+      const clean = String(parsedData.supplier_nip).replace(/[^0-9]/g, '');
       if (COMPANY_NIPS.some(n => clean === n)) {
-        hasSupplierError = true;
         const cname = clean === '5851490834' ? 'Aura Herbals' : 'firma';
         supplierErrorMessage = `BŁĄD: AI pomyliło strony faktury - ${cname} (NIP: ${clean}) to NABYWCA, nie SPRZEDAWCA.`;
         console.error(supplierErrorMessage);
@@ -570,22 +411,20 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsedData.buyer_nip) {
-      const clean = parsedData.buyer_nip.replace(/[^0-9]/g, '');
+      const clean = String(parsedData.buyer_nip).replace(/[^0-9]/g, '');
       if (clean !== CORRECT_BUYER_NIP) {
-        hasBuyerError = true;
         buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (NIP: ${parsedData.buyer_nip}).`;
         console.warn(buyerErrorMessage);
       }
     } else if (parsedData.buyer_name) {
-      const bn = parsedData.buyer_name.toLowerCase();
+      const bn = String(parsedData.buyer_name).toLowerCase();
       if (!bn.includes('aura') || !bn.includes('herbals')) {
-        hasBuyerError = true;
         buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (${parsedData.buyer_name}).`;
         console.warn(buyerErrorMessage);
       }
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (parsedData.invoice_number) updateData.invoice_number = parsedData.invoice_number;
     if (parsedData.supplier_name) updateData.supplier_name = parsedData.supplier_name;
@@ -596,7 +435,7 @@ Deno.serve(async (req: Request) => {
     if (parsedData.due_date) updateData.due_date = parsedData.due_date;
     if (parsedData.currency) updateData.currency = parsedData.currency;
 
-    const parseAmount = (val: any): number | null => {
+    const parseAmount = (val: unknown): number | null => {
       if (val === null || val === undefined || val === '') return null;
       const s = String(val).replace(/\s/g, '').replace(',', '.');
       const n = parseFloat(s);
@@ -610,8 +449,8 @@ Deno.serve(async (req: Request) => {
     if (tax !== null) updateData.tax_amount = tax;
     if (gross !== null) updateData.gross_amount = gross;
 
-    const currency = updateData.currency || existingInvoice?.currency || 'PLN';
-    const issueDate = updateData.issue_date || existingInvoice?.issue_date || new Date().toISOString().split('T')[0];
+    const currency = String(updateData.currency || existingInvoice?.currency || 'PLN');
+    const issueDate = String(updateData.issue_date || existingInvoice?.issue_date || new Date().toISOString().split('T')[0]);
 
     if (currency !== 'PLN') {
       try {
@@ -637,7 +476,7 @@ Deno.serve(async (req: Request) => {
       updateData.exchange_rate_date = issueDate;
     }
 
-    console.log("Updating invoice:", JSON.stringify(updateData));
+    console.log("Updating invoice with:", JSON.stringify(updateData));
 
     if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase
@@ -649,13 +488,12 @@ Deno.serve(async (req: Request) => {
         console.error("DB update error:", updateError);
         throw updateError;
       }
-      console.log("✓ Invoice updated");
+      console.log("✓ Invoice updated in DB");
     }
 
-    // Suggested tags
-    let suggestedTags: any[] = [];
+    let suggestedTags: unknown[] = [];
     try {
-      const vendorName = updateData.supplier_name?.trim() || '';
+      const vendorName = String(updateData.supplier_name || '').trim();
       if (vendorName) {
         const { data: vendorTags } = await supabase
           .from('tag_learning')
@@ -664,21 +502,23 @@ Deno.serve(async (req: Request) => {
 
         if (vendorTags && vendorTags.length > 0) {
           suggestedTags = vendorTags
-            .filter(i => i.tags)
-            .sort((a, b) => b.frequency - a.frequency)
+            .filter((i: Record<string, unknown>) => i.tags)
+            .sort((a: Record<string, number>, b: Record<string, number>) => b.frequency - a.frequency)
             .slice(0, 3)
-            .map(i => ({ id: i.tags.id, name: i.tags.name, color: i.tags.color, confidence: i.frequency * 2 }));
+            .map((i: Record<string, unknown>) => {
+              const t = i.tags as Record<string, unknown>;
+              return { id: t.id, name: t.name, color: t.color, confidence: (i.frequency as number) * 2 };
+            });
         }
       }
     } catch (e) {
-      console.error("Tags error:", e);
+      console.error("Tags suggestion error:", e);
     }
 
-    // Suggested description
     let suggestedDescription: string | null = null;
     try {
-      const vendorName = updateData.supplier_name?.trim() || '';
-      const supplierNip = updateData.supplier_nip?.trim() || '';
+      const vendorName = String(updateData.supplier_name || '').trim();
+      const supplierNip = String(updateData.supplier_nip || '').trim();
       if (vendorName || supplierNip) {
         let q = supabase.from('invoices').select('description')
           .not('description', 'is', null).neq('description', '')
@@ -688,7 +528,10 @@ Deno.serve(async (req: Request) => {
         const { data: hist } = await q;
         if (hist && hist.length > 0) {
           const counts: Record<string, number> = {};
-          for (const inv of hist) { const d = inv.description.trim(); counts[d] = (counts[d] || 0) + 1; }
+          for (const inv of hist) {
+            const d = String(inv.description).trim();
+            counts[d] = (counts[d] || 0) + 1;
+          }
           suggestedDescription = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
         }
       }
@@ -709,18 +552,18 @@ Deno.serve(async (req: Request) => {
         success: true,
         data: parsedData,
         usedApi,
-        error: errorDetails,
         suggestedTags,
         suggestedDescription,
-        validationError: hasSupplierError ? supplierErrorMessage : null,
-        buyerError: hasBuyerError ? buyerErrorMessage : null,
+        validationError: supplierErrorMessage,
+        buyerError: buyerErrorMessage,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error: any) {
-    console.error("=== OCR FAILED ===", error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("=== OCR FAILED ===", msg);
     return new Response(
-      JSON.stringify({ error: error.message, details: error.toString() }),
+      JSON.stringify({ error: msg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
