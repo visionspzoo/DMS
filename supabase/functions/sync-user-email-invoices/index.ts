@@ -651,6 +651,7 @@ async function syncEmailAccount(
             await send({ type: "invoice_created", filename: part.filename, invoiceId: invoiceData.id });
           }
 
+          let isRealInvoice = false;
           try {
             if (send) {
               await send({ type: "ocr_start", filename: part.filename });
@@ -675,17 +676,36 @@ async function syncEmailAccount(
               const ocrData = await ocrResponse.json();
               console.log(`OCR processed for invoice ${invoiceData.id}`);
 
-              if (ocrData.validationError) {
-                warnings.push(`${part.filename}: ${ocrData.validationError}`);
-              }
+              const d = ocrData.data || {};
+              const hasInvoiceNumber = d.invoice_number && String(d.invoice_number).trim().length > 0 && d.invoice_number !== 'null';
+              const hasAmount = d.gross_amount && String(d.gross_amount).trim().length > 0 && d.gross_amount !== 'null';
+              const hasSupplier = d.supplier_name && String(d.supplier_name).trim().length > 0 && d.supplier_name !== 'null';
+              isRealInvoice = !!(hasInvoiceNumber || (hasAmount && hasSupplier));
 
-              if (send) {
-                await send({ type: "ocr_done", filename: part.filename });
+              if (!isRealInvoice) {
+                console.log(`Not an invoice (${part.filename}), deleting record and file`);
+                await supabase.from("invoices").delete().eq("id", invoiceData.id);
+                await supabase.storage.from("documents").remove([filePath]);
+                if (send) {
+                  await send({ type: "attachment_skipped", filename: part.filename, reason: "not_invoice" });
+                }
+              } else {
+                if (ocrData.validationError) {
+                  warnings.push(`${part.filename}: ${ocrData.validationError}`);
+                }
+                if (send) {
+                  await send({ type: "ocr_done", filename: part.filename });
+                }
               }
+            } else {
+              isRealInvoice = true;
             }
           } catch (ocrError) {
             console.error("OCR error:", ocrError);
+            isRealInvoice = true;
           }
+
+          if (!isRealInvoice) continue;
 
           invoiceCount++;
           syncedCount++;

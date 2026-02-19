@@ -536,6 +536,8 @@ Deno.serve(async (req: Request) => {
 
     console.log("Updating invoice with:", JSON.stringify(updateData));
 
+    updateData.status = 'waiting';
+
     if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase
         .from("invoices")
