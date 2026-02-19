@@ -608,8 +608,8 @@ function RuleForm({
   }
 
   return (
-    <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
+    <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-xl">
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between rounded-t-xl overflow-hidden">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-brand-primary/10 flex items-center justify-center">
             <Zap className="w-4 h-4 text-brand-primary" />
@@ -706,7 +706,7 @@ function RuleForm({
                   className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 />
                 {showDepartmentDropdown && filteredDepartments.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
                     {filteredDepartments.slice(0, 10).map(dept => (
                       <button
                         key={dept.id}
@@ -756,7 +756,7 @@ function RuleForm({
                   className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 />
                 {showCostCenterDropdown && filteredCostCenters.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
                     {filteredCostCenters.slice(0, 10).map(cc => (
                       <button
                         key={cc.id}
@@ -809,7 +809,7 @@ function RuleForm({
               className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
             />
             {showTagDropdown && formTagSearch.trim() && filteredTags.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+              <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
                 {filteredTags.slice(0, 8).map(tag => (
                   <button
                     key={tag.id}
@@ -859,7 +859,7 @@ function RulesList({
 }) {
   return (
     <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-3">
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-3 rounded-t-xl">
         <h3 className="font-semibold text-text-primary-light dark:text-text-primary-dark whitespace-nowrap">
           Reguly automatyzacji ({rules.length})
         </h3>
