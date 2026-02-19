@@ -161,12 +161,18 @@ export default function SlackSettings() {
     setSuccess(null);
 
     try {
-      const response = await fetch('https://slack.com/api/auth.test', {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-slack-notification/test-connection`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${config.bot_token}`,
+          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
           'Content-Type': 'application/json',
+          'Apikey': supabaseAnonKey,
         },
+        body: JSON.stringify({ bot_token: config.bot_token }),
       });
 
       const result = await response.json();
