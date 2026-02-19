@@ -706,8 +706,8 @@ function RuleForm({
                   className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 />
                 {showDepartmentDropdown && filteredDepartments.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
-                    {filteredDepartments.slice(0, 10).map(dept => (
+                  <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                    {filteredDepartments.map(dept => (
                       <button
                         key={dept.id}
                         onMouseDown={(e) => e.preventDefault()}
@@ -756,8 +756,8 @@ function RuleForm({
                   className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 />
                 {showCostCenterDropdown && filteredCostCenters.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
-                    {filteredCostCenters.slice(0, 10).map(cc => (
+                  <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                    {filteredCostCenters.map(cc => (
                       <button
                         key={cc.id}
                         onMouseDown={(e) => e.preventDefault()}
