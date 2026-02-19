@@ -230,6 +230,31 @@ function createFallback() {
   };
 }
 
+async function fetchFileFromUrl(url: string, fallbackMimeType: string): Promise<{ base64: string; mimeType: string }> {
+  console.log("Fetching file from URL:", url);
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch file: ${resp.status} ${resp.statusText} — ${url}`);
+  }
+  const blob = await resp.blob();
+
+  let mimeType = fallbackMimeType;
+  const ct = resp.headers.get('content-type') || '';
+  if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
+    mimeType = ct.split(';')[0].trim();
+  } else if (url.match(/\.(jpg|jpeg)(\?|$)/i)) {
+    mimeType = 'image/jpeg';
+  } else if (url.match(/\.png(\?|$)/i)) {
+    mimeType = 'image/png';
+  } else if (url.match(/\.pdf(\?|$)/i)) {
+    mimeType = 'application/pdf';
+  }
+
+  console.log(`File fetched: ${blob.size} bytes, mimeType=${mimeType}`);
+  const base64 = await blobToBase64(blob);
+  return { base64, mimeType };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -266,70 +291,32 @@ Deno.serve(async (req: Request) => {
     if (fileBase64 || pdfBase64) {
       base64Data = fileBase64 || pdfBase64!;
       console.log(`Using provided base64, mimeType: ${resolvedMimeType}, length: ${base64Data.length}`);
-    } else if (invoiceId) {
-      console.log("Reading file data from DB for invoice:", invoiceId);
-      const { data: invoiceRow } = await supabase
-        .from("invoices")
-        .select("pdf_base64, file_url")
-        .eq("id", invoiceId)
-        .maybeSingle();
-
-      if (invoiceRow?.pdf_base64) {
-        base64Data = invoiceRow.pdf_base64;
-        resolvedMimeType = 'application/pdf';
-        console.log(`Loaded pdf_base64 from DB, length: ${base64Data.length}`);
-      } else {
-        const urlToFetch = fileUrl || invoiceRow?.file_url;
-        if (!urlToFetch) throw new Error("No file data available for OCR");
-
-        console.log("Fetching file from URL:", urlToFetch);
-        const fileResponse = await fetch(urlToFetch);
-        if (!fileResponse.ok) {
-          throw new Error(`Failed to fetch file from URL: ${fileResponse.status} ${fileResponse.statusText}`);
-        }
-        const fileBlob = await fileResponse.blob();
-
-        const ct = fileResponse.headers.get('content-type') || '';
-        if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
-          resolvedMimeType = ct.split(';')[0].trim();
-        } else if (urlToFetch.match(/\.(jpg|jpeg)(\?|$)/i)) {
-          resolvedMimeType = 'image/jpeg';
-        } else if (urlToFetch.match(/\.png(\?|$)/i)) {
-          resolvedMimeType = 'image/png';
-        } else {
-          resolvedMimeType = requestMimeType || 'application/pdf';
-        }
-
-        console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
-        base64Data = await blobToBase64(fileBlob);
-      }
-    } else if (fileUrl) {
-      console.log("Fetching file from URL:", fileUrl);
-      const fileResponse = await fetch(fileUrl);
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to fetch file from URL: ${fileResponse.status} ${fileResponse.statusText}`);
-      }
-      const fileBlob = await fileResponse.blob();
-
-      const ct = fileResponse.headers.get('content-type') || '';
-      if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
-        resolvedMimeType = ct.split(';')[0].trim();
-      } else if (fileUrl.match(/\.(jpg|jpeg)(\?|$)/i)) {
-        resolvedMimeType = 'image/jpeg';
-      } else if (fileUrl.match(/\.png(\?|$)/i)) {
-        resolvedMimeType = 'image/png';
-      } else {
-        resolvedMimeType = requestMimeType || 'application/pdf';
-      }
-
-      console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
-      base64Data = await blobToBase64(fileBlob);
     } else {
-      throw new Error("No file data, invoiceId, or fileUrl provided");
+      let urlToFetch = fileUrl || null;
+
+      if (!urlToFetch && invoiceId) {
+        console.log("Looking up file_url from DB for invoice:", invoiceId);
+        const { data: invoiceRow, error: dbErr } = await supabase
+          .from("invoices")
+          .select("file_url")
+          .eq("id", invoiceId)
+          .maybeSingle();
+        if (dbErr) console.error("DB lookup error:", dbErr.message);
+        urlToFetch = invoiceRow?.file_url || null;
+        console.log("file_url from DB:", urlToFetch);
+      }
+
+      if (!urlToFetch) {
+        throw new Error(`No file URL available for invoice ${invoiceId}`);
+      }
+
+      const fetched = await fetchFileFromUrl(urlToFetch, resolvedMimeType);
+      base64Data = fetched.base64;
+      resolvedMimeType = fetched.mimeType;
     }
 
     const isPDF = resolvedMimeType === 'application/pdf';
-    console.log(`Processing as: ${isPDF ? 'PDF document' : 'image'}, mimeType: ${resolvedMimeType}`);
+    console.log(`Processing as: ${isPDF ? 'PDF document' : 'image'}, mimeType: ${resolvedMimeType}, base64 length: ${base64Data.length}`);
 
     let content: string;
     let usedApi: string;
