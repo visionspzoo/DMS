@@ -381,7 +381,7 @@ export function InvoiceList() {
           .order('created_at', { ascending: false }),
         supabase
           .from('ksef_invoices')
-          .select('id, invoice_number, supplier_name, supplier_nip, gross_amount, net_amount, currency, issue_date, pln_gross_amount, exchange_rate, created_at, transferred_to_department_id, transferred_to_invoice_id, fetched_by, ksef_reference_number')
+          .select('id, invoice_number, supplier_name, supplier_nip, gross_amount, net_amount, currency, issue_date, created_at, transferred_to_department_id, transferred_to_invoice_id, fetched_by, ksef_reference_number')
           .not('transferred_to_department_id', 'is', null)
           .is('transferred_to_invoice_id', null)
           .order('created_at', { ascending: false }),
@@ -421,8 +421,8 @@ export function InvoiceList() {
           file_url: null,
           pdf_base64: null,
           description: 'Faktura z KSEF - wersja robocza',
-          pln_gross_amount: ksef.pln_gross_amount || ksef.gross_amount,
-          exchange_rate: ksef.exchange_rate || 1,
+          pln_gross_amount: ksef.gross_amount,
+          exchange_rate: 1,
           created_at: ksef.created_at,
           updated_at: ksef.created_at,
           source: 'ksef',
