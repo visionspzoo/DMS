@@ -144,7 +144,8 @@ export default function APISettings() {
       "exchange_rate": 1,
       "status": "paid",
       "paid_at": "2024-01-20T12:00:00Z",
-      "updated_at": "2024-01-20T12:00:00Z"
+      "updated_at": "2024-01-20T12:00:00Z",
+      "pz_number": "PZ/2024/001"
     }
   ],
   "meta": {
@@ -510,6 +511,7 @@ export default function APISettings() {
                         { field: 'exchange_rate', desc: 'Kurs waluty do PLN' },
                         { field: 'status', desc: 'Status faktury (paid / accepted)' },
                         { field: 'paid_at', desc: 'Data i czas oznaczenia jako oplacona' },
+                        { field: 'pz_number', desc: 'Numer PZ powiazany z faktura' },
                         { field: 'pdf_base64', desc: 'PDF faktury zakodowany w Base64 (tylko przy include_pdf=true)' },
                       ].map(row => (
                         <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">

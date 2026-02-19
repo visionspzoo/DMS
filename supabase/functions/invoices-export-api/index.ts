@@ -108,6 +108,7 @@ Deno.serve(async (req: Request) => {
         created_at,
         updated_at,
         pdf_base64,
+        pz_number,
         department:department_id (
           id,
           name,
@@ -173,6 +174,7 @@ Deno.serve(async (req: Request) => {
         status: inv.status,
         paid_at: inv.paid_at,
         updated_at: inv.updated_at,
+        pz_number: inv.pz_number || null,
       };
 
       if (includePdf) {

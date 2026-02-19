@@ -663,6 +663,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           status: editedInvoice.status,
           description: editedInvoice.description,
           cost_center_id: editedInvoice.cost_center_id || null,
+          pz_number: (editedInvoice as any).pz_number || null,
         })
         .eq('id', currentInvoice.id);
 
@@ -2399,11 +2400,21 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Dział nadrzędny
+                        Powiązanie z PZ
                       </label>
-                      <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                        {currentInvoice.department?.parent?.name || '—'}
-                      </p>
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={(editedInvoice as any).pz_number || ''}
+                          onChange={(e) => setEditedInvoice({ ...editedInvoice, pz_number: e.target.value } as any)}
+                          placeholder="Numer PZ"
+                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                        />
+                      ) : (
+                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                          {(currentInvoice as any).pz_number || '—'}
+                        </p>
+                      )}
                     </div>
                   </div>
 
