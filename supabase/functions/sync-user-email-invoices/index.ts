@@ -470,15 +470,18 @@ async function syncEmailAccount(
           syncedCount++;
       }
 
-      await supabase.from("processed_email_messages").insert({
-        email_config_id: config.id,
-        message_uid: messageId,
-        message_id: messageId,
-        attachment_count: attachmentCount,
-        invoice_count: invoiceCount,
-      });
-
-      processedUids.add(messageId);
+      if (invoiceCount > 0 || attachmentCount === 0) {
+        await supabase.from("processed_email_messages").insert({
+          email_config_id: config.id,
+          message_uid: messageId,
+          message_id: messageId,
+          attachment_count: attachmentCount,
+          invoice_count: invoiceCount,
+        });
+        processedUids.add(messageId);
+      } else {
+        console.log(`Message ${messageId}: had ${attachmentCount} PDF(s) but 0 invoices saved - will retry next sync`);
+      }
     } catch (msgError: any) {
       console.error("Error processing message:", msgError);
     }
@@ -513,6 +516,12 @@ async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
     }
 
     const { text } = await extractResponse.json();
+
+    if (!text || text.trim().length < 50) {
+      console.log("PDF text too short or empty - treating as invoice (likely scanned PDF)");
+      return true;
+    }
+
     const lowerText = text.toLowerCase();
 
     const invoiceKeywords = [
@@ -538,10 +547,10 @@ async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
       lowerText.includes(keyword)
     );
 
-    const isInvoice = foundKeywords.length >= 3;
+    const isInvoice = foundKeywords.length >= 2;
 
     console.log(
-      `PDF verification: ${isInvoice ? "IS" : "NOT"} an invoice (found ${foundKeywords.length} keywords)`
+      `PDF verification: ${isInvoice ? "IS" : "NOT"} an invoice (found ${foundKeywords.length} keywords: ${foundKeywords.join(", ")})`
     );
 
     return isInvoice;
