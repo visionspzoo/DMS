@@ -280,7 +280,7 @@ function WorkflowSection() {
             label="Oznacz jako opłaconą"
             description="Kończy obieg faktury — ustawia status Opłacona z datą i osobą która oznaczyła. Plik przenoszony jest automatycznie na Google Drive do folderu Opłacone (jeśli skonfigurowano)."
             color="bg-emerald-700"
-            roles={['Admin', 'Dyrektor']}
+            roles={['Admin', 'Dyrektor', 'Kierownik', 'Specjalista']}
           />
           <ButtonDoc
             icon={Edit2}
@@ -306,16 +306,16 @@ function WorkflowSection() {
           <ButtonDoc
             icon={RefreshCw}
             label="Przetwórz OCR ponownie"
-            description="Ponownie uruchamia automatyczne odczytywanie danych z pliku PDF. Przydatne gdy pierwsze odczytanie było niepoprawne lub plik był złej jakości."
+            description="Ponownie uruchamia automatyczne odczytywanie danych z pliku PDF. Przydatne gdy pierwsze odczytanie było niepoprawne lub plik był złej jakości. Dostępne dla wszystkich użytkowników na fakturach w statusie Robocze lub Odrzucona."
             color="bg-blue-500"
-            roles={['Admin']}
+            roles={['Wszyscy']}
           />
           <ButtonDoc
             icon={ArrowRight}
             label="Prześlij (Transfer)"
-            description="Przenosi fakturę do innego działu. Dostępne dla Kierowników, Dyrektorów i Adminów. Zmienia dział faktury i przypisuje nowego zatwierdzającego."
+            description="Przenosi fakturę do innego działu lub osoby zatwierdzającej. Specjalista może prześlij własne faktury (Robocze, Odrzucone, Zaakceptowane). Kierownik i Dyrektor mogą transferować faktury w swoim dziale. Admin może transferować każdą fakturę."
             color="bg-blue-700"
-            roles={['Kierownik', 'Dyrektor', 'Admin']}
+            roles={['Specjalista', 'Kierownik', 'Dyrektor', 'Admin']}
           />
         </div>
       </div>

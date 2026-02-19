@@ -673,8 +673,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
     }
 
-    // Accepted invoices - admin or non-uploader can transfer
-    if (currentInvoice.status === 'accepted' && currentInvoice.uploaded_by !== profile.id) {
+    // Accepted invoices - anyone can transfer (including the uploader)
+    if (currentInvoice.status === 'accepted') {
       return true;
     }
 
@@ -2057,7 +2057,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 {!currentInvoice.paid_at && currentInvoice.status !== 'paid' && (
                   profile?.is_admin ||
                   profile?.role === 'Dyrektor' ||
-                  ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile?.id)
+                  profile?.role === 'Kierownik' ||
+                  currentInvoice.uploaded_by === profile?.id
                 ) && (
                   <button
                     onClick={() => setShowPaidConfirm(true)}
@@ -2087,26 +2088,26 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
+                {(currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && !isFromKSEF && (
+                  <button
+                    onClick={handleReprocessOCR}
+                    disabled={isReprocessing || loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Ponownie przetworz fakturę przez AI aby poprawić rozpoznanie danych"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
+                    <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz Ponownie'}</span>
+                  </button>
+                )}
                 {(currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && canTransfer() && !isFromKSEF && (
-                  <>
-                    <button
-                      onClick={handleReprocessOCR}
-                      disabled={isReprocessing || loading}
-                      className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Ponownie przetworz fakturę przez AI aby poprawić rozpoznanie danych"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
-                      <span>{isReprocessing ? 'Przetwarzanie...' : 'Przetwórz Ponownie'}</span>
-                    </button>
-                    <button
-                      onClick={() => setShowTransferModal(true)}
-                      disabled={loading}
-                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ArrowRight className="w-4 h-4" />
-                      <span>Prześlij</span>
-                    </button>
-                  </>
+                  <button
+                    onClick={() => setShowTransferModal(true)}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    <span>Prześlij</span>
+                  </button>
                 )}
                 {currentInvoice.status === 'waiting' && (currentInvoice.uploaded_by === profile?.id || profile?.is_admin) && (
                   <button
