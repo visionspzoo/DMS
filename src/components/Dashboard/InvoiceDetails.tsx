@@ -104,13 +104,45 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const isDuplicate = duplicateInvoices.length > 0;
 
+  const loadPdfAndKsefIfNeeded = async () => {
+    let resolvedPdfBase64 = currentInvoice.pdf_base64;
+
+    if (!resolvedPdfBase64) {
+      const { data } = await supabase
+        .from('invoices')
+        .select('pdf_base64')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+      if (data?.pdf_base64) {
+        resolvedPdfBase64 = data.pdf_base64;
+        setCurrentInvoice(prev => ({ ...prev, pdf_base64: data.pdf_base64 }));
+      }
+    }
+
+    if (!resolvedPdfBase64 && !currentInvoice.file_url && currentInvoice.source === 'ksef') {
+      setLoadingKsefPdf(true);
+      try {
+        const pdf = await fetchKsefPdf();
+        if (pdf) {
+          setKsefPdfBase64(pdf);
+          await supabase.from('invoices').update({ pdf_base64: pdf }).eq('id', currentInvoice.id);
+        }
+      } catch (error) {
+        console.error('Error loading KSEF PDF:', error);
+      } finally {
+        setLoadingKsefPdf(false);
+        setPdfLoadAttempted(true);
+      }
+    }
+  };
+
   useEffect(() => {
     loadApprovals();
     loadAuditLogs();
     loadDepartments();
     loadInvoiceDepartments();
     checkIfFromKSEF();
-    loadKsefPdfIfNeeded();
+    loadPdfAndKsefIfNeeded();
     loadCostCenters();
     checkDuplicates();
     loadInvoiceDepartmentInfo();
