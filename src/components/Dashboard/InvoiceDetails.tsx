@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
@@ -93,6 +93,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{id: string, invoice_number: string, created_at: string}>>([]);
   const [invoiceDepartmentInfo, setInvoiceDepartmentInfo] = useState<{director_id: string | null, uploader_role: string | null} | null>(null);
+  const [showAdminRejectModal, setShowAdminRejectModal] = useState(false);
+  const [adminRejectComment, setAdminRejectComment] = useState('');
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -1814,6 +1816,50 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleAdminRejection = async (reason: string) => {
+    if (!profile || !profile.is_admin) return;
+
+    setLoading(true);
+    try {
+      const { data, error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: 'rejected', current_approver_id: null })
+        .eq('id', currentInvoice.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      Object.assign(invoice, data);
+      setCurrentInvoice(data);
+
+      await supabase.from('approvals').insert({
+        invoice_id: currentInvoice.id,
+        approver_id: profile.id,
+        approver_role: profile.role,
+        action: 'rejected',
+        comment: reason || `Odrzucenie administracyjne przez ${profile.full_name}`,
+      });
+
+      await supabase.from('audit_logs').insert({
+        invoice_id: currentInvoice.id,
+        user_id: profile.id,
+        action: 'admin_rejected',
+        description: `Odrzucenie administracyjne — faktura odrzucona przez ${profile.full_name}${reason ? `: ${reason}` : ''}`,
+      });
+
+      await loadApprovals();
+      await loadAuditLogs();
+
+      onUpdate();
+    } catch (error) {
+      console.error('Error processing admin rejection:', error);
+      alert('Nie udało się wykonać odrzucenia administracyjnego');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConfirmAIData = async () => {
     if (!profile) return;
 
@@ -1993,6 +2039,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   >
                     <ArrowRight className="w-4 h-4" />
                     <span>Prześlij</span>
+                  </button>
+                )}
+                {profile?.is_admin && currentInvoice.status !== 'rejected' && currentInvoice.status !== 'draft' && (
+                  <button
+                    onClick={() => setShowAdminRejectModal(true)}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Odrzuć</span>
                   </button>
                 )}
                 {((currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id) || profile?.is_admin) && !isFromKSEF && (
@@ -2843,6 +2899,109 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           </div>
         </div>
       </div>
+
+      {showAdminRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <ShieldAlert className="w-6 h-6 text-red-600 dark:text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Odrzuć fakturę
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Wybierz rodzaj odrzucenia
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowAdminRejectModal(false); setAdminRejectComment(''); }}
+                className="ml-auto p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Powód odrzucenia (opcjonalnie)
+              </label>
+              <textarea
+                value={adminRejectComment}
+                onChange={(e) => setAdminRejectComment(e.target.value)}
+                rows={3}
+                placeholder="Wpisz powód odrzucenia..."
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none text-sm"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Odrzucenie administracyjne
+              </p>
+              <button
+                onClick={async () => {
+                  setShowAdminRejectModal(false);
+                  await handleAdminRejection(adminRejectComment);
+                  setAdminRejectComment('');
+                }}
+                disabled={loading}
+                className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 hover:border-red-400 transition group"
+              >
+                <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg">
+                  <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-red-800 dark:text-red-300">
+                    Odrzucenie administracyjne
+                  </p>
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    Cofa fakturę do statusu "Odrzucona" niezależnie od etapu
+                  </p>
+                </div>
+              </button>
+
+              {canApprove() && (
+                <>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pt-1">
+                    Standardowe odrzucenie
+                  </p>
+                  <button
+                    onClick={async () => {
+                      setShowAdminRejectModal(false);
+                      setComment(adminRejectComment);
+                      setAdminRejectComment('');
+                      await handleApprove('rejected');
+                    }}
+                    disabled={loading}
+                    className="w-full flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-slate-400 transition group"
+                  >
+                    <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                      <XCircle className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-slate-800 dark:text-slate-200">
+                        Standardowe odrzucenie
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Odrzucenie w ramach normalnego obiegu dokumentów
+                      </p>
+                    </div>
+                  </button>
+                </>
+              )}
+            </div>
+
+            <button
+              onClick={() => { setShowAdminRejectModal(false); setAdminRejectComment(''); }}
+              className="mt-4 w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition text-sm font-medium"
+            >
+              Anuluj
+            </button>
+          </div>
+        </div>
+      )}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
