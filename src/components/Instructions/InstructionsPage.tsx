@@ -501,12 +501,12 @@ function AutomationSection() {
         <div className="space-y-2">
           <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50">
             <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm mb-1">Jak to działa?</p>
-            <ul className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1 list-disc list-inside">
-              <li>Gdy ręcznie dodajesz tag do faktury — system zapamiętuje powiązanie: dostawca → tag</li>
-              <li>Następna faktura od tego samego dostawcy otrzyma automatyczną propozycję tagu</li>
-              <li>Można zaakceptować lub odrzucić propozycję — każda decyzja ulepsza model</li>
-              <li>Model jest indywidualny dla każdego użytkownika</li>
-            </ul>
+            <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1">
+              <p>Gdy ręcznie dodajesz tag do faktury — system zapamiętuje powiązanie: dostawca → tag.</p>
+              <p>Następna faktura od tego samego dostawcy otrzyma automatyczną propozycję tagu.</p>
+              <p>Można zaakceptować lub odrzucić propozycję — każda decyzja ulepsza model.</p>
+              <p>Model jest indywidualny dla każdego użytkownika.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -518,10 +518,10 @@ function AutomationSection() {
         </p>
         <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50 space-y-2">
           <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm">Sprawdzane kryteria:</p>
-          <ul className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1 list-disc list-inside">
-            <li>Ten sam numer faktury od tego samego dostawcy (NIP)</li>
-            <li>Identyczny plik (hash pliku) — nawet przy różnej nazwie</li>
-          </ul>
+          <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1">
+            <p>Ten sam numer faktury od tego samego dostawcy (NIP).</p>
+            <p>Identyczny plik (hash pliku) — nawet przy różnej nazwie.</p>
+          </div>
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-2">
             W przypadku wykrycia duplikatu — użytkownik i Admin otrzymują powiadomienie z linkiem do obu faktur. Decyzja o usunięciu należy do użytkownika.
           </p>
@@ -564,7 +564,7 @@ function AutomationSection() {
       </div>
 
       <InfoBox type="warning">
-        <strong>Ważne:</strong> Limity są miesięczne i resetują się pierwszego dnia każdego miesiąca. Limit dotyczy sumy kwot netto zatwierdzonych faktur w danym miesiącu, nie pojedynczej faktury.
+        <strong>Ważne:</strong> Limity działają na dwa sposoby: miesięczny (suma kwot netto zatwierdzonych faktur w danym miesiącu, resetuje się pierwszego dnia miesiąca) oraz na pojedynczą fakturę (faktura przekraczająca limit kwotowy wymaga zatwierdzenia przez wyższy szczebel niezależnie od sumy miesięcznej).
       </InfoBox>
     </div>
   );
@@ -639,13 +639,13 @@ function IntegrationsSection() {
         </p>
         <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50">
           <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm mb-2">W Konfiguracji znajdziesz:</p>
-          <ul className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1 list-disc list-inside">
-            <li>Status połączenia z Google Drive (aktywne / wygasłe / brak)</li>
-            <li>Status połączenia z Gmail</li>
-            <li>Mapowania folderów Drive do działów (admini)</li>
-            <li>Preferencje synchronizacji e-mail</li>
-            <li>Przycisk rozłączenia konta Google</li>
-          </ul>
+          <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1">
+            <p>Status połączenia z Google Drive (aktywne / wygasłe / brak).</p>
+            <p>Status połączenia z Gmail.</p>
+            <p>Mapowania folderów Drive do działów (admini).</p>
+            <p>Preferencje synchronizacji e-mail.</p>
+            <p>Przycisk rozłączenia konta Google.</p>
+          </div>
         </div>
       </div>
     </div>
