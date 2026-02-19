@@ -163,28 +163,69 @@ Deno.serve(async (req: Request) => {
               new: newMessages.length,
             });
 
-            if (newMessages.length > 0) {
-              const firstMsg = newMessages[0];
-              const msgResp = await fetch(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${firstMsg.id}`,
+            const allMessages = listBody.messages;
+            const firstMsg = allMessages[0];
+            const msgResp = await fetch(
+              `https://gmail.googleapis.com/gmail/v1/users/me/messages/${firstMsg.id}`,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            const msgData = await msgResp.json();
+            const pdfParts: any[] = [];
+            function collectPdfParts2(payload: any) {
+              if (!payload) return;
+              if (payload.filename?.toLowerCase().endsWith(".pdf") && payload.body?.attachmentId) {
+                pdfParts.push({ filename: payload.filename, mimeType: payload.mimeType, attachmentId: payload.body.attachmentId });
+              }
+              if (payload.parts) payload.parts.forEach(collectPdfParts2);
+            }
+            collectPdfParts2(msgData.payload);
+            diagResult.steps.push({
+              step: "sample_message",
+              messageId: firstMsg.id,
+              alreadyProcessed: processedUids.has(firstMsg.id),
+              subject: msgData.payload?.headers?.find((h: any) => h.name === "Subject")?.value,
+              pdfAttachments: pdfParts,
+            });
+
+            if (pdfParts.length > 0) {
+              const firstPdf = pdfParts[0];
+              const attResp = await fetch(
+                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${firstMsg.id}/attachments/${firstPdf.attachmentId}`,
                 { headers: { Authorization: `Bearer ${accessToken}` } }
               );
-              const msgData = await msgResp.json();
-              const pdfParts: any[] = [];
-              function collectPdfParts(payload: any) {
-                if (!payload) return;
-                if (payload.filename?.toLowerCase().endsWith(".pdf") && payload.body?.attachmentId) {
-                  pdfParts.push({ filename: payload.filename, mimeType: payload.mimeType });
+              if (!attResp.ok) {
+                diagResult.steps.push({ step: "attachment_fetch", ok: false, status: attResp.status });
+              } else {
+                const attData = await attResp.json();
+                const rawData = attData.data.replace(/-/g, "+").replace(/_/g, "/");
+                const pdfBytes = Uint8Array.from(atob(rawData), (c) => c.charCodeAt(0));
+                diagResult.steps.push({ step: "attachment_fetch", ok: true, sizeBytes: pdfBytes.length });
+
+                const fileHash = await computeFileHash(pdfBytes);
+                diagResult.steps.push({ step: "hash", hash: fileHash.substring(0, 16) + "..." });
+
+                const testPath = `invoices/diag_test_${Date.now()}.pdf`;
+                const { error: storageErr } = await supabase.storage.from("documents").upload(testPath, pdfBytes, { contentType: "application/pdf" });
+                if (storageErr) {
+                  diagResult.steps.push({ step: "storage_upload", ok: false, error: storageErr.message });
+                } else {
+                  diagResult.steps.push({ step: "storage_upload", ok: true });
+                  await supabase.storage.from("documents").remove([testPath]);
+
+                  const { data: insertTest, error: insertErr } = await supabase.from("invoices").insert({
+                    file_url: "https://test.example.com/test.pdf",
+                    uploaded_by: userId,
+                    source: `email:${config.email_address}`,
+                    file_hash: fileHash + "_diagtest",
+                  }).select("id").single();
+                  if (insertErr) {
+                    diagResult.steps.push({ step: "invoice_insert", ok: false, error: insertErr.message, code: insertErr.code });
+                  } else {
+                    diagResult.steps.push({ step: "invoice_insert", ok: true, id: insertTest.id });
+                    await supabase.from("invoices").delete().eq("id", insertTest.id);
+                  }
                 }
-                if (payload.parts) payload.parts.forEach(collectPdfParts);
               }
-              collectPdfParts(msgData.payload);
-              diagResult.steps.push({
-                step: "sample_message",
-                messageId: firstMsg.id,
-                subject: msgData.payload?.headers?.find((h: any) => h.name === "Subject")?.value,
-                pdfAttachments: pdfParts,
-              });
             }
           }
         } catch (e: any) {
@@ -539,18 +580,16 @@ async function syncEmailAccount(
           syncedCount++;
       }
 
-      if (invoiceCount > 0 || attachmentCount === 0) {
-        await supabase.from("processed_email_messages").insert({
-          email_config_id: config.id,
-          message_uid: messageId,
-          message_id: messageId,
-          attachment_count: attachmentCount,
-          invoice_count: invoiceCount,
-        });
-        processedUids.add(messageId);
-      } else {
-        console.log(`Message ${messageId}: had ${attachmentCount} PDF(s) but 0 invoices saved - will retry next sync`);
-      }
+      await supabase.from("processed_email_messages").insert({
+        email_config_id: config.id,
+        message_uid: messageId,
+        message_id: messageId,
+        attachment_count: attachmentCount,
+        invoice_count: invoiceCount,
+      }).then(({ error: pErr }) => {
+        if (pErr) console.error("Error marking message as processed:", pErr);
+      });
+      processedUids.add(messageId);
     } catch (msgError: any) {
       console.error("Error processing message:", msgError);
     }
