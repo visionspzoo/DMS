@@ -219,7 +219,6 @@ export async function uploadInvoiceFile(
         body: JSON.stringify({
           fileUrl: publicUrl,
           invoiceId: finalInvoiceData.id,
-          fileBase64: pdfBase64,
           mimeType: file.type,
         }),
       }

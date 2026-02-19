@@ -266,6 +266,43 @@ Deno.serve(async (req: Request) => {
     if (fileBase64 || pdfBase64) {
       base64Data = fileBase64 || pdfBase64!;
       console.log(`Using provided base64, mimeType: ${resolvedMimeType}, length: ${base64Data.length}`);
+    } else if (invoiceId) {
+      console.log("Reading file data from DB for invoice:", invoiceId);
+      const { data: invoiceRow } = await supabase
+        .from("invoices")
+        .select("pdf_base64, file_url")
+        .eq("id", invoiceId)
+        .maybeSingle();
+
+      if (invoiceRow?.pdf_base64) {
+        base64Data = invoiceRow.pdf_base64;
+        resolvedMimeType = 'application/pdf';
+        console.log(`Loaded pdf_base64 from DB, length: ${base64Data.length}`);
+      } else {
+        const urlToFetch = fileUrl || invoiceRow?.file_url;
+        if (!urlToFetch) throw new Error("No file data available for OCR");
+
+        console.log("Fetching file from URL:", urlToFetch);
+        const fileResponse = await fetch(urlToFetch);
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to fetch file from URL: ${fileResponse.status} ${fileResponse.statusText}`);
+        }
+        const fileBlob = await fileResponse.blob();
+
+        const ct = fileResponse.headers.get('content-type') || '';
+        if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
+          resolvedMimeType = ct.split(';')[0].trim();
+        } else if (urlToFetch.match(/\.(jpg|jpeg)(\?|$)/i)) {
+          resolvedMimeType = 'image/jpeg';
+        } else if (urlToFetch.match(/\.png(\?|$)/i)) {
+          resolvedMimeType = 'image/png';
+        } else {
+          resolvedMimeType = requestMimeType || 'application/pdf';
+        }
+
+        console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
+        base64Data = await blobToBase64(fileBlob);
+      }
     } else if (fileUrl) {
       console.log("Fetching file from URL:", fileUrl);
       const fileResponse = await fetch(fileUrl);
@@ -288,7 +325,7 @@ Deno.serve(async (req: Request) => {
       console.log(`File fetched: ${resolvedMimeType}, ${fileBlob.size} bytes`);
       base64Data = await blobToBase64(fileBlob);
     } else {
-      throw new Error("Neither base64 data nor fileUrl provided");
+      throw new Error("No file data, invoiceId, or fileUrl provided");
     }
 
     const isPDF = resolvedMimeType === 'application/pdf';
