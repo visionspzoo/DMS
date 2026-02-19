@@ -694,7 +694,7 @@ function RuleForm({
         <div className="relative">
           <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
             <Building2 className="w-3.5 h-3.5 inline mr-1" />
-            MPK (Miejsce Powstawania Kosztow)
+            Opis MPK
           </label>
           {selectedCostCenter ? (
             <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
