@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, Zap } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2 } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
 import SlackSettings from './SlackSettings';
 import UserInvitations from './UserInvitations';
 import { CostCentersManagement } from './CostCentersManagement';
 import APISettings from './APISettings';
-import InvoiceAutomations from './InvoiceAutomations';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -57,7 +56,7 @@ export default function SettingsPanel() {
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk' | 'api' | 'automations'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk' | 'api'>('users');
   const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
   const [selectedAccessDept, setSelectedAccessDept] = useState('');
   const [selectedAccessType, setSelectedAccessType] = useState<'view' | 'workflow'>('view');
@@ -458,17 +457,6 @@ export default function SettingsPanel() {
         >
           <Code2 className="w-4 h-4" />
           API
-        </button>
-        <button
-          onClick={() => setActiveTab('automations')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-            activeTab === 'automations'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          <Zap className="w-4 h-4" />
-          Automatyzacje
         </button>
       </div>
 
@@ -953,9 +941,7 @@ export default function SettingsPanel() {
           <APISettings />
         )}
 
-        {activeTab === 'automations' && (
-          <InvoiceAutomations />
-        )}
+
     </div>
   );
 }

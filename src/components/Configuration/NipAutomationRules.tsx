@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   Plus, Trash2, Edit2, Save, X, AlertCircle, Search,
   Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb,
-  Building2, ArrowRight
+  Building2, Hash
 } from 'lucide-react';
 
 interface CostCenter {
@@ -20,17 +20,24 @@ interface TagType {
   color: string;
 }
 
+interface Department {
+  id: string;
+  name: string;
+}
+
 interface AutomationRule {
   id: string;
   supplier_nip: string | null;
   supplier_name: string | null;
   auto_accept: boolean;
   cost_center_id: string | null;
+  department_id: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
   cost_center?: CostCenter | null;
+  department?: Department | null;
   tags: TagType[];
 }
 
@@ -47,6 +54,7 @@ export default function NipAutomationRules() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
+  const [accessibleDepartments, setAccessibleDepartments] = useState<Department[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,21 +68,76 @@ export default function NipAutomationRules() {
   const [formName, setFormName] = useState('');
   const [formAutoAccept, setFormAutoAccept] = useState(false);
   const [formCostCenterId, setFormCostCenterId] = useState('');
+  const [formDepartmentId, setFormDepartmentId] = useState('');
   const [formSelectedTags, setFormSelectedTags] = useState<TagType[]>([]);
   const [formTagSearch, setFormTagSearch] = useState('');
   const [formCostCenterSearch, setFormCostCenterSearch] = useState('');
+  const [formDepartmentSearch, setFormDepartmentSearch] = useState('');
+
+  const isAdmin = profile?.is_admin;
+  const userRole = profile?.role;
+
+  const loadAccessibleDepartments = useCallback(async () => {
+    if (!profile?.id) return;
+
+    if (isAdmin) {
+      const { data } = await supabase
+        .from('departments')
+        .select('id, name')
+        .order('name');
+      setAccessibleDepartments(data || []);
+      return;
+    }
+
+    const deptIds = new Set<string>();
+
+    if (userRole === 'Dyrektor') {
+      const { data: dirDepts } = await supabase
+        .from('departments')
+        .select('id, name')
+        .eq('director_id', profile.id)
+        .order('name');
+      (dirDepts || []).forEach(d => deptIds.add(d.id));
+    }
+
+    if (profile.department_id) {
+      deptIds.add(profile.department_id);
+    }
+
+    const { data: memberDepts } = await supabase
+      .from('department_members')
+      .select('department_id')
+      .eq('user_id', profile.id);
+    (memberDepts || []).forEach(m => deptIds.add(m.department_id));
+
+    if (deptIds.size === 0) {
+      setAccessibleDepartments([]);
+      return;
+    }
+
+    const { data: depts } = await supabase
+      .from('departments')
+      .select('id, name')
+      .in('id', Array.from(deptIds))
+      .order('name');
+    setAccessibleDepartments(depts || []);
+  }, [profile?.id, isAdmin, userRole, profile?.department_id]);
 
   const loadRules = useCallback(async () => {
+    if (!profile?.id) return;
     try {
-      const { data, error: fetchError } = await supabase
+      let query = supabase
         .from('nip_automation_rules')
         .select('*')
         .order('created_at', { ascending: false });
 
+      const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
 
+      const allRules = data || [];
+
       const rulesWithDetails: AutomationRule[] = [];
-      for (const rule of data || []) {
+      for (const rule of allRules) {
         let costCenter = null;
         if (rule.cost_center_id) {
           const { data: cc } = await supabase
@@ -83,6 +146,16 @@ export default function NipAutomationRules() {
             .eq('id', rule.cost_center_id)
             .maybeSingle();
           costCenter = cc;
+        }
+
+        let department = null;
+        if (rule.department_id) {
+          const { data: dept } = await supabase
+            .from('departments')
+            .select('id, name')
+            .eq('id', rule.department_id)
+            .maybeSingle();
+          department = dept;
         }
 
         const { data: tagLinks } = await supabase
@@ -102,7 +175,7 @@ export default function NipAutomationRules() {
           }
         }
 
-        rulesWithDetails.push({ ...rule, cost_center: costCenter, tags });
+        rulesWithDetails.push({ ...rule, cost_center: costCenter, department, tags });
       }
 
       setRules(rulesWithDetails);
@@ -112,7 +185,7 @@ export default function NipAutomationRules() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile?.id]);
 
   const loadCostCenters = useCallback(async () => {
     const { data } = await supabase
@@ -134,14 +207,12 @@ export default function NipAutomationRules() {
   const loadSuggestions = useCallback(async () => {
     if (!profile?.id) return;
     try {
-      let query = supabase
+      const { data: invoices } = await supabase
         .from('invoices')
         .select('supplier_nip, supplier_name, cost_center_id')
         .not('supplier_nip', 'is', null)
         .order('created_at', { ascending: false })
         .limit(500);
-
-      const { data: invoices } = await query;
 
       if (!invoices || invoices.length === 0) return;
 
@@ -161,11 +232,7 @@ export default function NipAutomationRules() {
       for (const inv of invoices) {
         if (!inv.supplier_nip || existingNips.has(inv.supplier_nip)) continue;
         if (!nipGroups[inv.supplier_nip]) {
-          nipGroups[inv.supplier_nip] = {
-            name: inv.supplier_name || '',
-            count: 0,
-            costCenterCounts: {},
-          };
+          nipGroups[inv.supplier_nip] = { name: inv.supplier_name || '', count: 0, costCenterCounts: {} };
         }
         nipGroups[inv.supplier_nip].count++;
         if (inv.cost_center_id) {
@@ -194,9 +261,7 @@ export default function NipAutomationRules() {
 
       const result: Suggestion[] = [];
       for (const [nip, group] of sorted) {
-        const topCCId = Object.entries(group.costCenterCounts)
-          .sort(([, a], [, b]) => b - a)[0]?.[0] || null;
-
+        const topCCId = Object.entries(group.costCenterCounts).sort(([, a], [, b]) => b - a)[0]?.[0] || null;
         let topCC: CostCenter | null = null;
         if (topCCId) {
           const { data: cc } = await supabase
@@ -218,13 +283,7 @@ export default function NipAutomationRules() {
           if (tag) tags.push(tag);
         }
 
-        result.push({
-          supplier_nip: nip,
-          supplier_name: group.name,
-          invoice_count: group.count,
-          most_used_tags: tags,
-          most_used_cost_center: topCC,
-        });
+        result.push({ supplier_nip: nip, supplier_name: group.name, invoice_count: group.count, most_used_tags: tags, most_used_cost_center: topCC });
       }
 
       setSuggestions(result);
@@ -237,26 +296,31 @@ export default function NipAutomationRules() {
     loadRules();
     loadCostCenters();
     loadTags();
+    loadAccessibleDepartments();
     loadSuggestions();
-  }, [loadRules, loadCostCenters, loadTags, loadSuggestions]);
+  }, [loadRules, loadCostCenters, loadTags, loadAccessibleDepartments, loadSuggestions]);
 
   const resetForm = () => {
     setFormNip('');
     setFormName('');
     setFormAutoAccept(false);
     setFormCostCenterId('');
+    setFormDepartmentId('');
     setFormSelectedTags([]);
     setFormTagSearch('');
     setFormCostCenterSearch('');
+    setFormDepartmentSearch('');
     setEditingId(null);
     setShowForm(false);
   };
 
   const startEdit = (rule: AutomationRule) => {
+    if (!isAdmin && rule.created_by !== profile?.id) return;
     setFormNip(rule.supplier_nip || '');
     setFormName(rule.supplier_name || '');
     setFormAutoAccept(rule.auto_accept);
     setFormCostCenterId(rule.cost_center_id || '');
+    setFormDepartmentId(rule.department_id || '');
     setFormSelectedTags(rule.tags);
     setEditingId(rule.id);
     setShowForm(true);
@@ -267,6 +331,7 @@ export default function NipAutomationRules() {
     setFormName(suggestion.supplier_name);
     setFormAutoAccept(false);
     setFormCostCenterId(suggestion.most_used_cost_center?.id || '');
+    setFormDepartmentId('');
     setFormSelectedTags(suggestion.most_used_tags);
     setEditingId(null);
     setShowForm(true);
@@ -287,6 +352,7 @@ export default function NipAutomationRules() {
         supplier_name: formName.trim() || null,
         auto_accept: formAutoAccept,
         cost_center_id: formCostCenterId || null,
+        department_id: formDepartmentId || null,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -316,10 +382,7 @@ export default function NipAutomationRules() {
       }
 
       if (formSelectedTags.length > 0) {
-        const tagInserts = formSelectedTags.map(tag => ({
-          rule_id: ruleId,
-          tag_id: tag.id,
-        }));
+        const tagInserts = formSelectedTags.map(tag => ({ rule_id: ruleId, tag_id: tag.id }));
         const { error: tagErr } = await supabase
           .from('nip_automation_rule_tags')
           .insert(tagInserts);
@@ -339,12 +402,13 @@ export default function NipAutomationRules() {
     }
   };
 
-  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+  const handleToggleActive = async (rule: AutomationRule) => {
+    if (!isAdmin && rule.created_by !== profile?.id) return;
     try {
       const { error: updateErr } = await supabase
         .from('nip_automation_rules')
-        .update({ is_active: !currentStatus, updated_at: new Date().toISOString() })
-        .eq('id', id);
+        .update({ is_active: !rule.is_active, updated_at: new Date().toISOString() })
+        .eq('id', rule.id);
       if (updateErr) throw updateErr;
       await loadRules();
     } catch (err: any) {
@@ -352,13 +416,14 @@ export default function NipAutomationRules() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (rule: AutomationRule) => {
+    if (!isAdmin && rule.created_by !== profile?.id) return;
     if (!confirm('Czy na pewno chcesz usunac te regule?')) return;
     try {
       const { error: delErr } = await supabase
         .from('nip_automation_rules')
         .delete()
-        .eq('id', id);
+        .eq('id', rule.id);
       if (delErr) throw delErr;
       setSuccess('Usunieto regule');
       await loadRules();
@@ -380,6 +445,23 @@ export default function NipAutomationRules() {
     setFormSelectedTags(prev => prev.filter(t => t.id !== tagId));
   };
 
+  const accessibleDeptIds = new Set(accessibleDepartments.map(d => d.id));
+
+  const visibleRules = rules.filter(rule => {
+    if (isAdmin) return true;
+    if (!rule.department_id) return rule.created_by === profile?.id;
+    return accessibleDeptIds.has(rule.department_id) || rule.created_by === profile?.id;
+  });
+
+  const filteredRules = visibleRules.filter(rule => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (rule.supplier_nip || '').toLowerCase().includes(q) ||
+      (rule.supplier_name || '').toLowerCase().includes(q)
+    );
+  });
+
   const filteredTags = allTags.filter(
     tag =>
       !formSelectedTags.some(t => t.id === tag.id) &&
@@ -392,16 +474,12 @@ export default function NipAutomationRules() {
       cc.description.toLowerCase().includes(formCostCenterSearch.toLowerCase())
   );
 
-  const filteredRules = rules.filter(rule => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (rule.supplier_nip || '').toLowerCase().includes(q) ||
-      (rule.supplier_name || '').toLowerCase().includes(q)
-    );
-  });
+  const filteredDepartments = accessibleDepartments.filter(
+    d => d.name.toLowerCase().includes(formDepartmentSearch.toLowerCase())
+  );
 
   const selectedCostCenter = costCenters.find(cc => cc.id === formCostCenterId);
+  const selectedDepartment = accessibleDepartments.find(d => d.id === formDepartmentId);
 
   if (loading) {
     return (
@@ -427,10 +505,7 @@ export default function NipAutomationRules() {
       )}
 
       {suggestions.length > 0 && !showForm && (
-        <SuggestionsPanel
-          suggestions={suggestions}
-          onUseSuggestion={startFromSuggestion}
-        />
+        <SuggestionsPanel suggestions={suggestions} onUseSuggestion={startFromSuggestion} />
       )}
 
       <RuleForm
@@ -440,18 +515,24 @@ export default function NipAutomationRules() {
         formName={formName}
         formAutoAccept={formAutoAccept}
         formCostCenterId={formCostCenterId}
+        formDepartmentId={formDepartmentId}
         formSelectedTags={formSelectedTags}
         formTagSearch={formTagSearch}
         formCostCenterSearch={formCostCenterSearch}
+        formDepartmentSearch={formDepartmentSearch}
         selectedCostCenter={selectedCostCenter}
+        selectedDepartment={selectedDepartment}
         filteredTags={filteredTags}
         filteredCostCenters={filteredCostCenters}
+        filteredDepartments={filteredDepartments}
         saving={saving}
         onNipChange={setFormNip}
         onNameChange={setFormName}
         onAutoAcceptChange={setFormAutoAccept}
         onCostCenterChange={setFormCostCenterId}
         onCostCenterSearchChange={setFormCostCenterSearch}
+        onDepartmentChange={setFormDepartmentId}
+        onDepartmentSearchChange={setFormDepartmentSearch}
         onTagSearchChange={setFormTagSearch}
         onAddTag={addTagToForm}
         onRemoveTag={removeTagFromForm}
@@ -463,6 +544,8 @@ export default function NipAutomationRules() {
       <RulesList
         rules={filteredRules}
         searchQuery={searchQuery}
+        currentUserId={profile?.id}
+        isAdmin={!!isAdmin}
         onSearchChange={setSearchQuery}
         onEdit={startEdit}
         onDelete={handleDelete}
@@ -483,7 +566,7 @@ function SuggestionsPanel({
     <div className="bg-gradient-to-br from-amber-50/80 to-orange-50/50 dark:from-amber-900/10 dark:to-orange-900/10 border border-amber-200 dark:border-amber-800/30 rounded-xl p-5">
       <div className="flex items-center gap-2.5 mb-4">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-          <Lightbulb className="w-4.5 h-4.5 text-white" />
+          <Lightbulb className="w-4 h-4 text-white" />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
@@ -494,7 +577,6 @@ function SuggestionsPanel({
           </p>
         </div>
       </div>
-
       <div className="space-y-2.5">
         {suggestions.map((s, i) => (
           <div
@@ -518,18 +600,14 @@ function SuggestionsPanel({
                 </span>
                 {s.most_used_cost_center && (
                   <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
-                    MPK: {s.most_used_cost_center.code}{s.most_used_cost_center.description ? ` - ${s.most_used_cost_center.description}` : ''}
+                    MPK: {s.most_used_cost_center.code}
                   </span>
                 )}
                 {s.most_used_tags.map(tag => (
                   <span
                     key={tag.id}
                     className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                      border: `1px solid ${tag.color}30`,
-                    }}
+                    style={{ backgroundColor: `${tag.color}20`, color: tag.color, border: `1px solid ${tag.color}30` }}
                   >
                     {tag.name}
                   </span>
@@ -551,58 +629,29 @@ function SuggestionsPanel({
 }
 
 function RuleForm({
-  show,
-  editing,
-  formNip,
-  formName,
-  formAutoAccept,
-  formCostCenterId,
-  formSelectedTags,
-  formTagSearch,
-  formCostCenterSearch,
-  selectedCostCenter,
-  filteredTags,
-  filteredCostCenters,
-  saving,
-  onNipChange,
-  onNameChange,
-  onAutoAcceptChange,
-  onCostCenterChange,
-  onCostCenterSearchChange,
-  onTagSearchChange,
-  onAddTag,
-  onRemoveTag,
-  onSave,
-  onCancel,
-  onShow,
+  show, editing, formNip, formName, formAutoAccept, formCostCenterId, formDepartmentId,
+  formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
+  selectedCostCenter, selectedDepartment, filteredTags, filteredCostCenters, filteredDepartments,
+  saving, onNipChange, onNameChange, onAutoAcceptChange, onCostCenterChange, onCostCenterSearchChange,
+  onDepartmentChange, onDepartmentSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
+  onSave, onCancel, onShow,
 }: {
-  show: boolean;
-  editing: boolean;
-  formNip: string;
-  formName: string;
-  formAutoAccept: boolean;
-  formCostCenterId: string;
-  formSelectedTags: TagType[];
-  formTagSearch: string;
-  formCostCenterSearch: string;
-  selectedCostCenter: CostCenter | undefined;
-  filteredTags: TagType[];
-  filteredCostCenters: CostCenter[];
+  show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean;
+  formCostCenterId: string; formDepartmentId: string; formSelectedTags: TagType[];
+  formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string;
+  selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined;
+  filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[];
   saving: boolean;
-  onNipChange: (v: string) => void;
-  onNameChange: (v: string) => void;
-  onAutoAcceptChange: (v: boolean) => void;
-  onCostCenterChange: (v: string) => void;
-  onCostCenterSearchChange: (v: string) => void;
-  onTagSearchChange: (v: string) => void;
-  onAddTag: (tag: TagType) => void;
-  onRemoveTag: (id: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  onShow: () => void;
+  onNipChange: (v: string) => void; onNameChange: (v: string) => void;
+  onAutoAcceptChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
+  onCostCenterSearchChange: (v: string) => void; onDepartmentChange: (v: string) => void;
+  onDepartmentSearchChange: (v: string) => void; onTagSearchChange: (v: string) => void;
+  onAddTag: (tag: TagType) => void; onRemoveTag: (id: string) => void;
+  onSave: () => void; onCancel: () => void; onShow: () => void;
 }) {
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
 
   if (!show) {
     return (
@@ -610,7 +659,7 @@ function RuleForm({
         onClick={onShow}
         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-brand-primary text-white rounded-xl hover:bg-brand-primary/90 transition font-medium text-sm"
       >
-        <Plus className="w-4.5 h-4.5" />
+        <Plus className="w-4 h-4" />
         Dodaj nowa regule automatyzacji
       </button>
     );
@@ -621,7 +670,7 @@ function RuleForm({
       <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-brand-primary/10 flex items-center justify-center">
-            <Zap className="w-4.5 h-4.5 text-brand-primary" />
+            <Zap className="w-4 h-4 text-brand-primary" />
           </div>
           <h3 className="font-semibold text-text-primary-light dark:text-text-primary-dark">
             {editing ? 'Edytuj regule' : 'Nowa regula automatyzacji'}
@@ -631,7 +680,7 @@ function RuleForm({
           onClick={onCancel}
           className="p-1.5 text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
         >
-          <X className="w-4.5 h-4.5" />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
@@ -670,11 +719,7 @@ function RuleForm({
         </div>
 
         <div className="flex items-center gap-3 p-3.5 bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50">
-          <button
-            type="button"
-            onClick={() => onAutoAcceptChange(!formAutoAccept)}
-            className="flex-shrink-0"
-          >
+          <button type="button" onClick={() => onAutoAcceptChange(!formAutoAccept)} className="flex-shrink-0">
             {formAutoAccept ? (
               <ToggleRight className="w-8 h-5 text-green-600" />
             ) : (
@@ -691,65 +736,101 @@ function RuleForm({
           </div>
         </div>
 
-        <div className="relative">
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
-            <Building2 className="w-3.5 h-3.5 inline mr-1" />
-            Opis MPK
-          </label>
-          {selectedCostCenter ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
-              <span className="text-sm font-mono font-medium text-text-primary-light dark:text-text-primary-dark">
-                {selectedCostCenter.code}
-              </span>
-              <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                - {selectedCostCenter.description}
-              </span>
-              <button
-                onClick={() => onCostCenterChange('')}
-                className="ml-auto p-0.5 text-slate-400 hover:text-red-500 transition"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <div className="relative">
-              <input
-                type="text"
-                value={formCostCenterSearch}
-                onChange={(e) => {
-                  onCostCenterSearchChange(e.target.value);
-                  setShowCostCenterDropdown(true);
-                }}
-                onFocus={() => setShowCostCenterDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCostCenterDropdown(false), 200)}
-                placeholder="Szukaj MPK po kodzie lub opisie..."
-                className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-              {showCostCenterDropdown && filteredCostCenters.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
-                  {filteredCostCenters.slice(0, 10).map(cc => (
-                    <button
-                      key={cc.id}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        onCostCenterChange(cc.id);
-                        onCostCenterSearchChange('');
-                        setShowCostCenterDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2 transition"
-                    >
-                      <span className="font-mono font-medium text-text-primary-light dark:text-text-primary-dark">
-                        {cc.code}
-                      </span>
-                      <span className="text-text-secondary-light dark:text-text-secondary-dark truncate">
-                        {cc.description}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="relative">
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+              <Building2 className="w-3.5 h-3.5 inline mr-1" />
+              Przypisz do dzialu
+            </label>
+            {selectedDepartment ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
+                <Building2 className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0" />
+                <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark flex-1 truncate">
+                  {selectedDepartment.name}
+                </span>
+                <button onClick={() => onDepartmentChange('')} className="p-0.5 text-slate-400 hover:text-red-500 transition">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formDepartmentSearch}
+                  onChange={(e) => { onDepartmentSearchChange(e.target.value); setShowDepartmentDropdown(true); }}
+                  onFocus={() => setShowDepartmentDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowDepartmentDropdown(false), 200)}
+                  placeholder="Szukaj dzialu..."
+                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                />
+                {showDepartmentDropdown && filteredDepartments.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                    {filteredDepartments.slice(0, 10).map(dept => (
+                      <button
+                        key={dept.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { onDepartmentChange(dept.id); onDepartmentSearchChange(''); setShowDepartmentDropdown(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2 transition"
+                      >
+                        <Building2 className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0" />
+                        <span className="text-text-primary-light dark:text-text-primary-dark truncate">{dept.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+              Faktura zostanie automatycznie przypisana do wybranego dzialu
+            </p>
+          </div>
+
+          <div className="relative">
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+              <Hash className="w-3.5 h-3.5 inline mr-1" />
+              Opis MPK
+            </label>
+            {selectedCostCenter ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
+                <span className="text-sm font-mono font-medium text-text-primary-light dark:text-text-primary-dark">
+                  {selectedCostCenter.code}
+                </span>
+                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark truncate">
+                  - {selectedCostCenter.description}
+                </span>
+                <button onClick={() => onCostCenterChange('')} className="ml-auto p-0.5 text-slate-400 hover:text-red-500 transition">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formCostCenterSearch}
+                  onChange={(e) => { onCostCenterSearchChange(e.target.value); setShowCostCenterDropdown(true); }}
+                  onFocus={() => setShowCostCenterDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCostCenterDropdown(false), 200)}
+                  placeholder="Szukaj MPK po kodzie lub opisie..."
+                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                />
+                {showCostCenterDropdown && filteredCostCenters.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                    {filteredCostCenters.slice(0, 10).map(cc => (
+                      <button
+                        key={cc.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { onCostCenterChange(cc.id); onCostCenterSearchChange(''); setShowCostCenterDropdown(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2 transition"
+                      >
+                        <span className="font-mono font-medium text-text-primary-light dark:text-text-primary-dark">{cc.code}</span>
+                        <span className="text-text-secondary-light dark:text-text-secondary-dark truncate">{cc.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
@@ -764,17 +845,10 @@ function RuleForm({
                 <span
                   key={tag.id}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: `${tag.color}20`,
-                    color: tag.color,
-                    border: `1px solid ${tag.color}40`,
-                  }}
+                  style={{ backgroundColor: `${tag.color}20`, color: tag.color, border: `1px solid ${tag.color}40` }}
                 >
                   {tag.name}
-                  <button
-                    onClick={() => onRemoveTag(tag.id)}
-                    className="hover:bg-black/10 rounded-full p-0.5 transition"
-                  >
+                  <button onClick={() => onRemoveTag(tag.id)} className="hover:bg-black/10 rounded-full p-0.5 transition">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -786,10 +860,7 @@ function RuleForm({
             <input
               type="text"
               value={formTagSearch}
-              onChange={(e) => {
-                onTagSearchChange(e.target.value);
-                setShowTagDropdown(true);
-              }}
+              onChange={(e) => { onTagSearchChange(e.target.value); setShowTagDropdown(true); }}
               onFocus={() => setShowTagDropdown(true)}
               onBlur={() => setTimeout(() => setShowTagDropdown(false), 200)}
               placeholder="Szukaj tagow..."
@@ -804,13 +875,8 @@ function RuleForm({
                     onClick={() => onAddTag(tag)}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2 transition"
                   >
-                    <span
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    <span className="text-text-primary-light dark:text-text-primary-dark">
-                      {tag.name}
-                    </span>
+                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                    <span className="text-text-primary-light dark:text-text-primary-dark">{tag.name}</span>
                   </button>
                 ))}
               </div>
@@ -840,19 +906,16 @@ function RuleForm({
 }
 
 function RulesList({
-  rules,
-  searchQuery,
-  onSearchChange,
-  onEdit,
-  onDelete,
-  onToggleActive,
+  rules, searchQuery, currentUserId, isAdmin, onSearchChange, onEdit, onDelete, onToggleActive,
 }: {
   rules: AutomationRule[];
   searchQuery: string;
+  currentUserId: string | undefined;
+  isAdmin: boolean;
   onSearchChange: (v: string) => void;
   onEdit: (rule: AutomationRule) => void;
-  onDelete: (id: string) => void;
-  onToggleActive: (id: string, current: boolean) => void;
+  onDelete: (rule: AutomationRule) => void;
+  onToggleActive: (rule: AutomationRule) => void;
 }) {
   return (
     <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
@@ -881,97 +944,94 @@ function RulesList({
         </div>
       ) : (
         <div className="divide-y divide-slate-200 dark:divide-slate-700/50">
-          {rules.map(rule => (
-            <div
-              key={rule.id}
-              className={`px-5 py-4 flex items-start gap-4 group hover:bg-slate-50 dark:hover:bg-dark-surface-variant transition ${
-                !rule.is_active ? 'opacity-50' : ''
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                    {rule.supplier_name || 'Brak nazwy'}
-                  </span>
-                  {rule.supplier_nip && (
-                    <span className="text-xs font-mono text-text-secondary-light dark:text-text-secondary-dark bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                      NIP: {rule.supplier_nip}
+          {rules.map(rule => {
+            const canEdit = isAdmin || rule.created_by === currentUserId;
+            return (
+              <div
+                key={rule.id}
+                className={`px-5 py-4 flex items-start gap-4 group hover:bg-slate-50 dark:hover:bg-dark-surface-variant transition ${!rule.is_active ? 'opacity-50' : ''}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                      {rule.supplier_name || 'Brak nazwy'}
                     </span>
-                  )}
-                  {!rule.is_active && (
-                    <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">
-                      Nieaktywna
-                    </span>
-                  )}
+                    {rule.supplier_nip && (
+                      <span className="text-xs font-mono text-text-secondary-light dark:text-text-secondary-dark bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                        NIP: {rule.supplier_nip}
+                      </span>
+                    )}
+                    {!rule.is_active && (
+                      <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">
+                        Nieaktywna
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {rule.auto_accept && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800/30">
+                        <CheckCircle className="w-3 h-3" />
+                        Auto-akceptacja
+                      </span>
+                    )}
+                    {rule.department && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/30">
+                        <Building2 className="w-3 h-3" />
+                        Dzial: {rule.department.name}
+                      </span>
+                    )}
+                    {rule.cost_center && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">
+                        <Hash className="w-3 h-3" />
+                        MPK: {rule.cost_center.code}{rule.cost_center.description ? ` - ${rule.cost_center.description}` : ''}
+                      </span>
+                    )}
+                    {rule.tags.map(tag => (
+                      <span
+                        key={tag.id}
+                        className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: `${tag.color}20`, color: tag.color, border: `1px solid ${tag.color}30` }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                    {!rule.auto_accept && !rule.department && !rule.cost_center && rule.tags.length === 0 && (
+                      <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
+                        Brak przypisanych akcji
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  {rule.auto_accept && (
-                    <span className="inline-flex items-center gap-1 text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800/30">
-                      <CheckCircle className="w-3 h-3" />
-                      Auto-akceptacja
-                    </span>
-                  )}
-                  {rule.cost_center && (
-                    <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">
-                      <Building2 className="w-3 h-3" />
-                      MPK: {rule.cost_center.code}{rule.cost_center.description ? ` - ${rule.cost_center.description}` : ''}
-                    </span>
-                  )}
-                  {rule.tags.map(tag => (
-                    <span
-                      key={tag.id}
-                      className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{
-                        backgroundColor: `${tag.color}20`,
-                        color: tag.color,
-                        border: `1px solid ${tag.color}30`,
-                      }}
+                {canEdit && (
+                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition">
+                    <button
+                      onClick={() => onToggleActive(rule)}
+                      className={`p-1.5 rounded-lg transition ${rule.is_active ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                      title={rule.is_active ? 'Dezaktywuj' : 'Aktywuj'}
                     >
-                      {tag.name}
-                    </span>
-                  ))}
-                  {!rule.auto_accept && !rule.cost_center && rule.tags.length === 0 && (
-                    <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
-                      Brak przypisanych akcji
-                    </span>
-                  )}
-                </div>
+                      {rule.is_active ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                    </button>
+                    <button
+                      onClick={() => onEdit(rule)}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
+                      title="Edytuj"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onDelete(rule)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                      title="Usun"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
-
-              <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition">
-                <button
-                  onClick={() => onToggleActive(rule.id, rule.is_active)}
-                  className={`p-1.5 rounded-lg transition ${
-                    rule.is_active
-                      ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
-                      : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                  title={rule.is_active ? 'Dezaktywuj' : 'Aktywuj'}
-                >
-                  {rule.is_active ? (
-                    <ToggleRight className="w-5 h-5" />
-                  ) : (
-                    <ToggleLeft className="w-5 h-5" />
-                  )}
-                </button>
-                <button
-                  onClick={() => onEdit(rule)}
-                  className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
-                  title="Edytuj"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => onDelete(rule.id)}
-                  className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                  title="Usun"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
