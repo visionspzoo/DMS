@@ -11,7 +11,7 @@ const tabs: { id: ConfigTab; label: string; icon: typeof Mail }[] = [
   { id: 'account', label: 'Informacje o koncie', icon: User },
   { id: 'google', label: 'Google Workspace', icon: Mail },
   { id: 'alice', label: 'Alice API', icon: Key },
-  { id: 'automations', label: 'Automatyzacje', icon: Zap },
+  { id: 'automations', label: 'Opis MPK', icon: Zap },
 ];
 
 export default function UserConfiguration() {
