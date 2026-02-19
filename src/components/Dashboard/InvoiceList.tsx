@@ -193,19 +193,42 @@ export function InvoiceList({
                     {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                   </span>
                 </div>
+                {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <Tag className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                    {invoice.invoice_tags.slice(0, 3).map((invoiceTag) => (
+                      <span
+                        key={invoiceTag.id}
+                        className="px-1.5 py-0 rounded-full text-[10px] font-medium"
+                        style={{
+                          backgroundColor: `${invoiceTag.tags.color}15`,
+                          color: invoiceTag.tags.color,
+                        }}
+                      >
+                        {invoiceTag.tags.name}
+                      </span>
+                    ))}
+                    {invoice.invoice_tags.length > 3 && (
+                      <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                        +{invoice.invoice_tags.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Right section - Department, User, Amounts */}
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-0.5 text-[10px]">
-                  <div className="flex items-center gap-0.5 text-text-secondary-light dark:text-text-secondary-dark">
-                    <Building2 className="w-2.5 h-2.5" />
-                    <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {invoice.department?.name || '—'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-0.5 text-text-secondary-light dark:text-text-secondary-dark">
-                    <User className="w-2.5 h-2.5" />
+                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Dział:</span>
+                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Właściciel:</span>
+                </div>
+                <div className="flex flex-col gap-0.5 text-[10px]">
+                  <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                    {invoice.department?.name || '—'}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <User className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
                       {invoice.uploader?.full_name || '—'}
                     </span>

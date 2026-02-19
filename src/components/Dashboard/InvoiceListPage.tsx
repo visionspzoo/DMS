@@ -71,8 +71,6 @@ export function InvoiceList() {
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -293,14 +291,12 @@ export function InvoiceList() {
     const subscription = supabase
       .channel('invoices-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
-        if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-        realtimeDebounceRef.current = setTimeout(() => loadInvoices(), 800);
+        loadInvoices();
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
-      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, []);
 
@@ -360,50 +356,57 @@ export function InvoiceList() {
     };
   }, [driveActive, emailActive, driveLastSync, emailLastSync]);
 
-  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const loadInvoices = async () => {
     try {
-      const [invoicesResult, ksefResult] = await Promise.all([
-        supabase
-          .from('invoices')
-          .select(`
-            id, invoice_number, supplier_name, supplier_nip, buyer_nip,
-            gross_amount, net_amount, tax_amount, currency, pln_gross_amount, exchange_rate,
-            issue_date, due_date, status, source, created_at, updated_at,
-            uploaded_by, current_approver_id, department_id,
-            description, file_url, is_duplicate, duplicate_invoice_ids, pz_number,
-            uploader:profiles!uploaded_by(full_name, role),
-            current_approver:profiles!current_approver_id(full_name, role),
-            department:departments!department_id(id, name, parent_department_id),
-            invoice_tags(id, tags(id, name, color))
-          `)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('ksef_invoices')
-          .select('id, invoice_number, supplier_name, supplier_nip, gross_amount, net_amount, currency, issue_date, created_at, transferred_to_department_id, transferred_to_invoice_id, fetched_by, ksef_reference_number')
-          .not('transferred_to_department_id', 'is', null)
-          .is('transferred_to_invoice_id', null)
-          .order('created_at', { ascending: false }),
-      ]);
+      console.log('👤 Current user:', { id: user?.id, role: profile?.role, department_id: profile?.department_id });
 
-      if (invoicesResult.error) throw invoicesResult.error;
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          uploader:profiles!uploaded_by(full_name, role),
+          current_approver:profiles!current_approver_id(full_name, role),
+          department:departments!department_id(id, name, parent_department_id),
+          is_duplicate,
+          duplicate_invoice_ids
+        `)
+        .order('created_at', { ascending: false });
 
-      let allInvoices = invoicesResult.data || [];
+      if (error) {
+        console.error('❌ Error loading invoices:', error);
+        throw error;
+      }
 
-      if (!ksefResult.error && ksefResult.data && ksefResult.data.length > 0) {
-        const ksefInvoices = ksefResult.data;
+      console.log('📊 Loaded invoices from DB:', data?.length || 0);
+      console.log('🔍 Google Drive invoices:', data?.filter(i => i.source === 'google_drive').length || 0);
+      console.log('📝 Draft invoices:', data?.filter(i => i.status === 'draft').length || 0);
+      console.log('👥 My invoices:', data?.filter(i => i.uploaded_by === user?.id).length || 0);
 
+      let allInvoices = data || [];
+
+      const { data: ksefInvoices, error: ksefError } = await supabase
+        .from('ksef_invoices')
+        .select('*')
+        .not('transferred_to_department_id', 'is', null)
+        .is('transferred_to_invoice_id', null)
+        .order('created_at', { ascending: false });
+
+      if (!ksefError && ksefInvoices && ksefInvoices.length > 0) {
         const deptIds = [...new Set(ksefInvoices.map(k => k.transferred_to_department_id).filter(Boolean))];
+        const { data: depts } = await supabase
+          .from('departments')
+          .select('id, name')
+          .in('id', deptIds);
+
+        const deptMap = new Map(depts?.map(d => [d.id, d]) || []);
+
         const fetcherIds = [...new Set(ksefInvoices.map(k => k.fetched_by).filter(Boolean))];
+        const { data: fetchers } = await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('id', fetcherIds);
 
-        const [deptsResult, fetchersResult] = await Promise.all([
-          deptIds.length > 0 ? supabase.from('departments').select('id, name').in('id', deptIds) : Promise.resolve({ data: [] }),
-          fetcherIds.length > 0 ? supabase.from('profiles').select('id, full_name, role').in('id', fetcherIds) : Promise.resolve({ data: [] }),
-        ]);
-
-        const deptMap = new Map((deptsResult.data || []).map(d => [d.id, d]));
-        const fetcherMap = new Map((fetchersResult.data || []).map(f => [f.id, f]));
+        const fetcherMap = new Map(fetchers?.map(f => [f.id, f]) || []);
 
         const convertedKsefInvoices = ksefInvoices.map(ksef => ({
           id: ksef.id,
@@ -421,8 +424,8 @@ export function InvoiceList() {
           file_url: null,
           pdf_base64: null,
           description: 'Faktura z KSEF - wersja robocza',
-          pln_gross_amount: ksef.gross_amount,
-          exchange_rate: 1,
+          pln_gross_amount: ksef.pln_gross_amount || ksef.gross_amount,
+          exchange_rate: ksef.exchange_rate || 1,
           created_at: ksef.created_at,
           updated_at: ksef.created_at,
           source: 'ksef',
@@ -431,7 +434,7 @@ export function InvoiceList() {
           department: ksef.transferred_to_department_id ? deptMap.get(ksef.transferred_to_department_id) : null,
         }));
 
-        allInvoices = [...allInvoices, ...convertedKsefInvoices] as any;
+        allInvoices = [...allInvoices, ...convertedKsefInvoices];
         allInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       }
 
@@ -439,7 +442,7 @@ export function InvoiceList() {
       setFilteredInvoices(allInvoices);
 
       const years = Array.from(new Set(
-        allInvoices.filter(inv => inv.issue_date).map(inv => new Date(inv.issue_date!).getFullYear())
+        allInvoices?.filter(inv => inv.issue_date).map(inv => new Date(inv.issue_date).getFullYear()) || []
       ));
       setAvailableYears(years.sort((a, b) => b - a));
 
@@ -456,25 +459,22 @@ export function InvoiceList() {
   };
 
   useEffect(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 250);
-    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
-  }, [searchQuery]);
-
-  useEffect(() => {
     if (profile?.id) {
       filterInvoices();
     }
-  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, debouncedSearch, invoices, profile]);
+  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, invoices, profile]);
 
 
   const filterInvoices = () => {
     if (!profile?.id) {
+      console.log('⚠️ Profile not loaded yet, skipping filter');
       setFilteredInvoices([]);
       return;
     }
 
     let filtered = [...invoices];
+
+    console.log('🔍 Filtering invoices. Total:', invoices.length, 'Profile ID:', profile.id, 'Role:', profile.role, 'is_admin:', profile.is_admin, 'Department:', profile.department_id);
 
     if (!profile.is_admin) {
       const isSpecialist = profile.role === 'Specjalista';
@@ -502,6 +502,9 @@ export function InvoiceList() {
 
         return false;
       });
+      console.log('✅ After user filter:', filtered.length);
+    } else {
+      // Admin sees all invoices
     }
 
     if (selectedYear !== 'all') {
@@ -527,8 +530,8 @@ export function InvoiceList() {
       filtered = filtered.filter(inv => inv.department?.name && selectedDepartments.includes(inv.department.name));
     }
 
-    if (debouncedSearch.trim()) {
-      const query = debouncedSearch.toLowerCase();
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(inv =>
         inv.invoice_number?.toLowerCase().includes(query) ||
         inv.supplier_name?.toLowerCase().includes(query) ||

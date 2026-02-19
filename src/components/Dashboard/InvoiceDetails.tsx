@@ -9,30 +9,6 @@ import { TransferInvoiceModal } from './TransferInvoiceModal';
 
 const AURA_HERBALS_NIP = '5851490834';
 
-function PdfBase64Viewer({ base64 }: { base64: string }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    setBlobUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [base64]);
-
-  if (!blobUrl) return null;
-  return (
-    <iframe
-      src={blobUrl}
-      className="w-full h-full"
-      title="Podgląd faktury PDF"
-      style={{ border: 'none', minHeight: '600px' }}
-    />
-  );
-}
-
 type Invoice = Database['public']['Tables']['invoices']['Row'];
 type Approval = Database['public']['Tables']['approvals']['Row'];
 type AuditLog = Database['public']['Tables']['audit_logs']['Row'];
@@ -134,32 +110,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadDepartments();
     loadInvoiceDepartments();
     checkIfFromKSEF();
+    loadKsefPdfIfNeeded();
     loadCostCenters();
     checkDuplicates();
     loadInvoiceDepartmentInfo();
-    loadPdfData();
   }, [currentInvoice.id]);
-
-  const loadPdfData = async () => {
-    if (currentInvoice.pdf_base64 || currentInvoice.file_url) {
-      loadKsefPdfIfNeeded();
-      return;
-    }
-    try {
-      const { data } = await supabase
-        .from('invoices')
-        .select('pdf_base64, file_url')
-        .eq('id', currentInvoice.id)
-        .maybeSingle();
-      if (data) {
-        setCurrentInvoice(prev => ({ ...prev, pdf_base64: data.pdf_base64, file_url: data.file_url }));
-      }
-    } catch (err) {
-      console.error('Error loading PDF data:', err);
-    } finally {
-      loadKsefPdfIfNeeded();
-    }
-  };
 
   const checkDuplicates = async () => {
     try {
@@ -708,7 +663,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           status: editedInvoice.status,
           description: editedInvoice.description,
           cost_center_id: editedInvoice.cost_center_id || null,
-          pz_number: (editedInvoice as any).pz_number || null,
         })
         .eq('id', currentInvoice.id);
 
@@ -2097,7 +2051,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <p className="text-slate-600 dark:text-slate-400">Pobieranie PDF z KSEF...</p>
                     </div>
                   ) : (currentInvoice.pdf_base64 || ksefPdfBase64) ? (
-                    <PdfBase64Viewer base64={currentInvoice.pdf_base64 || ksefPdfBase64!} />
+                    <iframe
+                      src={`data:application/pdf;base64,${currentInvoice.pdf_base64 || ksefPdfBase64}`}
+                      className="w-full h-full"
+                      title="Podgląd faktury PDF"
+                      style={{ border: 'none', minHeight: '600px' }}
+                    />
                   ) : isFromKSEF && currentInvoice.status === 'draft' ? (
                     <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
                       <FileCheck className="w-20 h-20 text-blue-400 dark:text-blue-500" />
@@ -2141,20 +2100,47 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       </div>
                     </div>
                   ) : currentInvoice.file_url && currentInvoice.file_url.toLowerCase().endsWith('.pdf') ? (
-                    <iframe
-                      src={currentInvoice.file_url}
-                      className="w-full h-full"
-                      title="Podgląd faktury PDF"
-                      style={{ border: 'none', minHeight: '600px' }}
-                    />
-                  ) : currentInvoice.file_url && currentInvoice.file_url.includes('drive.google.com') ? (
-                    <iframe
-                      src={currentInvoice.file_url.replace('/view', '/preview').replace('/edit', '/preview')}
-                      className="w-full h-full"
-                      title="Podgląd dokumentu Google Drive"
-                      style={{ border: 'none', minHeight: '600px' }}
-                      allow="autoplay"
-                    />
+                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
+                      <FileText className="w-24 h-24 text-slate-400" />
+                      <div className="text-center">
+                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Podgląd niedostępny
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                          {currentInvoice.invoice_number || 'Faktura'}
+                        </p>
+                        <a
+                          href={currentInvoice.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
+                        >
+                          <ExternalLink className="w-5 h-5" />
+                          <span>Otwórz PDF w nowej karcie</span>
+                        </a>
+                      </div>
+                    </div>
+                  ) : currentInvoice.file_url.includes('drive.google.com') ? (
+                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
+                      <FileText className="w-24 h-24 text-slate-400" />
+                      <div className="text-center">
+                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Dokument w Google Drive
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                          {currentInvoice.invoice_number || 'Faktura'}
+                        </p>
+                        <a
+                          href={currentInvoice.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
+                        >
+                          <ExternalLink className="w-5 h-5" />
+                          <span>Otwórz w Google Drive</span>
+                        </a>
+                      </div>
+                    </div>
                   ) : (
                     <img
                       src={currentInvoice.file_url}
@@ -2413,21 +2399,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Powiązanie z PZ
+                        Dział nadrzędny
                       </label>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={(editedInvoice as any).pz_number || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, pz_number: e.target.value } as any)}
-                          placeholder="Numer PZ"
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
-                        />
-                      ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {(currentInvoice as any).pz_number || '—'}
-                        </p>
-                      )}
+                      <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                        {currentInvoice.department?.parent?.name || '—'}
+                      </p>
                     </div>
                   </div>
 
