@@ -496,17 +496,20 @@ async function syncEmailAccount(
             continue;
           }
 
-          const fileName = `${Date.now()}_${part.filename}`;
+          const sanitizedFilename = part.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const fileName = `${Date.now()}_${sanitizedFilename}`;
           const filePath = `invoices/${fileName}`;
 
           const { error: uploadError } = await supabase.storage
             .from("documents")
             .upload(filePath, pdfData, {
               contentType: "application/pdf",
+              upsert: true,
             });
 
           if (uploadError) {
-            console.error("Upload error:", uploadError);
+            console.error("Upload error:", uploadError.message);
+            warnings.push(`Błąd uploadu pliku ${part.filename}: ${uploadError.message}`);
             continue;
           }
 
