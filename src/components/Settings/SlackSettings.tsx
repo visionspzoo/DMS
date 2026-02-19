@@ -178,9 +178,10 @@ export default function SlackSettings() {
       const result = await response.json();
 
       if (result.ok) {
-        setSuccess(`Polaczenie udane! Bot: ${result.bot_id}, Team: ${result.team}`);
+        setSuccess(`Polaczenie udane! Workspace: ${result.team || result.workspace_name || 'OK'}`);
       } else {
-        setError(`Blad Slack API: ${result.error}`);
+        const errMsg = result.error || result.message || `HTTP ${response.status}`;
+        setError(`Blad Slack API: ${errMsg}`);
       }
     } catch (err) {
       setError('Nie udalo sie polaczyc ze Slack API');
