@@ -136,13 +136,19 @@ async function interpretWithClaudeVision(base64Data: string, resolvedMimeType: s
     };
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  };
+
+  if (resolvedMimeType === 'application/pdf') {
+    headers['anthropic-beta'] = 'pdfs-2024-09-25';
+  }
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers,
     body: JSON.stringify({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
