@@ -1,15 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { Database } from '../../lib/database.types';
 
-type Invoice = Database['public']['Tables']['invoices']['Row'];
+type InvoiceSummary = {
+  id: string;
+  invoice_number: string | null;
+  supplier_name: string | null;
+  gross_amount: number | null;
+  currency: string | null;
+  status: string | null;
+  uploaded_by: string | null;
+  current_approver_id: string | null;
+  department_id: string | null;
+  created_at: string;
+};
 
 export function Dashboard() {
   const { profile } = useAuth();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -18,7 +29,7 @@ export function Dashboard() {
       try {
         let query = supabase
           .from('invoices')
-          .select('*, is_duplicate, duplicate_invoice_ids')
+          .select('id, invoice_number, supplier_name, gross_amount, currency, status, uploaded_by, current_approver_id, department_id, created_at')
           .order('created_at', { ascending: false });
 
         if (profile.department_id) {
@@ -32,16 +43,8 @@ export function Dashboard() {
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
-
-        const filtered = (data || []).filter(invoice =>
-          invoice.uploaded_by === profile.id ||
-          invoice.current_approver_id === profile.id ||
-          (profile.department_id && invoice.department_id === profile.department_id)
-        );
-
-        setInvoices(filtered);
+        setInvoices(data || []);
       } catch (error) {
         console.error('Error loading invoices:', error);
       } finally {
@@ -52,70 +55,65 @@ export function Dashboard() {
     fetchInvoices();
 
     const subscription = supabase
-      .channel('invoices-changes')
+      .channel('dashboard-invoices-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
-        fetchInvoices();
+        if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+        realtimeDebounceRef.current = setTimeout(() => fetchInvoices(), 800);
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, [profile?.id]);
 
-  const myInvoices = invoices.filter(i => i.uploaded_by === profile?.id);
+  const { stats, draftInvoices, inReviewInvoices, waitingInvoices, acceptedInvoices } = useMemo(() => {
+    const pid = profile?.id;
+    const deptId = profile?.department_id;
 
-  const myDraftInvoices = invoices.filter(i =>
-    i.status === 'draft' && (
-      i.current_approver_id === profile?.id ||
-      (i.uploaded_by === profile?.id && !i.current_approver_id) ||
-      // Przełożeni widzą drafty ze swojego działu (RLS już to filtruje)
-      (profile?.department_id && i.department_id === profile.department_id)
-    )
-  );
+    const myDraft = invoices.filter(i =>
+      i.status === 'draft' && (
+        i.current_approver_id === pid ||
+        (i.uploaded_by === pid && !i.current_approver_id) ||
+        (deptId && i.department_id === deptId)
+      )
+    );
 
-  const myInReviewInvoices = invoices.filter(i =>
-    (i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review') &&
-    i.uploaded_by === profile?.id &&
-    (
-      i.current_approver_id === profile?.id ||
-      i.department_id === profile?.department_id ||
-      profile?.is_admin === true
-    )
-  );
+    const myInReview = invoices.filter(i =>
+      (i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review') &&
+      i.uploaded_by === pid &&
+      (i.current_approver_id === pid || i.department_id === deptId || profile?.is_admin === true)
+    );
 
-  const waitingForMyApprovalInvoices = invoices.filter(i =>
-    i.current_approver_id === profile?.id && (i.status === 'waiting' || i.status === 'pending')
-  );
+    const waitingForApproval = invoices.filter(i =>
+      i.current_approver_id === pid && (i.status === 'waiting' || i.status === 'pending')
+    );
 
-  const myRejectedInvoices = invoices.filter(i =>
-    i.status === 'rejected' &&
-    i.uploaded_by === profile?.id &&
-    (
-      i.current_approver_id === profile?.id ||
-      i.department_id === profile?.department_id ||
-      profile?.is_admin === true
-    )
-  );
+    const myRejected = invoices.filter(i =>
+      i.status === 'rejected' &&
+      i.uploaded_by === pid &&
+      (i.current_approver_id === pid || i.department_id === deptId || profile?.is_admin === true)
+    );
 
-  const stats = {
-    draft: myDraftInvoices.length,
-    inReview: myInReviewInvoices.length,
-    waiting: waitingForMyApprovalInvoices.length,
-    rejected: myRejectedInvoices.length,
-  };
+    const accepted = invoices.filter(i =>
+      i.status === 'accepted' &&
+      (i.uploaded_by === pid || i.current_approver_id === pid || i.department_id === deptId)
+    );
 
-  const draftInvoices = myDraftInvoices.slice(0, 5);
-  const inReviewInvoices = myInReviewInvoices.slice(0, 5);
-  const waitingInvoices = waitingForMyApprovalInvoices.slice(0, 5);
-  const acceptedInvoices = invoices.filter(i =>
-    i.status === 'accepted' &&
-    (
-      i.uploaded_by === profile?.id ||
-      i.current_approver_id === profile?.id ||
-      i.department_id === profile?.department_id
-    )
-  ).slice(0, 5);
+    return {
+      stats: {
+        draft: myDraft.length,
+        inReview: myInReview.length,
+        waiting: waitingForApproval.length,
+        rejected: myRejected.length,
+      },
+      draftInvoices: myDraft.slice(0, 5),
+      inReviewInvoices: myInReview.slice(0, 5),
+      waitingInvoices: waitingForApproval.slice(0, 5),
+      acceptedInvoices: accepted.slice(0, 5),
+    };
+  }, [invoices, profile?.id, profile?.department_id, profile?.is_admin]);
 
   if (loading) {
     return (
