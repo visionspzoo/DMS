@@ -244,12 +244,12 @@ async function syncEmailAccount(
 
   const accessToken = await getValidAccessToken(supabase, config);
 
-  const oneDayAgo = new Date();
-  oneDayAgo.setHours(oneDayAgo.getHours() - 24);
-  const afterDate = Math.floor(oneDayAgo.getTime() / 1000);
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  const afterDate = Math.floor(fourteenDaysAgo.getTime() / 1000);
 
   const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=after:${afterDate} has:attachment filename:pdf`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=after:${afterDate} has:attachment filename:pdf`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -312,14 +312,29 @@ async function syncEmailAccount(
       let attachmentCount = 0;
       let invoiceCount = 0;
 
-      const parts = message.payload?.parts || [];
-      for (const part of parts) {
+      function collectPdfParts(payload: any): any[] {
+        if (!payload) return [];
+        const results: any[] = [];
         if (
-          part.filename &&
-          part.filename.toLowerCase().endsWith(".pdf") &&
-          part.body?.attachmentId
+          payload.filename &&
+          payload.filename.toLowerCase().endsWith(".pdf") &&
+          payload.body?.attachmentId
         ) {
-          attachmentCount++;
+          results.push(payload);
+        }
+        if (payload.parts && Array.isArray(payload.parts)) {
+          for (const p of payload.parts) {
+            results.push(...collectPdfParts(p));
+          }
+        }
+        return results;
+      }
+
+      const pdfParts = collectPdfParts(message.payload);
+      console.log(`Message ${messageId}: found ${pdfParts.length} PDF attachment(s)`);
+
+      for (const part of pdfParts) {
+        attachmentCount++;
 
           const attachmentResponse = await fetch(
             `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${part.body.attachmentId}`,
@@ -449,7 +464,6 @@ async function syncEmailAccount(
 
           invoiceCount++;
           syncedCount++;
-        }
       }
 
       await supabase.from("processed_email_messages").insert({
@@ -484,7 +498,7 @@ async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          pdfBase64: base64Content,
+          pdf_base64: base64Content,
         }),
       }
     );
