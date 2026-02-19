@@ -362,14 +362,6 @@ async function syncEmailAccount(
             c.charCodeAt(0)
           );
 
-          const isInvoice = await verifyIsInvoice(pdfData);
-          if (!isInvoice) {
-            console.log(
-              `Attachment ${part.filename} is not an invoice, skipping`
-            );
-            continue;
-          }
-
           const fileHash = await computeFileHash(pdfData);
 
           const { data: existingInvoice } = await supabase
