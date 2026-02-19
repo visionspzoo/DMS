@@ -215,7 +215,7 @@ Deno.serve(async (req: Request) => {
                   const { data: insertTest, error: insertErr } = await supabase.from("invoices").insert({
                     file_url: "https://test.example.com/test.pdf",
                     uploaded_by: userId,
-                    source: `email:${config.email_address}`,
+                    source: 'email',
                     file_hash: fileHash + "_diagtest",
                   }).select("id").single();
                   if (insertErr) {
@@ -522,7 +522,7 @@ async function syncEmailAccount(
               file_url: publicUrl,
               pdf_base64: base64Content,
               uploaded_by: userId,
-              source: `email:${config.email_address}`,
+              source: 'email',
               file_hash: fileHash,
             })
             .select()
