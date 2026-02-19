@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
-  Send, Loader2, UserCheck, Trash2, RefreshCw
+  Send, Loader2, UserCheck, Trash2, RefreshCw, Copy, Check, Upload
 } from 'lucide-react';
 
 interface SlackConfig {
@@ -48,6 +48,15 @@ export default function SlackSettings() {
   const [newMappingSlackId, setNewMappingSlackId] = useState('');
   const [editingMapping, setEditingMapping] = useState<string | null>(null);
   const [editSlackId, setEditSlackId] = useState('');
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/slack-invoice-bot`;
+
+  function copyWebhookUrl() {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
+  }
 
   useEffect(() => {
     loadData();
@@ -377,6 +386,51 @@ export default function SlackSettings() {
               {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Testuj polaczenie
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <Upload className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+              Dodawanie faktur przez Slack
+            </h2>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Użytkownicy mogą przesyłać faktury bezpośrednio przez wiadomość do bota Slack (PDF, JPG, PNG). Plik zostanie automatycznie dodany do systemu i przetworzony przez OCR.
+          </p>
+
+          <div>
+            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+              URL Webhooka (Events API — Request URL)
+            </label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg text-xs font-mono text-text-primary-light dark:text-text-primary-dark overflow-x-auto whitespace-nowrap">
+                {webhookUrl}
+              </code>
+              <button
+                onClick={copyWebhookUrl}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 dark:border-slate-600/50 text-text-primary-light dark:text-text-primary-dark font-medium rounded-lg hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-all text-xs"
+              >
+                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedWebhook ? 'Skopiowano' : 'Kopiuj'}
+              </button>
+            </div>
+          </div>
+
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg space-y-1.5">
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Jak skonfigurować w Slack App?</p>
+            <ol className="text-xs text-amber-700 dark:text-amber-400 space-y-1 list-decimal list-inside">
+              <li>Wejdź na <strong>api.slack.com/apps</strong> i wybierz swoją aplikację</li>
+              <li>Przejdź do <strong>Event Subscriptions</strong> i włącz eventy</li>
+              <li>Wklej powyższy URL jako <strong>Request URL</strong></li>
+              <li>W sekcji <strong>Subscribe to bot events</strong> dodaj: <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded">message.im</code></li>
+              <li>Zapisz zmiany i zrób <strong>reinstall</strong> aplikacji w workspace</li>
+            </ol>
           </div>
         </div>
       </div>
