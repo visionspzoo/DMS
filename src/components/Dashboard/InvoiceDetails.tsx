@@ -110,11 +110,32 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     loadDepartments();
     loadInvoiceDepartments();
     checkIfFromKSEF();
-    loadKsefPdfIfNeeded();
     loadCostCenters();
     checkDuplicates();
     loadInvoiceDepartmentInfo();
+    loadPdfData();
   }, [currentInvoice.id]);
+
+  const loadPdfData = async () => {
+    if (currentInvoice.pdf_base64 || currentInvoice.file_url) {
+      loadKsefPdfIfNeeded();
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('invoices')
+        .select('pdf_base64, file_url')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+      if (data) {
+        setCurrentInvoice(prev => ({ ...prev, pdf_base64: data.pdf_base64, file_url: data.file_url }));
+      }
+    } catch (err) {
+      console.error('Error loading PDF data:', err);
+    } finally {
+      loadKsefPdfIfNeeded();
+    }
+  };
 
   const checkDuplicates = async () => {
     try {
@@ -2101,47 +2122,20 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       </div>
                     </div>
                   ) : currentInvoice.file_url && currentInvoice.file_url.toLowerCase().endsWith('.pdf') ? (
-                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
-                      <FileText className="w-24 h-24 text-slate-400" />
-                      <div className="text-center">
-                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
-                          Podgląd niedostępny
-                        </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          {currentInvoice.invoice_number || 'Faktura'}
-                        </p>
-                        <a
-                          href={currentInvoice.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
-                        >
-                          <ExternalLink className="w-5 h-5" />
-                          <span>Otwórz PDF w nowej karcie</span>
-                        </a>
-                      </div>
-                    </div>
-                  ) : currentInvoice.file_url.includes('drive.google.com') ? (
-                    <div className="flex flex-col items-center justify-center gap-6 p-8 h-full">
-                      <FileText className="w-24 h-24 text-slate-400" />
-                      <div className="text-center">
-                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
-                          Dokument w Google Drive
-                        </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          {currentInvoice.invoice_number || 'Faktura'}
-                        </p>
-                        <a
-                          href={currentInvoice.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium"
-                        >
-                          <ExternalLink className="w-5 h-5" />
-                          <span>Otwórz w Google Drive</span>
-                        </a>
-                      </div>
-                    </div>
+                    <iframe
+                      src={currentInvoice.file_url}
+                      className="w-full h-full"
+                      title="Podgląd faktury PDF"
+                      style={{ border: 'none', minHeight: '600px' }}
+                    />
+                  ) : currentInvoice.file_url && currentInvoice.file_url.includes('drive.google.com') ? (
+                    <iframe
+                      src={currentInvoice.file_url.replace('/view', '/preview').replace('/edit', '/preview')}
+                      className="w-full h-full"
+                      title="Podgląd dokumentu Google Drive"
+                      style={{ border: 'none', minHeight: '600px' }}
+                      allow="autoplay"
+                    />
                   ) : (
                     <img
                       src={currentInvoice.file_url}

@@ -220,15 +220,14 @@ export function InvoiceList({
               {/* Right section - Department, User, Amounts */}
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-0.5 text-[10px]">
-                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Dział:</span>
-                  <span className="text-text-secondary-light dark:text-text-secondary-dark">Właściciel:</span>
-                </div>
-                <div className="flex flex-col gap-0.5 text-[10px]">
-                  <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                    {invoice.department?.name || '—'}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <User className="w-2.5 h-2.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                  <div className="flex items-center gap-0.5 text-text-secondary-light dark:text-text-secondary-dark">
+                    <Building2 className="w-2.5 h-2.5" />
+                    <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                      {invoice.department?.name || '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-0.5 text-text-secondary-light dark:text-text-secondary-dark">
+                    <User className="w-2.5 h-2.5" />
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
                       {invoice.uploader?.full_name || '—'}
                     </span>
