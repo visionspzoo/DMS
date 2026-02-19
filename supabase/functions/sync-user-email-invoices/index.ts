@@ -45,6 +45,9 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const url = new URL(req.url);
+    const isDiag = url.searchParams.get("diag") === "1";
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -118,6 +121,80 @@ Deno.serve(async (req: Request) => {
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
+      );
+    }
+
+    if (isDiag) {
+      const diagResults = [];
+      for (const config of emailConfigs as EmailConfig[]) {
+        const diagResult: any = { email: config.email_address, steps: [] };
+        try {
+          const accessToken = await getValidAccessToken(supabase, config);
+          diagResult.steps.push({ step: "token", ok: true });
+
+          const fourteenDaysAgo = new Date();
+          fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+          const afterDate = Math.floor(fourteenDaysAgo.getTime() / 1000);
+
+          const listResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=after:${afterDate} has:attachment filename:pdf`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          const listBody = await listResponse.json();
+          diagResult.steps.push({
+            step: "gmail_list",
+            ok: listResponse.ok,
+            status: listResponse.status,
+            messageCount: listBody.messages?.length ?? 0,
+            resultSizeEstimate: listBody.resultSizeEstimate,
+          });
+
+          if (listBody.messages && listBody.messages.length > 0) {
+            const { data: processed } = await supabase
+              .from("processed_email_messages")
+              .select("message_uid")
+              .eq("email_config_id", config.id);
+            const processedUids = new Set((processed || []).map((m: any) => m.message_uid));
+            const newMessages = listBody.messages.filter((m: any) => !processedUids.has(m.id));
+            diagResult.steps.push({
+              step: "already_processed",
+              total: listBody.messages.length,
+              alreadyProcessed: processedUids.size,
+              new: newMessages.length,
+            });
+
+            if (newMessages.length > 0) {
+              const firstMsg = newMessages[0];
+              const msgResp = await fetch(
+                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${firstMsg.id}`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+              );
+              const msgData = await msgResp.json();
+              const pdfParts: any[] = [];
+              function collectPdfParts(payload: any) {
+                if (!payload) return;
+                if (payload.filename?.toLowerCase().endsWith(".pdf") && payload.body?.attachmentId) {
+                  pdfParts.push({ filename: payload.filename, mimeType: payload.mimeType });
+                }
+                if (payload.parts) payload.parts.forEach(collectPdfParts);
+              }
+              collectPdfParts(msgData.payload);
+              diagResult.steps.push({
+                step: "sample_message",
+                messageId: firstMsg.id,
+                subject: msgData.payload?.headers?.find((h: any) => h.name === "Subject")?.value,
+                pdfAttachments: pdfParts,
+              });
+            }
+          }
+        } catch (e: any) {
+          diagResult.error = e.message;
+        }
+        diagResults.push(diagResult);
+      }
+      return new Response(
+        JSON.stringify({ diag: true, results: diagResults }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

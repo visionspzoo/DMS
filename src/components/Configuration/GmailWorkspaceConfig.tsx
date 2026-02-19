@@ -64,6 +64,8 @@ export default function GmailWorkspaceConfig() {
   const [loading, setLoading] = useState(true);
   const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagResults, setDiagResults] = useState<any>(null);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
 
@@ -417,6 +419,34 @@ export default function GmailWorkspaceConfig() {
       setEmailMessage({ type: 'error', text: 'Blad: ' + error.message });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleDiagnoseEmails = async () => {
+    setDiagnosing(true);
+    setDiagResults(null);
+    setEmailMessage(null);
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) throw new Error('Nie udalo sie odswiezyc sesji');
+      const finalSession = refreshData.session;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices?diag=1`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${finalSession.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+        }
+      );
+      const result = await response.json().catch(() => null);
+      setDiagResults(result);
+    } catch (error: any) {
+      setDiagResults({ error: error.message });
+    } finally {
+      setDiagnosing(false);
     }
   };
 
@@ -834,14 +864,24 @@ export default function GmailWorkspaceConfig() {
               )}
             </button>
             {emailConfigs.length > 0 && (
-              <button
-                onClick={handleSyncEmails}
-                disabled={syncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
-              </button>
+              <>
+                <button
+                  onClick={handleSyncEmails}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
+                </button>
+                <button
+                  onClick={handleDiagnoseEmails}
+                  disabled={diagnosing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
+                >
+                  <AlertCircle className={`w-3 h-3 ${diagnosing ? 'animate-pulse' : ''}`} />
+                  {diagnosing ? 'Diagnostyka...' : 'Diagnoza'}
+                </button>
+              </>
             )}
             <button
               onClick={handleConnectGoogle}
@@ -900,6 +940,46 @@ export default function GmailWorkspaceConfig() {
             >
               {emailMessage.text}
             </p>
+          </div>
+        )}
+
+        {diagResults && (
+          <div className="mb-4 p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Wyniki diagnostyki</p>
+              <button onClick={() => setDiagResults(null)} className="text-amber-600 hover:text-amber-800 dark:text-amber-400">
+                <XCircle className="w-3 h-3" />
+              </button>
+            </div>
+            {diagResults.error && (
+              <p className="text-[10px] text-red-700 dark:text-red-400">{diagResults.error}</p>
+            )}
+            {diagResults.results?.map((r: any, i: number) => (
+              <div key={i} className="mb-2">
+                <p className="text-[10px] font-medium text-amber-900 dark:text-amber-200">{r.email}</p>
+                {r.error && <p className="text-[10px] text-red-600 dark:text-red-400">Blad: {r.error}</p>}
+                {r.steps?.map((s: any, j: number) => (
+                  <div key={j} className="text-[10px] text-amber-700 dark:text-amber-300 ml-2 mt-0.5">
+                    {s.step === 'token' && <span>Token OAuth: {s.ok ? 'OK' : 'BLAD'}</span>}
+                    {s.step === 'gmail_list' && (
+                      <span>Gmail API ({s.status}): znaleziono {s.messageCount} wiadomosci z PDF (szacunkow: {s.resultSizeEstimate})</span>
+                    )}
+                    {s.step === 'already_processed' && (
+                      <span>Przetworzone juz: {s.alreadyProcessed}/{s.total}, nowe do pobrania: {s.new}</span>
+                    )}
+                    {s.step === 'sample_message' && (
+                      <div>
+                        <span>Przykladowa wiadomosc: &quot;{s.subject}&quot;</span>
+                        <span className="ml-1">- PDF-y: {s.pdfAttachments?.length ?? 0}</span>
+                        {s.pdfAttachments?.map((a: any, k: number) => (
+                          <span key={k} className="ml-2 text-amber-600 dark:text-amber-400">[{a.filename}]</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
 
