@@ -313,9 +313,9 @@ function WorkflowSection() {
           <ButtonDoc
             icon={ArrowRight}
             label="Prześlij (Transfer)"
-            description="Przenosi fakturę do innego działu lub osoby zatwierdzającej. Specjalista może prześlij własne faktury (Robocze, Odrzucone, Zaakceptowane). Kierownik i Dyrektor mogą transferować faktury w swoim dziale. Admin może transferować każdą fakturę."
+            description="Przenosi fakturę do innego działu lub osoby zatwierdzającej. Kierownik i Dyrektor mogą transferować faktury w swoim dziale. Admin może transferować każdą fakturę."
             color="bg-blue-700"
-            roles={['Specjalista', 'Kierownik', 'Dyrektor', 'Admin']}
+            roles={['Kierownik', 'Dyrektor', 'Admin']}
           />
         </div>
       </div>
