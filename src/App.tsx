@@ -11,10 +11,11 @@ import { ContractFullPage } from './components/Contracts/ContractFullPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
 import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
+import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog, BookOpen } from 'lucide-react';
 
-type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'configuration';
+type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'configuration' | 'instructions';
 
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
@@ -87,6 +88,7 @@ function AppContent() {
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
+    { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
   ];
 
   if (profile.is_admin) {
@@ -194,6 +196,7 @@ function AppContent() {
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
+          {appView === 'instructions' && <InstructionsPage />}
         </main>
       </div>
     </div>
