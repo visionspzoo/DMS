@@ -278,6 +278,9 @@ Deno.serve(async (req: Request) => {
     // 8. Create invoice record
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
 
+    // The invoice owner is the selected user (or auto-detected manager), not the admin doing the transfer
+    const invoiceOwner = appropriateApproverId || uploaderId || ksefInvoice.fetched_by;
+
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
       supplier_name: ksefInvoice.supplier_name || "Brak nazwy",
@@ -290,7 +293,7 @@ Deno.serve(async (req: Request) => {
       currency: ksefInvoice.currency,
       issue_date: ksefInvoice.issue_date,
       status: "draft",
-      uploaded_by: uploaderId || ksefInvoice.fetched_by,
+      uploaded_by: invoiceOwner,
       department_id: departmentId,
       file_url: driveFileUrl,
       pdf_base64: pdfBase64,
