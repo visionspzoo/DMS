@@ -31,6 +31,7 @@ import {
   Bell,
   GitBranch,
   Settings,
+  MessageSquare,
 } from 'lucide-react';
 
 interface Section {
@@ -74,6 +75,14 @@ const sections: Section[] = [
     color: 'text-rose-600 dark:text-rose-400',
     bgColor: 'bg-rose-50 dark:bg-rose-900/20',
     borderColor: 'border-rose-200 dark:border-rose-800',
+  },
+  {
+    id: 'slack',
+    title: 'Slack',
+    icon: MessageSquare,
+    color: 'text-teal-600 dark:text-teal-400',
+    bgColor: 'bg-teal-50 dark:bg-teal-900/20',
+    borderColor: 'border-teal-200 dark:border-teal-800',
   },
 ];
 
@@ -570,6 +579,95 @@ function AutomationSection() {
   );
 }
 
+function SlackSection() {
+  return (
+    <div className="space-y-5 pt-3">
+      <div>
+        <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Czym jest integracja ze Slack?</h3>
+        <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
+          Integracja ze Slack pozwala na otrzymywanie powiadomień bezpośrednio w komunikatorze Slack — jako prywatne wiadomości DM lub na wybrany kanał. Dzięki temu nie musisz sprawdzać systemu regularnie — ważne zdarzenia same do Ciebie trafiają.
+        </p>
+      </div>
+
+      <div>
+        <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Konfiguracja (tylko Admin)</h3>
+        <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-4">
+          Integrację konfiguruje Administrator w sekcji Ustawienia systemu.
+        </p>
+        <div>
+          <Step number={1} title="Stworzenie aplikacji Slack Bot" description='W panelu Slack API (api.slack.com) Administrator tworzy aplikację Bot i pobiera token Bot OAuth. Token ten wklejany jest w Ustawieniach → Slack.' />
+          <Step number={2} title="Podanie domyślnego kanału" description="Administrator podaje ID domyślnego kanału Slack (np. #faktury), na który będą wysyłane powiadomienia gdy użytkownik nie ma przypisanego indywidualnego konta Slack." />
+          <Step number={3} title="Mapowanie użytkowników" description='W zakładce "Ustawienia → Slack" Administrator (lub użytkownik w Konfiguracji) przypisuje konto Slack do konta w systemie. Dzięki temu powiadomienia trafiają jako prywatna wiadomość DM bezpośrednio do danej osoby.' color="bg-teal-600" />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Typy powiadomień w czasie rzeczywistym</h3>
+        <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-4">
+          Poniższe zdarzenia wysyłają powiadomienie na Slack natychmiast gdy wystąpią.
+        </p>
+        <div className="space-y-2">
+          <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50">
+            <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm mb-2">Powiadomienia o fakturach</p>
+            <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1.5">
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Nowa faktura do zatwierdzenia</span> — gdy faktura trafia do Ciebie jako zatwierdzajacy, otrzymujesz DM z nazwą dostawcy, numerem i kwotą.</p>
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Zmiana statusu faktury</span> — gdy faktura którą przesłałeś/aś zostaje zaakceptowana lub odrzucona.</p>
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Faktura przekazana dalej</span> — gdy Twoja faktura zostaje przekazana do wyższego szczebla zatwierdzania.</p>
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Wykryty duplikat</span> — gdy system wykryje że wgrywana faktura może być duplikatem istniejącej.</p>
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Przypisanie do działu</span> — gdy faktura KSEF zostaje automatycznie przypisana do Twojego działu.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Codzienne podsumowanie o polnocy</h3>
+        <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-4">
+          Każdej nocy o godzinie 00:00 system automatycznie wysyła podsumowanie do każdego zmapowanego użytkownika Slack.
+        </p>
+        <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50 space-y-3">
+          <div>
+            <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm mb-1">Co zawiera podsumowanie?</p>
+            <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1.5">
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Oczekujace na weryfikacje</span> — lista faktur gdzie jesteś aktualną osobą zatwierdzającą (status: Oczekujące). Pokazana jest nazwa dostawcy, numer faktury, kwota i data dodania.</p>
+              <p><span className="font-medium text-text-primary-light dark:text-text-primary-dark">Zwrocone do poprawy</span> — lista Twoich faktur które wróciły do statusu Robocze po odrzuceniu przez zatwierdzającego. Wymagają Twojej korekty i ponownego wysłania.</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-semibold text-text-primary-light dark:text-text-primary-dark text-sm mb-1">Kiedy jest wysyłane?</p>
+            <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1">
+              <p>Codziennie o 00:00 (UTC) — automatycznie przez harmonogram cron.</p>
+              <p>Podsumowanie jest wysyłane tylko jeśli masz faktury do obsługi — jeśli nie masz nic oczekującego ani zwróconego, nie otrzymasz wiadomości.</p>
+              <p>Wiadomość zawiera maksymalnie 10 faktur z każdej kategorii — jeśli jest ich więcej, podsumowanie informuje ile pozostało.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-base font-bold text-text-primary-light dark:text-text-primary-dark mb-1">Jak działa wysyłanie DM?</h3>
+        <div className="space-y-2">
+          <div className="p-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50">
+            <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark space-y-1.5">
+              <p>Jeśli Twoje konto w systemie jest zmapowane do Slack ID — powiadomienia przychodzą jako <span className="font-medium text-text-primary-light dark:text-text-primary-dark">prywatna wiadomość DM</span> od bota.</p>
+              <p>Jeśli nie masz indywidualnego mapowania — powiadomienia trafiają na <span className="font-medium text-text-primary-light dark:text-text-primary-dark">domyślny kanał</span> skonfigurowany przez Admina.</p>
+              <p>Jeśli Slack nie jest skonfigurowany — powiadomienia są wysyłane wyłącznie w systemie (dzwonek w górnym pasku).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <InfoBox type="tip">
+        <strong>Wskazówka:</strong> Aby otrzymywać prywatne DM zamiast wiadomości na kanał, poproś Administratora o zmapowanie Twojego ID Slack do konta w systemie. Swoje Slack ID znajdziesz klikając na swoje zdjęcie profilowe w Slack → "Kopiuj ID członka".
+      </InfoBox>
+
+      <InfoBox type="info">
+        <strong>Prywatnosc:</strong> Bot Slack nie ma dostepu do historii Twoich wiadomosci. Wysyla wylacznie powiadomienia generowane przez system Aura DMS. Polaczenie mozna dezaktywowac w dowolnej chwili wylaczajac integracje Slack w Ustawieniach.
+      </InfoBox>
+    </div>
+  );
+}
+
 function IntegrationsSection() {
   return (
     <div className="space-y-5 pt-3">
@@ -675,6 +773,7 @@ export function InstructionsPage() {
       case 'ksef': return <KSEFSection />;
       case 'automation': return <AutomationSection />;
       case 'integrations': return <IntegrationsSection />;
+      case 'slack': return <SlackSection />;
       default: return null;
     }
   };
@@ -692,7 +791,7 @@ export function InstructionsPage() {
         </div>
 
         {/* Quick Nav */}
-        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-3 lg:grid-cols-5">
           {sections.map(section => {
             const Icon = section.icon;
             const isActive = activeSection === section.id;
@@ -749,6 +848,7 @@ export function InstructionsPage() {
                         {section.id === 'ksef' && 'Pobieranie, synchronizacja i przekazywanie faktur KSEF'}
                         {section.id === 'automation' && 'Reguły NIP, limity, duplikaty, tagi ML'}
                         {section.id === 'integrations' && 'Połączenie z Google Drive i pobieranie faktur z e-maila'}
+                        {section.id === 'slack' && 'Powiadomienia DM, codzienne podsumowanie o polnocy'}
                       </p>
                     </div>
                   </div>
