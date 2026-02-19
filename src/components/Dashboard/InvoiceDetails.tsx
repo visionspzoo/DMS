@@ -2523,32 +2523,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       </label>
                       {isEditing ? (
                         <div className="mt-1 space-y-2">
-                          {profile?.mpk_override_bez_mpk && (
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={!!(editedInvoice as any).bez_mpk}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setEditedInvoice({
-                                    ...editedInvoice,
-                                    cost_center_id: checked ? null : editedInvoice.cost_center_id,
-                                    ...(checked ? { bez_mpk: true } : { bez_mpk: false }),
-                                  } as any);
-                                  if (checked) {
-                                    setCostCenterSearch('');
-                                    setShowCostCenterDropdown(false);
-                                  }
-                                }}
-                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-brand-primary focus:ring-brand-primary"
-                              />
-                              <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-                                BEZ MPK
-                              </span>
-                            </label>
-                          )}
-                          {!(editedInvoice as any).bez_mpk && (
-                            <div className="relative">
+                          <div className="relative">
                               <input
                                 type="text"
                                 value={(() => {
@@ -2606,21 +2581,52 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                                 </button>
                               )}
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {(() => {
-                            if ((currentInvoice as any).bez_mpk) return 'BEZ MPK';
-                            const cc = costCenters.find(c => c.id === (currentInvoice as any).cost_center_id);
-                            return cc ? `${cc.code} - ${cc.description}` : '—';
-                          })()}
-                        </p>
-                      )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
+                            {(() => {
+                              if ((currentInvoice as any).bez_mpk) return 'BEZ MPK';
+                              const cc = costCenters.find(c => c.id === (currentInvoice as any).cost_center_id);
+                              return cc ? `${cc.code} - ${cc.description}` : '—';
+                            })()}
+                          </p>
+                        )}
                     </div>
                   </div>
                 </div>
               </div>
+
+              {profile?.mpk_override_bez_mpk && isEditing && (
+                <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-4">
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!(editedInvoice as any).bez_mpk}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditedInvoice({
+                          ...editedInvoice,
+                          cost_center_id: checked ? null : editedInvoice.cost_center_id,
+                          ...(checked ? { bez_mpk: true } : { bez_mpk: false }),
+                        } as any);
+                        if (checked) {
+                          setCostCenterSearch('');
+                          setShowCostCenterDropdown(false);
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-brand-primary focus:ring-brand-primary"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                        Przypisz do kosztów BEZ MPK
+                      </span>
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                        Faktura zostanie wyeksportowana z kodem działu i nazwą działu "BEZ MPK"
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
                 <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4 flex items-center gap-2">
