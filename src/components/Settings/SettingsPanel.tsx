@@ -17,6 +17,7 @@ interface Profile {
   department_id: string | null;
   is_admin: boolean;
   can_access_ksef_config: boolean;
+  mpk_override_bez_mpk: boolean;
   monthly_invoice_limit: number | null;
   single_invoice_limit: number | null;
   created_at: string;
@@ -79,6 +80,7 @@ export default function SettingsPanel() {
           department_id,
           is_admin,
           can_access_ksef_config,
+          mpk_override_bez_mpk,
           monthly_invoice_limit,
           single_invoice_limit,
           created_at,
@@ -264,6 +266,12 @@ export default function SettingsPanel() {
     }
   }
 
+  function handleMpkOverrideBezMpkChange(value: boolean) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, mpk_override_bez_mpk: value });
+    }
+  }
+
   function handleMonthlyLimitChange(value: string) {
     if (editingUser) {
       const numValue = value === '' ? null : parseFloat(value);
@@ -287,6 +295,7 @@ export default function SettingsPanel() {
       department_id: editingUser.department_id,
       is_admin: editingUser.is_admin,
       can_access_ksef_config: editingUser.can_access_ksef_config,
+      mpk_override_bez_mpk: editingUser.mpk_override_bez_mpk,
       monthly_invoice_limit: editingUser.monthly_invoice_limit,
       single_invoice_limit: editingUser.single_invoice_limit
     });
@@ -694,6 +703,27 @@ export default function SettingsPanel() {
                   >
                     Dostęp do konfiguracji KSEF
                   </label>
+                </div>
+
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="mpk_override_bez_mpk"
+                    checked={editingUser.mpk_override_bez_mpk}
+                    onChange={(e) => handleMpkOverrideBezMpkChange(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0"
+                  />
+                  <div>
+                    <label
+                      htmlFor="mpk_override_bez_mpk"
+                      className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                    >
+                      Dostęp BEZ MPK
+                    </label>
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                      Faktury tego użytkownika będą eksportowane przez API z kodem MPK i nazwą działu zastąpionymi przez "BEZ MPK"
+                    </p>
+                  </div>
                 </div>
 
                 {editingUser.role === 'Dyrektor' && (

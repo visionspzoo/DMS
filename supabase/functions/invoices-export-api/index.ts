@@ -109,6 +109,7 @@ Deno.serve(async (req: Request) => {
         updated_at,
         pdf_base64,
         pz_number,
+        uploaded_by,
         department:department_id (
           id,
           name,
@@ -126,15 +127,35 @@ Deno.serve(async (req: Request) => {
       query = query.lte('issue_date', toDate);
     }
 
-    const { data: invoices, error: invoiceError, count } = await query;
+    const { data: invoices, error: invoiceError } = await query;
 
     if (invoiceError) {
       console.error('Error fetching invoices:', invoiceError);
       return json({ success: false, error: 'Failed to fetch invoices' }, 500);
     }
 
+    const uploaderIds = [...new Set(
+      (invoices || []).map((inv: any) => inv.uploaded_by).filter(Boolean)
+    )];
+
+    let bezMpkUserIds = new Set<string>();
+    if (uploaderIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, mpk_override_bez_mpk')
+        .in('id', uploaderIds)
+        .eq('mpk_override_bez_mpk', true);
+
+      if (profiles) {
+        for (const p of profiles) {
+          bezMpkUserIds.add(p.id);
+        }
+      }
+    }
+
     const mpkCodes = [...new Set(
       (invoices || [])
+        .filter((inv: any) => !bezMpkUserIds.has(inv.uploaded_by))
         .map((inv: any) => inv.department?.mpk_code)
         .filter(Boolean)
     )];
@@ -154,7 +175,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = (invoices || []).map((inv: any) => {
-      const mpkCode = inv.department?.mpk_code || null;
+      const isBezMpk = bezMpkUserIds.has(inv.uploaded_by);
+      const mpkCode = isBezMpk ? 'BEZ MPK' : (inv.department?.mpk_code || null);
+      const departmentName = isBezMpk ? 'BEZ MPK' : (inv.department?.name || null);
+      const mpkDescription = isBezMpk ? 'BEZ MPK' : (mpkCode ? (costCentersMap[mpkCode] || null) : null);
+
       const entry: Record<string, unknown> = {
         invoice_number: inv.invoice_number,
         supplier_name: inv.supplier_name,
@@ -162,10 +187,10 @@ Deno.serve(async (req: Request) => {
         issue_date: inv.issue_date,
         due_date: inv.due_date,
         mpk_code: mpkCode,
-        department_name: inv.department?.name || null,
+        department_name: departmentName,
         currency: inv.currency,
         description: inv.description,
-        mpk_description: mpkCode ? (costCentersMap[mpkCode] || null) : null,
+        mpk_description: mpkDescription,
         net_amount: inv.net_amount,
         tax_amount: inv.tax_amount,
         gross_amount: inv.gross_amount,
