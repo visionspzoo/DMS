@@ -113,6 +113,7 @@ export async function uploadInvoiceFile(
       uploaded_by: userId,
       file_hash: hash,
       source: 'manual',
+      status: 'draft',
     })
     .select()
     .single();
@@ -218,6 +219,8 @@ export async function uploadInvoiceFile(
         body: JSON.stringify({
           fileUrl: publicUrl,
           invoiceId: finalInvoiceData.id,
+          fileBase64: pdfBase64,
+          mimeType: file.type,
         }),
       }
     );

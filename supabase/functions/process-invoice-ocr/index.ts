@@ -12,6 +12,8 @@ interface OCRRequest {
   fileUrl?: string;
   invoiceId: string;
   pdfBase64?: string;
+  fileBase64?: string;
+  mimeType?: string;
 }
 
 const INVOICE_SYSTEM_PROMPT = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
@@ -237,26 +239,27 @@ Odpowiedz TYLKO z JSON.\n\nTekst faktury:\n${extractedText}`
   }
 }
 
-async function interpretWithGPT4o(fileBlob: Blob, apiKey: string, isPdfScan: boolean = false) {
-  const mimeType = fileBlob.type;
-  const arrayBuffer = await fileBlob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+async function interpretWithGPT4o(base64Data: string, resolvedMimeType: string, apiKey: string) {
+  let contentBlock: any;
 
-  let imageMediaType: string;
-  let imageData: string;
-
-  if (mimeType === 'application/pdf' || isPdfScan) {
-    imageMediaType = 'image/jpeg';
-    imageData = base64;
-  } else if (mimeType === 'image/png') {
-    imageMediaType = 'image/png';
-    imageData = base64;
+  if (resolvedMimeType === 'application/pdf') {
+    contentBlock = {
+      type: 'file',
+      file: {
+        filename: 'faktura.pdf',
+        file_data: `data:application/pdf;base64,${base64Data}`,
+      }
+    };
   } else {
-    imageMediaType = 'image/jpeg';
-    imageData = base64;
+    const imageMime = resolvedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    contentBlock = {
+      type: 'image_url',
+      image_url: {
+        url: `data:${imageMime};base64,${base64Data}`,
+        detail: 'high',
+      }
+    };
   }
-
-  const dataUrl = `data:${mimeType === 'application/pdf' ? 'application/pdf' : imageMediaType};base64,${imageData}`;
 
   const messages: any[] = [
     {
@@ -266,13 +269,7 @@ async function interpretWithGPT4o(fileBlob: Blob, apiKey: string, isPdfScan: boo
           type: 'text',
           text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane zgodnie z instrukcjami. Odpowiedz TYLKO z JSON.`
         },
-        {
-          type: 'image_url',
-          image_url: {
-            url: dataUrl,
-            detail: 'high'
-          }
-        }
+        contentBlock,
       ]
     }
   ];
@@ -394,9 +391,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { fileUrl, invoiceId, pdfBase64 }: OCRRequest = await req.json();
+    const { fileUrl, invoiceId, pdfBase64, fileBase64, mimeType: requestMimeType }: OCRRequest = await req.json();
 
-    console.log("Processing invoice:", { fileUrl: fileUrl ? 'provided' : 'none', invoiceId, pdfBase64: pdfBase64 ? 'provided' : 'none' });
+    console.log("Processing invoice:", { fileUrl: fileUrl ? 'provided' : 'none', invoiceId, hasBase64: !!(fileBase64 || pdfBase64), mimeType: requestMimeType });
 
     let content: string;
     let usedApi: string;
@@ -408,16 +405,20 @@ Deno.serve(async (req: Request) => {
       content = JSON.stringify(fallback);
       usedApi = "Fallback (no AI keys)";
     } else {
-      let fileBlob: Blob;
+      // Resolve base64 and MIME type — prefer directly passed data over fetching
+      const base64Data = fileBase64 || pdfBase64 || null;
+      let resolvedMimeType = requestMimeType || 'application/pdf';
 
-      if (pdfBase64) {
-        console.log("Using provided PDF base64 data...");
-        const binaryString = atob(pdfBase64);
+      let fileBlob: Blob | null = null;
+
+      if (base64Data) {
+        console.log(`Using provided base64 data, mimeType: ${resolvedMimeType}`);
+        const binaryString = atob(base64Data);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        fileBlob = new Blob([bytes], { type: 'application/pdf' });
+        fileBlob = new Blob([bytes], { type: resolvedMimeType });
         console.log(`✓ Converted base64 to blob, size: ${fileBlob.size} bytes`);
       } else if (fileUrl) {
         console.log("Fetching file from URL...");
@@ -426,17 +427,35 @@ Deno.serve(async (req: Request) => {
           throw new Error(`Failed to fetch file: ${fileResponse.status}`);
         }
         fileBlob = await fileResponse.blob();
+        // Detect MIME type from response headers or URL extension
+        const contentType = fileResponse.headers.get('content-type') || '';
+        if (contentType && contentType !== 'application/octet-stream') {
+          resolvedMimeType = contentType.split(';')[0].trim();
+        } else if (fileUrl.match(/\.(jpg|jpeg)$/i)) {
+          resolvedMimeType = 'image/jpeg';
+        } else if (fileUrl.match(/\.png$/i)) {
+          resolvedMimeType = 'image/png';
+        } else {
+          resolvedMimeType = 'application/pdf';
+        }
+        console.log(`Fetched file, resolved MIME type: ${resolvedMimeType}, size: ${fileBlob.size}`);
       } else {
-        throw new Error("Either fileUrl or pdfBase64 must be provided");
+        throw new Error("Either fileUrl, fileBase64 or pdfBase64 must be provided");
       }
 
-      const fileType = fileBlob.type;
-      const isPDF = fileType === 'application/pdf';
-      console.log(`File type: ${fileType}, size: ${fileBlob.size} bytes, isPDF: ${isPDF}`);
+      // Re-encode blob to base64 if we fetched from URL (needed for AI calls)
+      let workingBase64 = base64Data;
+      if (!workingBase64 && fileBlob) {
+        const ab = await fileBlob.arrayBuffer();
+        workingBase64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+      }
+
+      const isPDF = resolvedMimeType === 'application/pdf';
+      console.log(`isPDF: ${isPDF}, resolvedMimeType: ${resolvedMimeType}`);
 
       if (isPDF) {
         console.log("PDF detected - extracting text...");
-        const extractedText = await extractTextFromPDF(fileBlob);
+        const extractedText = fileBlob ? await extractTextFromPDF(fileBlob) : '';
         console.log(`Extracted ${extractedText.length} characters from PDF`);
 
         const hasEnoughText = isTextSufficient(extractedText);
@@ -445,7 +464,7 @@ Deno.serve(async (req: Request) => {
         if (hasEnoughText && claudeApiKey) {
           try {
             console.log("PDF has readable text - sending to Claude...");
-            content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob, extractedText);
+            content = await interpretWithClaude(fileUrl || '', claudeApiKey, fileBlob!, extractedText);
             usedApi = "Claude 3 Haiku (PDF text extraction)";
             console.log("✓ Claude interpretation successful");
           } catch (claudeError) {
@@ -455,7 +474,7 @@ Deno.serve(async (req: Request) => {
             if (openaiApiKey) {
               try {
                 console.log("Falling back to GPT-4o for PDF...");
-                content = await interpretWithGPT4o(fileBlob, openaiApiKey, true);
+                content = await interpretWithGPT4o(workingBase64!, resolvedMimeType, openaiApiKey);
                 usedApi = "GPT-4o Vision (fallback from Claude on PDF)";
                 errorDetails = null;
                 console.log("✓ GPT-4o interpretation successful");
@@ -473,7 +492,6 @@ Deno.serve(async (req: Request) => {
             }
           }
         } else {
-          // Scanned PDF or very little text extracted - use GPT-4o Vision
           if (!hasEnoughText) {
             console.log("PDF appears to be a scan (insufficient text) - routing to GPT-4o Vision...");
           } else {
@@ -482,7 +500,7 @@ Deno.serve(async (req: Request) => {
 
           if (openaiApiKey) {
             try {
-              content = await interpretWithGPT4o(fileBlob, openaiApiKey, true);
+              content = await interpretWithGPT4o(workingBase64!, resolvedMimeType, openaiApiKey);
               usedApi = "GPT-4o Vision (scanned PDF)";
               console.log("✓ GPT-4o Vision interpretation successful");
             } catch (gptError) {
@@ -492,7 +510,7 @@ Deno.serve(async (req: Request) => {
               if (claudeApiKey && hasEnoughText) {
                 try {
                   console.log("Trying Claude as fallback with available text...");
-                  content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob, extractedText);
+                  content = await interpretWithClaude(fileUrl || '', claudeApiKey, fileBlob!, extractedText);
                   usedApi = "Claude 3 Haiku (fallback from GPT-4o)";
                   errorDetails = null;
                 } catch (claudeError) {
@@ -509,7 +527,7 @@ Deno.serve(async (req: Request) => {
           } else if (claudeApiKey && hasEnoughText) {
             try {
               console.log("No GPT-4o key, using Claude with available text...");
-              content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob, extractedText);
+              content = await interpretWithClaude(fileUrl || '', claudeApiKey, fileBlob!, extractedText);
               usedApi = "Claude 3 Haiku (partial PDF text)";
               console.log("✓ Claude interpretation successful");
             } catch (claudeError) {
@@ -527,10 +545,11 @@ Deno.serve(async (req: Request) => {
         }
       } else {
         // Image file (JPG, PNG, etc.) - try Claude first, fall back to GPT-4o
+        const imageBlob = fileBlob!;
         if (claudeApiKey) {
           try {
-            console.log("Image file - using Claude Vision...");
-            content = await interpretWithClaude(fileUrl, claudeApiKey, fileBlob);
+            console.log(`Image file (${resolvedMimeType}) - using Claude Vision...`);
+            content = await interpretWithClaude(fileUrl || '', claudeApiKey, imageBlob);
             usedApi = "Claude 3 Haiku Vision";
             console.log("✓ Claude Vision interpretation successful");
           } catch (claudeError) {
@@ -540,7 +559,7 @@ Deno.serve(async (req: Request) => {
             if (openaiApiKey) {
               try {
                 console.log("Falling back to GPT-4o Vision for image...");
-                content = await interpretWithGPT4o(fileBlob, openaiApiKey);
+                content = await interpretWithGPT4o(workingBase64!, resolvedMimeType, openaiApiKey);
                 usedApi = "GPT-4o Vision (fallback from Claude on image)";
                 errorDetails = null;
                 console.log("✓ GPT-4o Vision interpretation successful");
@@ -551,7 +570,7 @@ Deno.serve(async (req: Request) => {
                 if (mistralApiKey) {
                   try {
                     console.log("Falling back to Mistral...");
-                    content = await interpretWithMistral(fileUrl, fileBlob, mistralApiKey);
+                    content = await interpretWithMistral(fileUrl || '', imageBlob, mistralApiKey);
                     usedApi = "Mistral Pixtral (fallback)";
                     errorDetails = null;
                   } catch (mistralError) {
@@ -568,7 +587,7 @@ Deno.serve(async (req: Request) => {
             } else if (mistralApiKey) {
               try {
                 console.log("No GPT-4o, falling back to Mistral...");
-                content = await interpretWithMistral(fileUrl, fileBlob, mistralApiKey);
+                content = await interpretWithMistral(fileUrl || '', imageBlob, mistralApiKey);
                 usedApi = "Mistral Pixtral (fallback from Claude)";
                 errorDetails = null;
               } catch (mistralError) {
@@ -584,8 +603,8 @@ Deno.serve(async (req: Request) => {
           }
         } else if (openaiApiKey) {
           try {
-            console.log("No Claude key - using GPT-4o Vision for image...");
-            content = await interpretWithGPT4o(fileBlob, openaiApiKey);
+            console.log(`No Claude key - using GPT-4o Vision for image (${resolvedMimeType})...`);
+            content = await interpretWithGPT4o(workingBase64!, resolvedMimeType, openaiApiKey);
             usedApi = "GPT-4o Vision";
             console.log("✓ GPT-4o Vision interpretation successful");
           } catch (gptError) {
@@ -594,7 +613,7 @@ Deno.serve(async (req: Request) => {
 
             if (mistralApiKey) {
               try {
-                content = await interpretWithMistral(fileUrl, fileBlob, mistralApiKey);
+                content = await interpretWithMistral(fileUrl || '', imageBlob, mistralApiKey);
                 usedApi = "Mistral Pixtral (fallback from GPT-4o)";
                 errorDetails = null;
               } catch (mistralError) {
@@ -611,7 +630,7 @@ Deno.serve(async (req: Request) => {
         } else if (mistralApiKey) {
           try {
             console.log("Using Mistral Pixtral for image...");
-            content = await interpretWithMistral(fileUrl, fileBlob, mistralApiKey);
+            content = await interpretWithMistral(fileUrl || '', imageBlob, mistralApiKey);
             usedApi = "Mistral Pixtral";
             console.log("✓ Mistral interpretation successful");
           } catch (mistralError) {
