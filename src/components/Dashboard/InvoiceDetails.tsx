@@ -597,21 +597,21 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return true;
     }
 
-    // Can edit draft if I'm current_approver or (no approver assigned and I'm uploader)
-    if (currentInvoice.status === 'draft') {
+    // Can edit draft or rejected if I'm current_approver or (no approver assigned and I'm uploader)
+    if (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') {
       if (currentInvoice.current_approver_id === profile.id ||
           (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile.id)) {
         return true;
       }
 
-      // Dyrektor może edytować faktury draft z działów, których jest dyrektorem
+      // Dyrektor może edytować faktury draft lub odrzucone z działów, których jest dyrektorem
       if (profile.role === 'Dyrektor' && invoiceDepartmentInfo) {
         if (invoiceDepartmentInfo.director_id === profile.id) {
           return true;
         }
       }
 
-      // Kierownik może edytować faktury draft Specjalistów ze swojego działu
+      // Kierownik może edytować faktury draft lub odrzucone Specjalistów ze swojego działu
       if (profile.role === 'Kierownik' && invoiceDepartmentInfo) {
         if (
           currentInvoice.department_id === profile.department_id &&
@@ -641,8 +641,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return true;
     }
 
-    // Uploader może transferować swoje faktury draft
-    if (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile.id) {
+    // Uploader może transferować swoje faktury draft lub odrzucone
+    if ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile.id) {
       return true;
     }
 
@@ -651,15 +651,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return true;
     }
 
-    // Dyrektor może transferować faktury draft z działów, których jest dyrektorem
-    if (profile.role === 'Dyrektor' && currentInvoice.status === 'draft' && invoiceDepartmentInfo) {
+    // Dyrektor może transferować faktury draft lub odrzucone z działów, których jest dyrektorem
+    if (profile.role === 'Dyrektor' && (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && invoiceDepartmentInfo) {
       if (invoiceDepartmentInfo.director_id === profile.id) {
         return true;
       }
     }
 
-    // Kierownik może transferować faktury draft Specjalistów ze swojego działu
-    if (profile.role === 'Kierownik' && currentInvoice.status === 'draft' && invoiceDepartmentInfo) {
+    // Kierownik może transferować faktury draft lub odrzucone Specjalistów ze swojego działu
+    if (profile.role === 'Kierownik' && (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && invoiceDepartmentInfo) {
       if (
         currentInvoice.department_id === profile.department_id &&
         invoiceDepartmentInfo.uploader_role === 'Specjalista'
@@ -1969,7 +1969,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 {!currentInvoice.paid_at && (
                   profile?.is_admin ||
                   profile?.role === 'dyrektor' ||
-                  (currentInvoice.status === 'draft' && currentInvoice.uploaded_by === profile?.id)
+                  ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile?.id)
                 ) && (
                   <button
                     onClick={() => setShowPaidConfirm(true)}
@@ -1980,7 +1980,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Oznacz jako opłaconą</span>
                   </button>
                 )}
-                {isFromKSEF && currentInvoice.status === 'draft' && canTransfer() && (
+                {isFromKSEF && (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && canTransfer() && (
                   <>
                     <button
                       onClick={() => setShowTransferModal(true)}
@@ -1999,7 +1999,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </button>
                   </>
                 )}
-                {currentInvoice.status === 'draft' && canTransfer() && !isFromKSEF && (
+                {(currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && canTransfer() && !isFromKSEF && (
                   <>
                     <button
                       onClick={handleReprocessOCR}
