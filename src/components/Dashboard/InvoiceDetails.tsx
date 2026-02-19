@@ -489,22 +489,27 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       let nextApproverId = null;
 
       if (action === 'approved' && currentInvoice.department_id) {
-        const { data: nextApprover, error: approverError } = await supabase
-          .rpc('get_next_approver_in_department', {
-            dept_id: currentInvoice.department_id,
-            user_role: profile.role,
-          });
-
-        if (approverError) {
-          console.error('Error getting next approver:', approverError);
-        }
-
-        if (nextApprover) {
-          newStatus = 'waiting';
-          nextApproverId = nextApprover;
-        } else {
+        if (profile.role === 'Kierownik') {
           newStatus = 'accepted';
           nextApproverId = null;
+        } else {
+          const { data: nextApprover, error: approverError } = await supabase
+            .rpc('get_next_approver_in_department', {
+              dept_id: currentInvoice.department_id,
+              user_role: profile.role,
+            });
+
+          if (approverError) {
+            console.error('Error getting next approver:', approverError);
+          }
+
+          if (nextApprover) {
+            newStatus = 'waiting';
+            nextApproverId = nextApprover;
+          } else {
+            newStatus = 'accepted';
+            nextApproverId = null;
+          }
         }
       }
 
