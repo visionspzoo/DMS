@@ -699,7 +699,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           gross_amount: editedInvoice.gross_amount,
           currency: editedInvoice.currency,
           department_id: editedInvoice.department_id,
-          status: editedInvoice.status,
+          status: profile?.is_admin ? editedInvoice.status : undefined,
           description: editedInvoice.description,
           cost_center_id: (editedInvoice as any).bez_mpk ? null : (editedInvoice.cost_center_id || null),
           bez_mpk: !!(editedInvoice as any).bez_mpk,
@@ -2052,7 +2052,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {!currentInvoice.paid_at && (
+                {!currentInvoice.paid_at && currentInvoice.status !== 'paid' && (
                   profile?.is_admin ||
                   profile?.role === 'Dyrektor' ||
                   ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile?.id)
@@ -2355,7 +2355,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Status</label>
-                      {isEditing ? (
+                      {isEditing && profile?.is_admin ? (
                         <select
                           value={editedInvoice.status || currentInvoice.status}
                           onChange={(e) => setEditedInvoice({ ...editedInvoice, status: e.target.value as any })}
