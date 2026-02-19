@@ -1046,16 +1046,18 @@ export function KSEFInvoicesPage() {
             >
               Przypisane ({assignedCount})
             </button>
-            <button
-              onClick={() => setInvoiceTab('ignored')}
-              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-                invoiceTab === 'ignored'
-                  ? 'bg-slate-600 text-white shadow-sm'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-              }`}
-            >
-              Ignorowane ({ignoredCount})
-            </button>
+            {canAccessKSEFConfig && (
+              <button
+                onClick={() => setInvoiceTab('ignored')}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                  invoiceTab === 'ignored'
+                    ? 'bg-slate-600 text-white shadow-sm'
+                    : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+                }`}
+              >
+                Ignorowane ({ignoredCount})
+              </button>
+            )}
           </div>
         )}
 
@@ -1291,6 +1293,7 @@ export function KSEFInvoicesPage() {
           onIgnore={handleIgnoreInvoice}
           onUnignore={handleUnignoreInvoice}
           transferring={transferring}
+          canIgnore={canAccessKSEFConfig}
         />
       )}
     </div>

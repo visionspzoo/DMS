@@ -48,9 +48,10 @@ interface KSEFInvoiceModalProps {
   onIgnore: (ksefInvoiceId: string, reason: string) => Promise<void>;
   onUnignore: (ksefInvoiceId: string) => Promise<void>;
   transferring: boolean;
+  canIgnore?: boolean;
 }
 
-export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, onIgnore, onUnignore, transferring }: KSEFInvoiceModalProps) {
+export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, onIgnore, onUnignore, transferring, canIgnore = false }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
   const [currentInvoice, setCurrentInvoice] = useState<KSEFInvoice>(invoice);
   const [selectedDepartment, setSelectedDepartment] = useState(currentInvoice.transferred_to_department_id || '');
@@ -565,7 +566,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                 </div>
               )}
 
-              {currentInvoice.ignored_at ? (
+              {canIgnore && currentInvoice.ignored_at ? (
                 <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2">
                     <EyeOff className="w-4 h-4" />
@@ -589,7 +590,7 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                   </button>
                 </div>
               ) : (
-                !currentInvoice.transferred_to_invoice_id && (
+                canIgnore && !currentInvoice.transferred_to_invoice_id && (
                   <div className="mt-1">
                     <button
                       onClick={() => { setShowIgnoreConfirm(true); setIgnoreReason(''); setIgnoreReasonError(''); }}
