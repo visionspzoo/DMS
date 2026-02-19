@@ -441,7 +441,14 @@ export default function GmailWorkspaceConfig() {
           },
         }
       );
-      const result = await response.json().catch(() => null);
+      let result = null;
+      const rawText = await response.text().catch(() => null);
+      try {
+        result = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        result = { error: `Nieprawidlowa odpowiedz HTTP ${response.status}: ${rawText?.substring(0, 200)}` };
+      }
+      if (!result) result = { error: `Brak odpowiedzi (HTTP ${response.status})` };
       setDiagResults(result);
     } catch (error: any) {
       setDiagResults({ error: error.message });
@@ -975,6 +982,18 @@ export default function GmailWorkspaceConfig() {
                           <span key={k} className="ml-2 text-amber-600 dark:text-amber-400">[{a.filename}]</span>
                         ))}
                       </div>
+                    )}
+                    {s.step === 'attachment_fetch' && (
+                      <span>Pobieranie zalacznika: {s.ok ? `OK (${s.sizeBytes} bajtow)` : `BLAD (HTTP ${s.status})`}</span>
+                    )}
+                    {s.step === 'hash' && (
+                      <span>Hash SHA-256: {s.hash}</span>
+                    )}
+                    {s.step === 'storage_upload' && (
+                      <span>Upload do storage: {s.ok ? 'OK' : `BLAD: ${s.error}`}</span>
+                    )}
+                    {s.step === 'invoice_insert' && (
+                      <span>Test zapisu faktury: {s.ok ? `OK (ID: ${s.id})` : `BLAD: ${s.error} [${s.code}]`}</span>
                     )}
                   </div>
                 ))}
