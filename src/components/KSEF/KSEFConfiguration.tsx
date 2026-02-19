@@ -6,6 +6,7 @@ import { Plus, Trash2, Building2, AlertCircle, User, Edit2, Check, X } from 'luc
 interface NIPMapping {
   id: string;
   nip: string;
+  supplier_name?: string | null;
   department_id: string;
   department_name?: string;
   assigned_user_id?: string | null;
@@ -34,6 +35,7 @@ export function KSEFConfiguration() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [newNIP, setNewNIP] = useState('');
+  const [newSupplierName, setNewSupplierName] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [adding, setAdding] = useState(false);
@@ -47,6 +49,7 @@ export function KSEFConfiguration() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDepartment, setEditDepartment] = useState('');
   const [editUser, setEditUser] = useState('');
+  const [editSupplierName, setEditSupplierName] = useState('');
   const [editDepartmentUsers, setEditDepartmentUsers] = useState<DepartmentUser[]>([]);
   const [editing, setEditing] = useState(false);
 
@@ -93,6 +96,7 @@ export function KSEFConfiguration() {
           .select(`
             id,
             nip,
+            supplier_name,
             department_id,
             assigned_user_id,
             created_at,
@@ -198,6 +202,7 @@ export function KSEFConfiguration() {
 
       const mappingsToAdd = nips.map(nip => ({
         nip,
+        supplier_name: newSupplierName.trim() || null,
         department_id: selectedDepartment,
         assigned_user_id: selectedUser || null,
         created_by: user?.id
@@ -211,6 +216,7 @@ export function KSEFConfiguration() {
 
       setSuccess(`Pomyślnie dodano ${nips.length} ${nips.length === 1 ? 'mapowanie' : nips.length < 5 ? 'mapowania' : 'mapowań'} NIP`);
       setNewNIP('');
+      setNewSupplierName('');
       setSelectedDepartment('');
       setSelectedUser('');
       await loadData();
@@ -252,6 +258,7 @@ export function KSEFConfiguration() {
     setEditingId(mapping.id);
     setEditDepartment(mapping.department_id);
     setEditUser(mapping.assigned_user_id || '');
+    setEditSupplierName(mapping.supplier_name || '');
     setError(null);
     setSuccess(null);
   }
@@ -260,6 +267,7 @@ export function KSEFConfiguration() {
     setEditingId(null);
     setEditDepartment('');
     setEditUser('');
+    setEditSupplierName('');
     setEditDepartmentUsers([]);
   }
 
@@ -279,6 +287,7 @@ export function KSEFConfiguration() {
         .update({
           department_id: editDepartment,
           assigned_user_id: editUser || null,
+          supplier_name: editSupplierName.trim() || null,
         })
         .eq('id', id);
 
@@ -288,6 +297,7 @@ export function KSEFConfiguration() {
       setEditingId(null);
       setEditDepartment('');
       setEditUser('');
+      setEditSupplierName('');
       setEditDepartmentUsers([]);
       await loadData();
     } catch (err) {
@@ -414,7 +424,7 @@ export function KSEFConfiguration() {
         <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-5">
           <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark mb-4">Dodaj nowe mapowanie</h4>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
                   Numer NIP
@@ -428,6 +438,21 @@ export function KSEFConfiguration() {
                 />
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
                   Możesz dodać wiele NIPów oddzielonych przecinkami
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                  Nazwa (opcjonalnie)
+                </label>
+                <input
+                  type="text"
+                  value={newSupplierName}
+                  onChange={(e) => setNewSupplierName(e.target.value)}
+                  placeholder="Nazwa dostawcy"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                />
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                  Etykieta ułatwiająca identyfikację dostawcy
                 </p>
               </div>
               <div>
@@ -568,6 +593,9 @@ export function KSEFConfiguration() {
                   NIP
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
+                  Nazwa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
                   Dział
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
@@ -586,7 +614,7 @@ export function KSEFConfiguration() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
               {mappings.length === 0 ? (
                 <tr>
-                  <td colSpan={canManageMappings ? 6 : 4} className="px-6 py-8 text-center">
+                  <td colSpan={canManageMappings ? 7 : 5} className="px-6 py-8 text-center">
                     <Building2 className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
                     <p className="text-text-secondary-light dark:text-text-secondary-dark">Brak mapowań NIP</p>
                     {canManageMappings && (
@@ -617,6 +645,21 @@ export function KSEFConfiguration() {
                         <span className="font-mono text-sm text-text-primary-light dark:text-text-primary-dark">
                           {mapping.nip}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editSupplierName}
+                            onChange={(e) => setEditSupplierName(e.target.value)}
+                            placeholder="Nazwa dostawcy"
+                            className="w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                          />
+                        ) : (
+                          <span className="text-sm text-text-primary-light dark:text-text-primary-dark">
+                            {mapping.supplier_name || <span className="text-text-secondary-light dark:text-text-secondary-dark italic">—</span>}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {isEditing ? (
