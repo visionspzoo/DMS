@@ -958,6 +958,9 @@ export default function GmailWorkspaceConfig() {
                 <XCircle className="w-3 h-3" />
               </button>
             </div>
+            <pre className="text-[9px] text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-900/40 p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all mb-2">
+              {JSON.stringify(diagResults, null, 2)}
+            </pre>
             {diagResults.error && (
               <p className="text-[10px] text-red-700 dark:text-red-400">{diagResults.error}</p>
             )}
