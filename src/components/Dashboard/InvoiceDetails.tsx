@@ -694,7 +694,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           department_id: editedInvoice.department_id,
           status: editedInvoice.status,
           description: editedInvoice.description,
-          cost_center_id: editedInvoice.cost_center_id || null,
+          cost_center_id: (editedInvoice as any).bez_mpk ? null : (editedInvoice.cost_center_id || null),
+          bez_mpk: !!(editedInvoice as any).bez_mpk,
           pz_number: (editedInvoice as any).pz_number || null,
         })
         .eq('id', currentInvoice.id);
@@ -2521,67 +2522,96 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         Opis MPK
                       </label>
                       {isEditing ? (
-                        <div className="relative mt-1">
-                          <input
-                            type="text"
-                            value={(() => {
-                              const selected = costCenters.find(cc => cc.id === editedInvoice.cost_center_id);
-                              return selected ? `${selected.code} - ${selected.description}` : costCenterSearch;
-                            })()}
-                            onChange={(e) => {
-                              setCostCenterSearch(e.target.value);
-                              setShowCostCenterDropdown(true);
-                              if (!e.target.value) {
-                                setEditedInvoice({ ...editedInvoice, cost_center_id: null });
-                              }
-                            }}
-                            onFocus={() => setShowCostCenterDropdown(true)}
-                            placeholder="Wyszukaj kod lub opis MPK..."
-                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
-                          />
-                          {showCostCenterDropdown && (() => {
-                            const searchLower = costCenterSearch.toLowerCase();
-                            const filtered = costCenters.filter(cc =>
-                              cc.code.toLowerCase().includes(searchLower) ||
-                              cc.description.toLowerCase().includes(searchLower)
-                            );
+                        <div className="mt-1 space-y-2">
+                          {profile?.mpk_override_bez_mpk && (
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={!!(editedInvoice as any).bez_mpk}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setEditedInvoice({
+                                    ...editedInvoice,
+                                    cost_center_id: checked ? null : editedInvoice.cost_center_id,
+                                    ...(checked ? { bez_mpk: true } : { bez_mpk: false }),
+                                  } as any);
+                                  if (checked) {
+                                    setCostCenterSearch('');
+                                    setShowCostCenterDropdown(false);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-brand-primary focus:ring-brand-primary"
+                              />
+                              <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                                BEZ MPK
+                              </span>
+                            </label>
+                          )}
+                          {!(editedInvoice as any).bez_mpk && (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={(() => {
+                                  const selected = costCenters.find(cc => cc.id === editedInvoice.cost_center_id);
+                                  return selected ? `${selected.code} - ${selected.description}` : costCenterSearch;
+                                })()}
+                                onChange={(e) => {
+                                  setCostCenterSearch(e.target.value);
+                                  setShowCostCenterDropdown(true);
+                                  if (!e.target.value) {
+                                    setEditedInvoice({ ...editedInvoice, cost_center_id: null });
+                                  }
+                                }}
+                                onFocus={() => setShowCostCenterDropdown(true)}
+                                placeholder="Wyszukaj kod lub opis MPK..."
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                              />
+                              {showCostCenterDropdown && (() => {
+                                const searchLower = costCenterSearch.toLowerCase();
+                                const filtered = costCenters.filter(cc =>
+                                  cc.code.toLowerCase().includes(searchLower) ||
+                                  cc.description.toLowerCase().includes(searchLower)
+                                );
 
-                            return filtered.length > 0 ? (
-                              <div className="absolute z-50 w-full mt-1 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                {filtered.map(cc => (
-                                  <button
-                                    key={cc.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setEditedInvoice({ ...editedInvoice, cost_center_id: cc.id });
-                                      setCostCenterSearch('');
-                                      setShowCostCenterDropdown(false);
-                                    }}
-                                    className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 border-b border-slate-200 dark:border-slate-700 last:border-b-0 text-sm"
-                                  >
-                                    <span className="font-medium text-brand-primary">{cc.code}</span>
-                                    <span className="text-text-primary-light dark:text-text-primary-dark"> - {cc.description}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : null;
-                          })()}
-                          {editedInvoice.cost_center_id && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditedInvoice({ ...editedInvoice, cost_center_id: null });
-                                setCostCenterSearch('');
-                              }}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
+                                return filtered.length > 0 ? (
+                                  <div className="absolute z-50 w-full mt-1 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    {filtered.map(cc => (
+                                      <button
+                                        key={cc.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setEditedInvoice({ ...editedInvoice, cost_center_id: cc.id });
+                                          setCostCenterSearch('');
+                                          setShowCostCenterDropdown(false);
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 border-b border-slate-200 dark:border-slate-700 last:border-b-0 text-sm"
+                                      >
+                                        <span className="font-medium text-brand-primary">{cc.code}</span>
+                                        <span className="text-text-primary-light dark:text-text-primary-dark"> - {cc.description}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              })()}
+                              {editedInvoice.cost_center_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditedInvoice({ ...editedInvoice, cost_center_id: null });
+                                    setCostCenterSearch('');
+                                  }}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       ) : (
                         <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
                           {(() => {
+                            if ((currentInvoice as any).bez_mpk) return 'BEZ MPK';
                             const cc = costCenters.find(c => c.id === (currentInvoice as any).cost_center_id);
                             return cc ? `${cc.code} - ${cc.description}` : '—';
                           })()}
