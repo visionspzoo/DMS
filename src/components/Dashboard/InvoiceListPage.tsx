@@ -290,8 +290,64 @@ export function InvoiceList() {
 
     const subscription = supabase
       .channel('invoices-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'invoices' }, () => {
         loadInvoices();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'invoices' }, (payload) => {
+        const deletedId = (payload.old as any)?.id;
+        if (deletedId) {
+          setInvoices(prev => prev.filter(inv => inv.id !== deletedId));
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'invoices' }, async (payload) => {
+        const updatedId = (payload.new as any)?.id;
+        if (!updatedId) return;
+        const { data } = await supabase
+          .from('invoices')
+          .select(`
+            id,
+            invoice_number,
+            supplier_name,
+            supplier_nip,
+            buyer_name,
+            buyer_nip,
+            issue_date,
+            due_date,
+            net_amount,
+            tax_amount,
+            gross_amount,
+            pln_gross_amount,
+            exchange_rate,
+            currency,
+            status,
+            description,
+            uploaded_by,
+            current_approver_id,
+            department_id,
+            cost_center_id,
+            file_url,
+            paid_at,
+            paid_by,
+            created_at,
+            updated_at,
+            source,
+            ksef_reference_number,
+            is_duplicate,
+            duplicate_invoice_ids,
+            file_hash,
+            drive_file_id,
+            user_drive_file_id,
+            drive_owner_user_id,
+            pz_number,
+            uploader:profiles!uploaded_by(full_name, role),
+            current_approver:profiles!current_approver_id(full_name, role),
+            department:departments!department_id(id, name, parent_department_id)
+          `)
+          .eq('id', updatedId)
+          .maybeSingle();
+        if (data) {
+          setInvoices(prev => prev.map(inv => inv.id === updatedId ? data as any : inv));
+        }
       })
       .subscribe();
 
@@ -363,12 +419,43 @@ export function InvoiceList() {
       const { data, error } = await supabase
         .from('invoices')
         .select(`
-          *,
+          id,
+          invoice_number,
+          supplier_name,
+          supplier_nip,
+          buyer_name,
+          buyer_nip,
+          issue_date,
+          due_date,
+          net_amount,
+          tax_amount,
+          gross_amount,
+          pln_gross_amount,
+          exchange_rate,
+          currency,
+          status,
+          description,
+          uploaded_by,
+          current_approver_id,
+          department_id,
+          cost_center_id,
+          file_url,
+          paid_at,
+          paid_by,
+          created_at,
+          updated_at,
+          source,
+          ksef_reference_number,
+          is_duplicate,
+          duplicate_invoice_ids,
+          file_hash,
+          drive_file_id,
+          user_drive_file_id,
+          drive_owner_user_id,
+          pz_number,
           uploader:profiles!uploaded_by(full_name, role),
           current_approver:profiles!current_approver_id(full_name, role),
-          department:departments!department_id(id, name, parent_department_id),
-          is_duplicate,
-          duplicate_invoice_ids
+          department:departments!department_id(id, name, parent_department_id)
         `)
         .order('created_at', { ascending: false });
 

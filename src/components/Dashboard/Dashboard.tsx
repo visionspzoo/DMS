@@ -18,7 +18,23 @@ export function Dashboard() {
       try {
         let query = supabase
           .from('invoices')
-          .select('*, is_duplicate, duplicate_invoice_ids')
+          .select(`
+            id,
+            invoice_number,
+            supplier_name,
+            issue_date,
+            due_date,
+            gross_amount,
+            pln_gross_amount,
+            currency,
+            status,
+            uploaded_by,
+            current_approver_id,
+            department_id,
+            created_at,
+            is_duplicate,
+            duplicate_invoice_ids
+          `)
           .order('created_at', { ascending: false });
 
         if (profile.department_id) {
@@ -52,9 +68,47 @@ export function Dashboard() {
     fetchInvoices();
 
     const subscription = supabase
-      .channel('invoices-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
+      .channel('dashboard-invoices-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'invoices' }, () => {
         fetchInvoices();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'invoices' }, (payload) => {
+        const deletedId = (payload.old as any)?.id;
+        if (deletedId) {
+          setInvoices(prev => prev.filter(inv => inv.id !== deletedId));
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'invoices' }, async (payload) => {
+        const updatedId = (payload.new as any)?.id;
+        if (!updatedId) return;
+        const { data } = await supabase
+          .from('invoices')
+          .select(`
+            id,
+            invoice_number,
+            supplier_name,
+            issue_date,
+            due_date,
+            gross_amount,
+            pln_gross_amount,
+            currency,
+            status,
+            uploaded_by,
+            current_approver_id,
+            department_id,
+            created_at,
+            is_duplicate,
+            duplicate_invoice_ids
+          `)
+          .eq('id', updatedId)
+          .maybeSingle();
+        if (data) {
+          setInvoices(prev => {
+            const exists = prev.some(inv => inv.id === updatedId);
+            if (!exists) return prev;
+            return prev.map(inv => inv.id === updatedId ? data as any : inv);
+          });
+        }
       })
       .subscribe();
 
