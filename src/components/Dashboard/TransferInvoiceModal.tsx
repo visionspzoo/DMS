@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, ArrowRight, Building2, User, AlertCircle } from 'lucide-react';
+import { X, ArrowRight, Building2, User, AlertCircle, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
@@ -25,6 +25,7 @@ interface TransferInvoiceModalProps {
   onTransferToApproval: () => Promise<void>;
   onTransferToDepartment: (departmentId: string, userId: string) => Promise<void>;
   onDirectApproval?: () => Promise<void>;
+  onAdminApproval?: () => Promise<void>;
 }
 
 export function TransferInvoiceModal({
@@ -36,9 +37,10 @@ export function TransferInvoiceModal({
   onTransferToApproval,
   onTransferToDepartment,
   onDirectApproval,
+  onAdminApproval,
 }: TransferInvoiceModalProps) {
   const { profile } = useAuth();
-  const [transferMode, setTransferMode] = useState<'approval' | 'department' | 'direct_approval' | null>(null);
+  const [transferMode, setTransferMode] = useState<'approval' | 'department' | 'direct_approval' | 'admin_approval' | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -221,6 +223,24 @@ export function TransferInvoiceModal({
       } finally {
         setLoading(false);
       }
+    } else if (transferMode === 'admin_approval') {
+      if (!onAdminApproval) {
+        setError('Funkcja akceptacji administracyjnej nie jest dostępna');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        await onAdminApproval();
+        onClose();
+      } catch (err: any) {
+        console.error('Admin approval error:', err);
+        const errorMessage = err?.message || err?.toString() || 'Nie udało się wykonać akceptacji administracyjnej';
+        setError(`Błąd: ${errorMessage}`);
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
@@ -306,6 +326,25 @@ export function TransferInvoiceModal({
                   </p>
                   <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     Zaakceptuj w imieniu podwładnego i w swoim
+                  </p>
+                </div>
+              </button>
+            )}
+
+            {onAdminApproval && (
+              <button
+                onClick={() => setTransferMode('admin_approval')}
+                className="w-full flex items-center gap-3 p-4 border-2 border-amber-300 dark:border-amber-700 rounded-lg hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition group"
+              >
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg group-hover:bg-amber-200 dark:group-hover:bg-amber-900/50 transition">
+                  <ShieldCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                    Akceptacja administracyjna
+                  </p>
+                  <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                    Zatwierdz z pominięciem obiegu dokumentów
                   </p>
                 </div>
               </button>
@@ -456,6 +495,46 @@ export function TransferInvoiceModal({
                   <>
                     <User className="w-4 h-4" />
                     <span>Zaakceptuj</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : transferMode === 'admin_approval' ? (
+          <div className="space-y-4">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                Akceptacja administracyjna
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                Faktura zostanie natychmiast zatwierdzona z pominięciem całego obiegu dokumentów.
+                Zostaną automatycznie dodane wpisy akceptacji dla wszystkich pominiętych osób.
+                Kwota faktury zostanie wliczona w limity działu.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTransferMode(null)}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Wstecz
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Akceptuję...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Zatwierdz administracyjnie</span>
                   </>
                 )}
               </button>

@@ -1663,6 +1663,123 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleAdminApproval = async () => {
+    if (!profile || !profile.is_admin) return;
+
+    setLoading(true);
+    try {
+      const { data: department } = await supabase
+        .from('departments')
+        .select('manager_id, director_id')
+        .eq('id', currentInvoice.department_id)
+        .maybeSingle();
+
+      const approvalsToInsert: any[] = [];
+
+      const uploaderRole = invoiceDepartmentInfo?.uploader_role;
+
+      if (uploaderRole === 'Specjalista') {
+        if (department?.manager_id) {
+          approvalsToInsert.push({
+            invoice_id: currentInvoice.id,
+            approver_id: department.manager_id,
+            approver_role: 'Kierownik',
+            action: 'approved',
+            comment: `Akceptacja administracyjna przez ${profile.full_name}`,
+          });
+        }
+        if (department?.director_id) {
+          approvalsToInsert.push({
+            invoice_id: currentInvoice.id,
+            approver_id: department.director_id,
+            approver_role: 'Dyrektor',
+            action: 'approved',
+            comment: `Akceptacja administracyjna przez ${profile.full_name}`,
+          });
+        }
+      } else if (uploaderRole === 'Kierownik') {
+        if (department?.director_id) {
+          approvalsToInsert.push({
+            invoice_id: currentInvoice.id,
+            approver_id: department.director_id,
+            approver_role: 'Dyrektor',
+            action: 'approved',
+            comment: `Akceptacja administracyjna przez ${profile.full_name}`,
+          });
+        }
+      }
+
+      if (approvalsToInsert.length > 0) {
+        const { error: approvalError } = await supabase
+          .from('approvals')
+          .insert(approvalsToInsert);
+        if (approvalError) throw approvalError;
+      }
+
+      const { data, error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: 'accepted', current_approver_id: null })
+        .eq('id', currentInvoice.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      Object.assign(invoice, data);
+
+      await supabase.from('audit_logs').insert({
+        invoice_id: currentInvoice.id,
+        user_id: profile.id,
+        action: 'admin_approved',
+        description: `Akceptacja administracyjna — faktura zatwierdzona z pominięciem obiegu dokumentów przez ${profile.full_name}`,
+      });
+
+      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
+      if (fileId && currentInvoice.department_id) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const { data: deptData } = await supabase
+          .from('departments')
+          .select('google_drive_unpaid_folder_id')
+          .eq('id', currentInvoice.department_id)
+          .single();
+
+        if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
+          try {
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId,
+                  targetFolderId: deptData.google_drive_unpaid_folder_id,
+                }),
+              }
+            );
+          } catch (moveError) {
+            console.error('Error moving file on Google Drive:', moveError);
+          }
+        }
+      }
+
+      await loadApprovals();
+      await loadAuditLogs();
+
+      setComment('');
+      alert('Faktura została zaakceptowana administracyjnie');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error processing admin approval:', error);
+      alert('Nie udało się wykonać akceptacji administracyjnej');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConfirmAIData = async () => {
     if (!profile) return;
 
@@ -2816,6 +2933,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           onTransferToApproval={handleForwardToCirculation}
           onTransferToDepartment={handleTransferToDepartment}
           onDirectApproval={handleDirectApproval}
+          onAdminApproval={profile?.is_admin ? handleAdminApproval : undefined}
         />
       )}
     </div>
