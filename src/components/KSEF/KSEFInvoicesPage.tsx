@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -59,6 +59,7 @@ export function KSEFInvoicesPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [ksefStatus, setKsefStatus] = useState<any>(null);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -941,6 +942,70 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const handleAutoAssign = async () => {
+    setAutoAssigning(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const { data: unassigned, error: fetchError } = await supabase
+        .from('ksef_invoices')
+        .select('id, supplier_nip')
+        .is('transferred_to_invoice_id', null)
+        .is('transferred_to_department_id', null)
+        .is('ignored_at', null)
+        .not('supplier_nip', 'is', null);
+
+      if (fetchError) throw fetchError;
+
+      if (!unassigned || unassigned.length === 0) {
+        setSuccessMessage('Brak nieprzypisanych faktur do automatycznego przypisania');
+        return;
+      }
+
+      const { data: mappings, error: mappingsError } = await supabase
+        .from('ksef_nip_department_mappings')
+        .select('nip, department_id, assigned_user_id');
+
+      if (mappingsError) throw mappingsError;
+
+      const nipMap = new Map<string, { department_id: string; assigned_user_id: string | null }>();
+      for (const m of mappings || []) {
+        nipMap.set(m.nip, { department_id: m.department_id, assigned_user_id: m.assigned_user_id });
+      }
+
+      const toAssign = unassigned.filter(inv => inv.supplier_nip && nipMap.has(inv.supplier_nip));
+
+      if (toAssign.length === 0) {
+        setSuccessMessage('Żadna z nieprzypisanych faktur nie pasuje do reguł konfiguracji');
+        return;
+      }
+
+      let assigned = 0;
+      for (const inv of toAssign) {
+        const mapping = nipMap.get(inv.supplier_nip!)!;
+        const { error: updateError } = await supabase
+          .from('ksef_invoices')
+          .update({
+            transferred_to_department_id: mapping.department_id,
+            assigned_to_department_at: new Date().toISOString(),
+          })
+          .eq('id', inv.id);
+
+        if (!updateError) assigned++;
+      }
+
+      setSuccessMessage(`Przypisano ${assigned} z ${toAssign.length} faktur do działów. Przenoszenie do systemu...`);
+      await loadInvoices();
+      await autoTransferAssignedInvoices();
+    } catch (err: any) {
+      console.error('Error during auto-assign:', err);
+      setError(err.message || 'Nie udało się automatycznie przypisać faktur');
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
+
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
       <div className="mb-4">
@@ -974,6 +1039,25 @@ export function KSEFInvoicesPage() {
                       Kolejna: {Math.floor(nextSyncIn / 60000)}min
                     </div>
                   </div>
+                )}
+                {invoiceTab === 'unassigned' && (
+                  <button
+                    onClick={handleAutoAssign}
+                    disabled={autoAssigning || fetching}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition disabled:opacity-50 text-sm"
+                  >
+                    {autoAssigning ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Przypisywanie...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4" />
+                        Auto Przypisywanie
+                      </>
+                    )}
+                  </button>
                 )}
                 <button
                   onClick={handleFetchInvoices}
