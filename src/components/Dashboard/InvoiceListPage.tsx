@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle, DollarSign } from 'lucide-react';
+import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle, DollarSign, GitMerge, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
 import { InvoiceDetails } from './InvoiceDetails';
 import { BulkTransferModal } from './BulkTransferModal';
+import { MergeInvoicesModal } from './MergeInvoicesModal';
 import type { Database } from '../../lib/database.types';
 import {
   computeFileHash,
@@ -57,6 +58,9 @@ export function InvoiceList() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 30;
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
@@ -538,7 +542,15 @@ export function InvoiceList() {
     }
 
     setFilteredInvoices(filtered);
+    setCurrentPage(1);
   };
+
+  const paginatedInvoices = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredInvoices.slice(start, start + PAGE_SIZE);
+  }, [filteredInvoices, currentPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
 
   const { totalAcceptedAmount, totalPaidAmount, currencyBreakdownAccepted, currencyBreakdownPaid } = useMemo(() => {
     const accepted = filteredInvoices.filter(inv => inv.status === 'accepted');
@@ -1395,12 +1407,21 @@ export function InvoiceList() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {!selectionMode ? (
-              <button
-                onClick={() => setSelectionMode(true)}
-                className="px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
-              >
-                Zaznacz wiele
-              </button>
+              <>
+                <button
+                  onClick={() => setSelectionMode(true)}
+                  className="px-3 py-1.5 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+                >
+                  Zaznacz wiele
+                </button>
+                <button
+                  onClick={() => setShowMergeModal(true)}
+                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors font-medium text-sm whitespace-nowrap flex items-center gap-1.5"
+                >
+                  <GitMerge className="w-3.5 h-3.5" />
+                  Połącz duplikaty
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -1441,12 +1462,61 @@ export function InvoiceList() {
       </div>
 
       <InvoiceListComponent
-        invoices={filteredInvoices}
+        invoices={paginatedInvoices}
         onSelectInvoice={setSelectedInvoice}
         selectedInvoices={selectedInvoiceIds}
         onToggleSelect={toggleSelectInvoice}
         selectionMode={selectionMode}
       />
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 px-1">
+          <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Wyświetlanie <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredInvoices.length)}</span> z <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{filteredInvoices.length}</span>
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+            >
+              <ChevronLeft className="w-4 h-4 text-text-primary-light dark:text-text-primary-dark" />
+            </button>
+            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+              let page: number;
+              if (totalPages <= 7) {
+                page = i + 1;
+              } else if (currentPage <= 4) {
+                page = i + 1;
+              } else if (currentPage >= totalPages - 3) {
+                page = totalPages - 6 + i;
+              } else {
+                page = currentPage - 3 + i;
+              }
+              return (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium transition ${
+                    currentPage === page
+                      ? 'bg-brand-primary text-white'
+                      : 'border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {page}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+            >
+              <ChevronRight className="w-4 h-4 text-text-primary-light dark:text-text-primary-dark" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedInvoice && (
         <InvoiceDetails
@@ -1466,6 +1536,17 @@ export function InvoiceList() {
             setShowTransferModal(false);
             setSelectedInvoiceIds([]);
             setSelectionMode(false);
+            loadInvoices();
+          }}
+        />
+      )}
+
+      {showMergeModal && (
+        <MergeInvoicesModal
+          invoices={filteredInvoices}
+          onClose={() => setShowMergeModal(false)}
+          onMergeComplete={() => {
+            setShowMergeModal(false);
             loadInvoices();
           }}
         />
