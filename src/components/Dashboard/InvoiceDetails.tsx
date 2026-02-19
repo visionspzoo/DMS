@@ -1823,7 +1823,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     try {
       const { data, error: updateError } = await supabase
         .from('invoices')
-        .update({ status: 'rejected', current_approver_id: null })
+        .update({ status: 'rejected', current_approver_id: null, paid_at: null, paid_by: null })
         .eq('id', currentInvoice.id)
         .select()
         .single();
@@ -1968,7 +1968,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               <>
                 {!currentInvoice.paid_at && (
                   profile?.is_admin ||
-                  profile?.role === 'dyrektor' ||
+                  profile?.role === 'Dyrektor' ||
                   ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile?.id)
                 ) && (
                   <button
