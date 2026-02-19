@@ -36,6 +36,10 @@ async function computeFileHash(data: Uint8Array): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function sseEvent(data: object): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -47,6 +51,7 @@ Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const isDiag = url.searchParams.get("diag") === "1";
+    const isStream = url.searchParams.get("stream") === "1";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -235,6 +240,62 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (isStream) {
+      const stream = new TransformStream();
+      const writer = stream.writable.getWriter();
+      const encoder = new TextEncoder();
+
+      const send = async (data: object) => {
+        await writer.write(encoder.encode(sseEvent(data)));
+      };
+
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          let totalSynced = 0;
+          const errors: string[] = [];
+          const warnings: string[] = [];
+
+          for (const config of emailConfigs as EmailConfig[]) {
+            try {
+              await send({ type: "account_start", email: config.email_address });
+              const synced = await syncEmailAccount(supabase, config, userId, warnings, send);
+              totalSynced += synced;
+
+              await supabase
+                .from("user_email_configs")
+                .update({ last_sync_at: new Date().toISOString() })
+                .eq("id", config.id);
+            } catch (error: any) {
+              console.error(`Error syncing ${config.email_address}:`, error);
+              errors.push(`${config.email_address}: ${error.message}`);
+              await send({ type: "account_error", email: config.email_address, error: error.message });
+            }
+          }
+
+          await send({
+            type: "done",
+            success: errors.length === 0,
+            synced: totalSynced,
+            errors: errors.length > 0 ? errors : undefined,
+            warnings: warnings.length > 0 ? warnings : undefined,
+          });
+        } catch (err: any) {
+          await send({ type: "error", error: err.message });
+        } finally {
+          await writer.close();
+        }
+      })());
+
+      return new Response(stream.readable, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    }
+
     let totalSynced = 0;
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -356,7 +417,8 @@ async function syncEmailAccount(
   supabase: any,
   config: EmailConfig,
   userId: string,
-  warnings: string[]
+  warnings: string[],
+  send?: (data: object) => Promise<void>
 ): Promise<number> {
   console.log(`Connecting to Gmail for ${config.email_address}...`);
 
@@ -387,6 +449,7 @@ async function syncEmailAccount(
 
   if (!messages || messages.length === 0) {
     console.log("No messages found with attachments");
+    if (send) await send({ type: "no_messages", email: config.email_address });
     return 0;
   }
 
@@ -401,7 +464,20 @@ async function syncEmailAccount(
     (processedMessages || []).map((m: any) => m.message_uid)
   );
 
+  const newMessages = messages.filter((m: any) => !processedUids.has(m.id));
+  const totalNew = newMessages.length;
+
+  if (send) {
+    await send({
+      type: "messages_found",
+      email: config.email_address,
+      total: messages.length,
+      new: totalNew,
+    });
+  }
+
   let syncedCount = 0;
+  let processedCount = 0;
 
   for (const msg of messages) {
     try {
@@ -409,6 +485,16 @@ async function syncEmailAccount(
 
       if (processedUids.has(messageId)) {
         continue;
+      }
+
+      processedCount++;
+      if (send) {
+        await send({
+          type: "processing_message",
+          email: config.email_address,
+          current: processedCount,
+          total: totalNew,
+        });
       }
 
       const messageResponse = await fetch(
@@ -449,10 +535,22 @@ async function syncEmailAccount(
       }
 
       const pdfParts = collectPdfParts(message.payload);
+      const subject = message.payload?.headers?.find((h: any) => h.name === "Subject")?.value || "";
       console.log(`Message ${messageId}: found ${pdfParts.length} PDF attachment(s)`);
 
       for (const part of pdfParts) {
         attachmentCount++;
+
+        if (send) {
+          await send({
+            type: "processing_attachment",
+            email: config.email_address,
+            filename: part.filename,
+            subject,
+            current: processedCount,
+            total: totalNew,
+          });
+        }
 
           const attachmentResponse = await fetch(
             `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${part.body.attachmentId}`,
@@ -489,12 +587,19 @@ async function syncEmailAccount(
             console.log(
               `Duplicate detected for ${part.filename} (hash: ${fileHash.substring(0, 12)}..., existing invoice: ${existingInvoice.id}), skipping`
             );
+            if (send) {
+              await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+            }
             continue;
           }
 
           const sanitizedFilename = part.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
           const fileName = `${Date.now()}_${sanitizedFilename}`;
           const filePath = `invoices/${fileName}`;
+
+          if (send) {
+            await send({ type: "uploading", filename: part.filename });
+          }
 
           const { error: uploadError } = await supabase.storage
             .from("documents")
@@ -530,16 +635,11 @@ async function syncEmailAccount(
           if (insertError) {
             console.error("Insert error:", insertError);
 
-            // Check if it's a duplicate file hash error
             if (insertError.message && insertError.message.includes('idx_invoices_file_hash_per_user')) {
               warnings.push(`Pominięto załącznik z emaila - plik został już wcześniej dodany`);
-            }
-            // Check if it's a foreign key constraint error (notifications)
-            else if (insertError.message && insertError.message.includes('notifications_invoice_id_fkey')) {
+            } else if (insertError.message && insertError.message.includes('notifications_invoice_id_fkey')) {
               warnings.push(`Błąd zapisu załącznika z emaila - problem z notyfikacjami`);
-            }
-            // Generic error
-            else {
+            } else {
               warnings.push(`Nie udało się zapisać załącznika z emaila: ${insertError.message}`);
             }
             continue;
@@ -547,7 +647,15 @@ async function syncEmailAccount(
 
           console.log(`Created invoice: ${invoiceData.id}`);
 
+          if (send) {
+            await send({ type: "invoice_created", filename: part.filename, invoiceId: invoiceData.id });
+          }
+
           try {
+            if (send) {
+              await send({ type: "ocr_start", filename: part.filename });
+            }
+
             const ocrResponse = await fetch(
               `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`,
               {
@@ -570,6 +678,10 @@ async function syncEmailAccount(
               if (ocrData.validationError) {
                 warnings.push(`${part.filename}: ${ocrData.validationError}`);
               }
+
+              if (send) {
+                await send({ type: "ocr_done", filename: part.filename });
+              }
             }
           } catch (ocrError) {
             console.error("OCR error:", ocrError);
@@ -585,7 +697,7 @@ async function syncEmailAccount(
         message_id: messageId,
         attachment_count: attachmentCount,
         invoice_count: invoiceCount,
-      }).then(({ error: pErr }) => {
+      }).then(({ error: pErr }: { error: any }) => {
         if (pErr) console.error("Error marking message as processed:", pErr);
       });
       processedUids.add(messageId);

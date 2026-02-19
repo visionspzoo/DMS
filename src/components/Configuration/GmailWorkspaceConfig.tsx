@@ -64,6 +64,7 @@ export default function GmailWorkspaceConfig() {
   const [loading, setLoading] = useState(true);
   const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ status: string; current: number; total: number; filename?: string } | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagResults, setDiagResults] = useState<any>(null);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
@@ -372,12 +373,10 @@ export default function GmailWorkspaceConfig() {
 
   const handleSyncEmails = async () => {
     setSyncing(true);
+    setSyncProgress({ status: 'Łączenie z serwerem...', current: 0, total: 0 });
     setEmailMessage(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji uzytkownika');
-
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
       if (refreshError || !refreshData.session) {
         throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
@@ -386,7 +385,7 @@ export default function GmailWorkspaceConfig() {
       const finalSession = refreshData.session;
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices?stream=1`,
         {
           method: 'POST',
           headers: {
@@ -397,28 +396,71 @@ export default function GmailWorkspaceConfig() {
         }
       );
 
-      const result = await response.json().catch(() => null);
-
       if (!response.ok) {
-        const msg = result?.error || result?.message || `Serwer zwrocil blad ${response.status}`;
-        throw new Error(msg);
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || `Serwer zwrocil blad ${response.status}`);
       }
 
-      if (result?.success === false) {
-        throw new Error(result.error || result.errors?.join(', ') || 'Nieznany blad');
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+
+            if (event.type === 'account_start') {
+              setSyncProgress({ status: `Sprawdzanie: ${event.email}`, current: 0, total: 0 });
+            } else if (event.type === 'messages_found') {
+              setSyncProgress({ status: `Znaleziono ${event.new} nowych wiadomości`, current: 0, total: event.new });
+            } else if (event.type === 'no_messages') {
+              setSyncProgress({ status: 'Brak nowych wiadomości z załącznikami', current: 0, total: 0 });
+            } else if (event.type === 'processing_message') {
+              setSyncProgress({ status: 'Przetwarzanie wiadomości...', current: event.current, total: event.total });
+            } else if (event.type === 'processing_attachment') {
+              setSyncProgress(prev => ({ ...prev!, status: 'Pobieranie załącznika', filename: event.filename, current: event.current, total: event.total }));
+            } else if (event.type === 'uploading') {
+              setSyncProgress(prev => ({ ...prev!, status: 'Przesyłanie do magazynu', filename: event.filename }));
+            } else if (event.type === 'invoice_created') {
+              setSyncProgress(prev => ({ ...prev!, status: 'Faktura zapisana', filename: event.filename }));
+            } else if (event.type === 'ocr_start') {
+              setSyncProgress(prev => ({ ...prev!, status: 'Rozpoznawanie tekstu (OCR)', filename: event.filename }));
+            } else if (event.type === 'ocr_done') {
+              setSyncProgress(prev => ({ ...prev!, status: 'OCR zakończony', filename: event.filename }));
+            } else if (event.type === 'attachment_skipped') {
+              setSyncProgress(prev => ({ ...prev!, status: 'Pominięto duplikat', filename: event.filename }));
+            } else if (event.type === 'done') {
+              finalResult = event;
+            }
+          } catch {}
+        }
       }
 
-      const errorsText = result?.errors?.length ? `. Bledy: ${result.errors.join('; ')}` : '';
-      setEmailMessage({
-        type: result?.errors?.length ? 'error' : 'success',
-        text: `Zsynchronizowano ${result?.synced || 0} faktur(y)${errorsText}`,
-      });
+      if (finalResult) {
+        const errorsText = finalResult.errors?.length ? `. Błędy: ${finalResult.errors.join('; ')}` : '';
+        setEmailMessage({
+          type: finalResult.errors?.length ? 'error' : 'success',
+          text: `Zsynchronizowano ${finalResult.synced || 0} faktur(y)${errorsText}`,
+        });
+      }
+
       await loadEmailConfigs();
     } catch (error: any) {
       console.error('Error syncing emails:', error);
       setEmailMessage({ type: 'error', text: 'Blad: ' + error.message });
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
     }
   };
 
@@ -924,6 +966,32 @@ export default function GmailWorkspaceConfig() {
             </div>
           </div>
         </div>
+
+        {syncProgress && (
+          <div className="mb-4 p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Loader className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-spin flex-shrink-0" />
+              <span className="text-xs font-medium text-blue-800 dark:text-blue-300">{syncProgress.status}</span>
+            </div>
+            {syncProgress.filename && (
+              <p className="text-[10px] text-blue-600 dark:text-blue-400 truncate mb-2 pl-5">{syncProgress.filename}</p>
+            )}
+            {syncProgress.total > 0 && (
+              <div className="pl-5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400">Wiadomość {syncProgress.current} z {syncProgress.total}</span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400">{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
+                </div>
+                <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
+                  <div
+                    className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {emailMessage && (
           <div
