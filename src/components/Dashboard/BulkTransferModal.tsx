@@ -189,10 +189,10 @@ export function BulkTransferModal({
 
     try {
       for (const invoiceId of invoiceIds) {
-        const { error } = await supabase.rpc('transfer_invoice', {
+        const { error } = await supabase.rpc('transfer_invoice_to_department', {
           p_invoice_id: invoiceId,
-          p_target_department_id: selectedDepartment,
-          p_target_user_id: selectedUser,
+          p_department_id: selectedDepartment,
+          p_approver_id: selectedUser,
         });
 
         if (error) {
@@ -201,6 +201,7 @@ export function BulkTransferModal({
             .update({
               department_id: selectedDepartment,
               current_approver_id: selectedUser,
+              uploaded_by: selectedUser,
               status: 'draft',
             })
             .eq('id', invoiceId);
