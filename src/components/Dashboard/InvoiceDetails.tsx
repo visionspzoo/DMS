@@ -700,6 +700,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           currency: editedInvoice.currency,
           department_id: editedInvoice.department_id,
           status: profile?.is_admin ? editedInvoice.status : undefined,
+          paid_at: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
+          paid_by: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
           description: editedInvoice.description,
           cost_center_id: (editedInvoice as any).bez_mpk ? null : (editedInvoice.cost_center_id || null),
           bez_mpk: !!(editedInvoice as any).bez_mpk,
