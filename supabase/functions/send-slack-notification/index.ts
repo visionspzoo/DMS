@@ -152,6 +152,22 @@ Deno.serve(async (req: Request) => {
     const emoji = getTypeEmoji(payload.type);
     const label = getTypeLabel(payload.type);
 
+    let channelId = targetChannel;
+    if (slackMapping?.slack_user_id) {
+      const openDmResponse = await fetch("https://slack.com/api/conversations.open", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${slackConfig.bot_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ users: slackMapping.slack_user_id }),
+      });
+      const openDmResult = await openDmResponse.json();
+      if (openDmResult.ok && openDmResult.channel?.id) {
+        channelId = openDmResult.channel.id;
+      }
+    }
+
     const slackResponse = await fetch(
       "https://slack.com/api/chat.postMessage",
       {
@@ -161,7 +177,7 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          channel: targetChannel,
+          channel: channelId,
           text: `${payload.title}: ${payload.message}`,
           blocks: [
             {
