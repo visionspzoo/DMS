@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User, Trash2 } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User, Trash2, EyeOff, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -22,6 +22,9 @@ interface KSEFInvoice {
   transferred_to_department_id: string | null;
   transferred_at: string | null;
   created_at: string;
+  ignored_at: string | null;
+  ignored_reason: string | null;
+  ignored_by: string | null;
 }
 
 interface Department {
@@ -42,10 +45,12 @@ interface KSEFInvoiceModalProps {
   onTransfer: (departmentId: string, userId?: string) => Promise<void>;
   onUnassign: (ksefInvoiceId: string) => Promise<void>;
   onDelete: (ksefInvoiceId: string) => Promise<void>;
+  onIgnore: (ksefInvoiceId: string, reason: string) => Promise<void>;
+  onUnignore: (ksefInvoiceId: string) => Promise<void>;
   transferring: boolean;
 }
 
-export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, transferring }: KSEFInvoiceModalProps) {
+export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, onUnassign, onDelete, onIgnore, onUnignore, transferring }: KSEFInvoiceModalProps) {
   const { profile } = useAuth();
   const [currentInvoice, setCurrentInvoice] = useState<KSEFInvoice>(invoice);
   const [selectedDepartment, setSelectedDepartment] = useState(currentInvoice.transferred_to_department_id || '');
@@ -55,6 +60,9 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showIgnoreConfirm, setShowIgnoreConfirm] = useState(false);
+  const [ignoreReason, setIgnoreReason] = useState('');
+  const [ignoreReasonError, setIgnoreReasonError] = useState('');
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   const isSupplierInvalid = currentInvoice.supplier_nip === AURA_HERBALS_NIP;
@@ -165,6 +173,20 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const handleDelete = async () => {
     await onDelete(currentInvoice.id);
     setShowDeleteConfirm(false);
+  };
+
+  const handleIgnore = async () => {
+    if (!ignoreReason.trim()) {
+      setIgnoreReasonError('Podaj powód ignorowania faktury');
+      return;
+    }
+    setIgnoreReasonError('');
+    await onIgnore(currentInvoice.id, ignoreReason.trim());
+    setShowIgnoreConfirm(false);
+  };
+
+  const handleUnignore = async () => {
+    await onUnignore(currentInvoice.id);
   };
 
   const decodeBase64ToPdfUrl = (base64: string): string => {
@@ -543,6 +565,44 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                 </div>
               )}
 
+              {currentInvoice.ignored_at ? (
+                <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2">
+                    <EyeOff className="w-4 h-4" />
+                    Faktura jest ignorowana
+                  </h3>
+                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                    <span className="font-medium">Powód:</span> {currentInvoice.ignored_reason}
+                  </p>
+                  {currentInvoice.ignored_at && (
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+                      {new Date(currentInvoice.ignored_at).toLocaleString('pl-PL')}
+                    </p>
+                  )}
+                  <button
+                    onClick={handleUnignore}
+                    disabled={transferring}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition font-medium text-sm disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Przywróć do nieprzypisanych
+                  </button>
+                </div>
+              ) : (
+                !currentInvoice.transferred_to_invoice_id && (
+                  <div className="mt-1">
+                    <button
+                      onClick={() => { setShowIgnoreConfirm(true); setIgnoreReason(''); setIgnoreReasonError(''); }}
+                      disabled={transferring}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition font-medium text-sm disabled:opacity-50"
+                    >
+                      <EyeOff className="w-4 h-4" />
+                      Ignoruj fakturę
+                    </button>
+                  </div>
+                )
+              )}
+
               <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
@@ -657,6 +717,77 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                   <>
                     <Trash2 className="w-4 h-4" />
                     Usuń fakturę
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showIgnoreConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                <EyeOff className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Ignoruj fakturę
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Faktura trafi na listę ignorowanych
+                </p>
+              </div>
+            </div>
+
+            <p className="text-slate-700 dark:text-slate-300 mb-4">
+              Faktura <strong>{currentInvoice.invoice_number}</strong> zostanie przeniesiona na listę ignorowanych i nie będzie nigdzie przypisywana. Możesz ją w każdej chwili przywrócić.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Powód ignorowania <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={ignoreReason}
+                onChange={(e) => { setIgnoreReason(e.target.value); setIgnoreReasonError(''); }}
+                placeholder="Opisz dlaczego ta faktura jest ignorowana..."
+                rows={3}
+                className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-slate-400 focus:border-transparent text-sm resize-none ${
+                  ignoreReasonError
+                    ? 'border-red-500 dark:border-red-500'
+                    : 'border-slate-300 dark:border-slate-600'
+                }`}
+              />
+              {ignoreReasonError && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{ignoreReasonError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowIgnoreConfirm(false)}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleIgnore}
+                disabled={transferring}
+                className="flex-1 px-4 py-2.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {transferring ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Zapisywanie...
+                  </>
+                ) : (
+                  <>
+                    <EyeOff className="w-4 h-4" />
+                    Ignoruj fakturę
                   </>
                 )}
               </button>

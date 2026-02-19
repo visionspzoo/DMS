@@ -28,6 +28,9 @@ interface KSEFInvoice {
   transferred_at: string | null;
   assigned_to_department_at: string | null;
   created_at: string;
+  ignored_at: string | null;
+  ignored_reason: string | null;
+  ignored_by: string | null;
 }
 
 interface Department {
@@ -36,7 +39,7 @@ interface Department {
 }
 
 type MainTabType = 'invoices' | 'configuration';
-type InvoiceTabType = 'unassigned' | 'assigned';
+type InvoiceTabType = 'unassigned' | 'assigned' | 'ignored';
 type SortColumn = 'issue_date' | 'gross_amount' | 'supplier_name' | 'department';
 type SortDirection = 'asc' | 'desc';
 
@@ -47,6 +50,7 @@ export function KSEFInvoicesPage() {
   const [invoices, setInvoices] = useState<KSEFInvoice[]>([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [assignedCount, setAssignedCount] = useState(0);
+  const [ignoredCount, setIgnoredCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [transferring, setTransferring] = useState(false);
@@ -210,15 +214,23 @@ export function KSEFInvoicesPage() {
         .from('ksef_invoices')
         .select('*', { count: 'exact', head: true })
         .is('transferred_to_invoice_id', null)
-        .is('transferred_to_department_id', null);
+        .is('transferred_to_department_id', null)
+        .is('ignored_at', null);
 
       const { count: assigned } = await supabase
         .from('ksef_invoices')
         .select('*', { count: 'exact', head: true })
-        .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null');
+        .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
+        .is('ignored_at', null);
+
+      const { count: ignored } = await supabase
+        .from('ksef_invoices')
+        .select('*', { count: 'exact', head: true })
+        .not('ignored_at', 'is', null);
 
       setUnassignedCount(unassigned || 0);
       setAssignedCount(assigned || 0);
+      setIgnoredCount(ignored || 0);
 
       let query = supabase
         .from('ksef_invoices')
@@ -228,13 +240,19 @@ export function KSEFInvoicesPage() {
         query = query
           .is('transferred_to_invoice_id', null)
           .is('transferred_to_department_id', null)
+          .is('ignored_at', null)
           .order('created_at', { ascending: false });
-      } else {
+      } else if (invoiceTab === 'assigned') {
         query = query
           .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
+          .is('ignored_at', null)
           .order('assigned_to_department_at', { ascending: false, nullsFirst: false })
           .order('transferred_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false });
+      } else {
+        query = query
+          .not('ignored_at', 'is', null)
+          .order('ignored_at', { ascending: false });
       }
 
       const { data, error } = await query;
@@ -814,6 +832,62 @@ export function KSEFInvoicesPage() {
     }
   };
 
+  const handleIgnoreInvoice = async (ksefInvoiceId: string, reason: string) => {
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const { error: updateError } = await supabase
+        .from('ksef_invoices')
+        .update({
+          ignored_at: new Date().toISOString(),
+          ignored_reason: reason,
+          ignored_by: user?.id,
+        })
+        .eq('id', ksefInvoiceId);
+
+      if (updateError) throw updateError;
+
+      setSuccessMessage('Faktura została przeniesiona na listę ignorowanych');
+      setSelectedInvoice(null);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Error ignoring invoice:', err);
+      setError(err.message || 'Nie udało się zignorować faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnignoreInvoice = async (ksefInvoiceId: string) => {
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const { error: updateError } = await supabase
+        .from('ksef_invoices')
+        .update({
+          ignored_at: null,
+          ignored_reason: null,
+          ignored_by: null,
+        })
+        .eq('id', ksefInvoiceId);
+
+      if (updateError) throw updateError;
+
+      setSuccessMessage('Faktura została przywrócona do listy nieprzypisanych');
+      setSelectedInvoice(null);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Error unignoring invoice:', err);
+      setError(err.message || 'Nie udało się przywrócić faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTransferInvoice = async (departmentId: string, userId?: string) => {
     if (!selectedInvoice || !departmentId) {
       setError('Proszę wybrać dział');
@@ -972,6 +1046,16 @@ export function KSEFInvoicesPage() {
             >
               Przypisane ({assignedCount})
             </button>
+            <button
+              onClick={() => setInvoiceTab('ignored')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                invoiceTab === 'ignored'
+                  ? 'bg-slate-600 text-white shadow-sm'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+              }`}
+            >
+              Ignorowane ({ignoredCount})
+            </button>
           </div>
         )}
 
@@ -1075,6 +1159,11 @@ export function KSEFInvoicesPage() {
                       Status
                     </th>
                   )}
+                  {invoiceTab === 'ignored' && (
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
+                      Powód ignorowania
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -1168,6 +1257,18 @@ export function KSEFInvoicesPage() {
                         )}
                       </td>
                     )}
+                    {invoiceTab === 'ignored' && (
+                      <td className="px-3 py-2">
+                        <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
+                          {invoice.ignored_reason || '—'}
+                        </p>
+                        {invoice.ignored_at && (
+                          <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                            {new Date(invoice.ignored_at).toLocaleDateString('pl-PL')}
+                          </p>
+                        )}
+                      </td>
+                    )}
                   </tr>
                   );
                 })}
@@ -1187,6 +1288,8 @@ export function KSEFInvoicesPage() {
           onTransfer={handleTransferInvoice}
           onUnassign={handleUnassignInvoice}
           onDelete={handleDeleteInvoice}
+          onIgnore={handleIgnoreInvoice}
+          onUnignore={handleUnignoreInvoice}
           transferring={transferring}
         />
       )}
