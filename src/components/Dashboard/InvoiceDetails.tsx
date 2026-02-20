@@ -2355,6 +2355,53 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 </div>
               )}
 
+              {isDuplicate && (
+                <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-xl p-4">
+                  <div className="flex items-start gap-2 mb-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-900 dark:text-red-300 text-sm">DUPLIKAT!</p>
+                      <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
+                        W systemie {duplicateInvoices.length === 1 ? 'znajduje się' : 'znajdują się'}{' '}
+                        {duplicateInvoices.length}{' '}
+                        {duplicateInvoices.length === 1 ? 'inna faktura' : 'inne faktury'}{' '}
+                        o tym samym numerze ({currentInvoice.invoice_number})
+                        {currentInvoice.supplier_nip ? ` i NIP dostawcy (${currentInvoice.supplier_nip})` : ` i nazwie dostawcy (${currentInvoice.supplier_name})`}:
+                      </p>
+                    </div>
+                  </div>
+                  <div className="ml-7 space-y-1.5">
+                    {duplicateInvoices.map((dup, idx) => (
+                      <div
+                        key={dup.id || idx}
+                        className="flex items-center gap-2 text-xs bg-red-100/60 dark:bg-red-900/30 rounded px-2 py-1.5"
+                      >
+                        <span className="font-medium text-red-800 dark:text-red-300 min-w-0 shrink-0">
+                          {dup.department_name}
+                        </span>
+                        <span className="text-red-600 dark:text-red-500">·</span>
+                        {dup.invoice_date && (
+                          <>
+                            <span className="text-red-700 dark:text-red-400">
+                              Data faktury: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}
+                            </span>
+                            <span className="text-red-600 dark:text-red-500">·</span>
+                          </>
+                        )}
+                        <span className="text-red-700 dark:text-red-400">
+                          Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}
+                        </span>
+                        {!dup.accessible && (
+                          <span className="ml-auto shrink-0 text-red-500 dark:text-red-400 italic">
+                            (brak dostępu)
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center gap-2">
@@ -2415,52 +2462,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   )}
 
-                  {isDuplicate && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3">
-                      <div className="flex items-start gap-2 mb-2">
-                        <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold text-red-900 dark:text-red-300 text-sm">DUPLIKAT!</p>
-                          <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
-                            W systemie {duplicateInvoices.length === 1 ? 'znajduje się' : 'znajdują się'}{' '}
-                            {duplicateInvoices.length}{' '}
-                            {duplicateInvoices.length === 1 ? 'inna faktura' : 'inne faktury'}{' '}
-                            o tym samym numerze ({currentInvoice.invoice_number})
-                            {currentInvoice.supplier_nip ? ` i NIP dostawcy (${currentInvoice.supplier_nip})` : ` i nazwie dostawcy (${currentInvoice.supplier_name})`}:
-                          </p>
-                        </div>
-                      </div>
-                      <div className="ml-7 space-y-1.5">
-                        {duplicateInvoices.map((dup, idx) => (
-                          <div
-                            key={dup.id || idx}
-                            className="flex items-center gap-2 text-xs bg-red-100/60 dark:bg-red-900/30 rounded px-2 py-1.5"
-                          >
-                            <span className="font-medium text-red-800 dark:text-red-300 min-w-0 shrink-0">
-                              {dup.department_name}
-                            </span>
-                            <span className="text-red-600 dark:text-red-500">·</span>
-                            {dup.invoice_date && (
-                              <>
-                                <span className="text-red-700 dark:text-red-400">
-                                  Data faktury: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}
-                                </span>
-                                <span className="text-red-600 dark:text-red-500">·</span>
-                              </>
-                            )}
-                            <span className="text-red-700 dark:text-red-400">
-                              Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}
-                            </span>
-                            {!dup.accessible && (
-                              <span className="ml-auto shrink-0 text-red-500 dark:text-red-400 italic">
-                                (brak dostepu)
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
