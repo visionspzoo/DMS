@@ -37,27 +37,26 @@ export function Dashboard() {
           `)
           .order('created_at', { ascending: false });
 
-        if (profile.department_id) {
-          query = query.or(
-            `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id},department_id.eq.${profile.department_id}`
-          );
-        } else {
-          query = query.or(
-            `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id}`
-          );
+        // For Kierownik and Dyrektor, let RLS handle all visibility - they manage multiple departments
+        // For Specjalista and others, limit to own uploads/approvals and their department
+        const isManagerOrDirector = profile.role === 'Kierownik' || profile.role === 'Dyrektor';
+        if (!isManagerOrDirector && !profile.is_admin && profile.role !== 'CEO') {
+          if (profile.department_id) {
+            query = query.or(
+              `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id},department_id.eq.${profile.department_id}`
+            );
+          } else {
+            query = query.or(
+              `uploaded_by.eq.${profile.id},current_approver_id.eq.${profile.id}`
+            );
+          }
         }
 
         const { data, error } = await query;
 
         if (error) throw error;
 
-        const filtered = (data || []).filter(invoice =>
-          invoice.uploaded_by === profile.id ||
-          invoice.current_approver_id === profile.id ||
-          (profile.department_id && invoice.department_id === profile.department_id)
-        );
-
-        setInvoices(filtered);
+        setInvoices(data || []);
       } catch (error) {
         console.error('Error loading invoices:', error);
       } finally {
@@ -119,14 +118,7 @@ export function Dashboard() {
 
   const myInvoices = invoices.filter(i => i.uploaded_by === profile?.id);
 
-  const myDraftInvoices = invoices.filter(i =>
-    i.status === 'draft' && (
-      i.current_approver_id === profile?.id ||
-      (i.uploaded_by === profile?.id && !i.current_approver_id) ||
-      // Przełożeni widzą drafty ze swojego działu (RLS już to filtruje)
-      (profile?.department_id && i.department_id === profile.department_id)
-    )
-  );
+  const myDraftInvoices = invoices.filter(i => i.status === 'draft');
 
   const myInReviewInvoices = invoices.filter(i =>
     (i.status === 'waiting' || i.status === 'pending' || i.status === 'in_review') &&

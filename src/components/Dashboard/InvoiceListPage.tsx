@@ -571,19 +571,9 @@ export function InvoiceList() {
           return (isMyUpload || isMyApproval) && isMyDepartment;
         }
 
-        if (inv.status === 'draft') {
-          return isMyUpload || isMyApproval;
-        }
-
-        if (inv.status === 'waiting' || inv.status === 'pending' || inv.status === 'in_review') {
-          return isMyUpload || isMyApproval || isMyDepartment;
-        }
-
-        if (inv.status === 'rejected' || inv.status === 'accepted' || inv.status === 'paid') {
-          return isMyUpload || isMyDepartment;
-        }
-
-        return false;
+        // RLS already handles what the DB returns - trust it and show everything returned
+        // For Kierownik and Dyrektor, the database already filters by their access rights
+        return true;
       });
       console.log('✅ After user filter:', filtered.length);
     } else {
