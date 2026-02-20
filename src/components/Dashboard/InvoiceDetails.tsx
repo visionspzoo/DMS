@@ -464,12 +464,19 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         .maybeSingle();
 
       if (!error && data) {
-        setCurrentInvoice(data);
+        setCurrentInvoice(prev => ({
+          ...data,
+          pdf_base64: data.pdf_base64 ?? prev.pdf_base64,
+        }));
         setEditedInvoice({
           ...data,
           supplier_name: data.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
           supplier_nip: data.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
         });
+
+        if (!data.pdf_base64 && !data.file_url && data.source === 'ksef') {
+          await loadPdfAndKsefIfNeeded();
+        }
       }
 
       await Promise.all([
@@ -486,6 +493,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     } finally {
       setIsRefreshing(false);
     }
+  }, [currentInvoice.id]);
+
+  useEffect(() => {
+    loadApprovals();
+    loadAuditLogs();
+    loadDepartments();
+    loadInvoiceDepartments();
+    checkIfFromKSEF();
+    loadPdfAndKsefIfNeeded();
+    loadCostCenters();
+    checkDuplicates();
+    loadInvoiceDepartmentInfo();
   }, [currentInvoice.id]);
 
   useEffect(() => {
