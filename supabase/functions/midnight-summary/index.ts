@@ -36,6 +36,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    let isManual = false;
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        isManual = body?.manual === true;
+      } catch (_) {}
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -110,11 +118,11 @@ Deno.serve(async (req: Request) => {
       const blocks: unknown[] = [
         {
           type: "header",
-          text: { type: "plain_text", text: "Podsumowanie faktur — Aura DMS", emoji: true },
+          text: { type: "plain_text", text: isManual ? "Podsumowanie faktur (wyslane recznie) — Aura DMS" : "Podsumowanie faktur — Aura DMS", emoji: true },
         },
         {
           type: "context",
-          elements: [{ type: "mrkdwn", text: `_Codzienne podsumowanie z dnia ${new Date().toLocaleDateString("pl-PL")}_` }],
+          elements: [{ type: "mrkdwn", text: isManual ? `_Reczne podsumowanie z dnia ${new Date().toLocaleDateString("pl-PL")} ${new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}_` : `_Codzienne podsumowanie z dnia ${new Date().toLocaleDateString("pl-PL")}_` }],
         },
         { type: "divider" },
       ];

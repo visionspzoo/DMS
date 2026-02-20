@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
-  Send, Loader2, UserCheck, Trash2, RefreshCw, Copy, Check, Upload
+  Send, Loader2, UserCheck, Trash2, RefreshCw, Copy, Check, Upload, Bell
 } from 'lucide-react';
 
 interface SlackConfig {
@@ -49,6 +49,8 @@ export default function SlackSettings() {
   const [editingMapping, setEditingMapping] = useState<string | null>(null);
   const [editSlackId, setEditSlackId] = useState('');
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [sendingSummary, setSendingSummary] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{ notified: number } | null>(null);
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/slack-invoice-bot`;
 
@@ -268,6 +270,47 @@ export default function SlackSettings() {
     }
   }
 
+  async function sendSummaryNow() {
+    setSendingSummary(true);
+    setSummaryResult(null);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/midnight-summary`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+          'Apikey': supabaseAnonKey,
+        },
+        body: JSON.stringify({ manual: true }),
+      });
+
+      const result = await response.json();
+
+      if (result.ok) {
+        const notified = result.users_notified ?? 0;
+        setSummaryResult({ notified });
+        setSuccess(`Podsumowanie wyslane do ${notified} uzytkownikow`);
+      } else {
+        setError(result.error || result.message || 'Blad podczas wysylania podsumowania');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nie udalo sie wyslac podsumowania');
+    } finally {
+      setSendingSummary(false);
+      setTimeout(() => {
+        setSuccess(null);
+        setSummaryResult(null);
+      }, 6000);
+    }
+  }
+
   const unmappedUsers = users.filter(
     (u) => !mappings.some((m) => m.user_id === u.id)
   );
@@ -432,6 +475,42 @@ export default function SlackSettings() {
               <li>Zapisz zmiany i zrób <strong>reinstall</strong> aplikacji w workspace</li>
             </ol>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <Bell className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+              Reczne wyslanie podsumowania
+            </h2>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Wysyla natychmiastowe podsumowanie do wszystkich zmapowanych uzytkownikow Slack. Kazdy uzytkownik otrzyma DM z lista faktur oczekujacych na jego zatwierdzenie oraz faktur zwroconych do poprawy. Wiadomosc nie zostanie wyslana jezeli uzytkownik nie ma zadnych faktur do obslugi.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={sendSummaryNow}
+              disabled={sendingSummary || !config.enabled || !config.bot_token}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition-all disabled:opacity-50 text-sm"
+            >
+              {sendingSummary ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+              {sendingSummary ? 'Wysylanie...' : 'Wyslij podsumowanie teraz'}
+            </button>
+            {summaryResult && (
+              <span className="text-sm text-teal-700 dark:text-teal-400 font-medium">
+                Powiadomiono {summaryResult.notified} {summaryResult.notified === 1 ? 'uzytkownika' : 'uzytkownikow'}
+              </span>
+            )}
+          </div>
+          {(!config.enabled || !config.bot_token) && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Aby wyslac podsumowanie, najpierw skonfiguruj i wlacz integracje Slack powyzej.
+            </p>
+          )}
         </div>
       </div>
 
