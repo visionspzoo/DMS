@@ -21,6 +21,50 @@ interface MergeInvoicesModalProps {
   onMergeComplete: () => void;
 }
 
+async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(`
+      id,
+      invoice_number,
+      supplier_name,
+      supplier_nip,
+      issue_date,
+      due_date,
+      net_amount,
+      tax_amount,
+      gross_amount,
+      pln_gross_amount,
+      exchange_rate,
+      currency,
+      status,
+      description,
+      uploaded_by,
+      current_approver_id,
+      department_id,
+      cost_center_id,
+      file_url,
+      paid_at,
+      paid_by,
+      created_at,
+      updated_at,
+      source,
+      is_duplicate,
+      duplicate_invoice_ids,
+      file_hash,
+      user_drive_file_id,
+      drive_owner_user_id,
+      pz_number,
+      uploader:profiles!uploaded_by(full_name, role),
+      department:departments!department_id(id, name)
+    `)
+    .eq('is_duplicate', true)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as Invoice[];
+}
+
 function scoreInvoice(inv: Invoice): number {
   let score = 0;
   const source = (inv as any).source || '';
@@ -67,8 +111,26 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
   const [done, setDone] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedWinners, setSelectedWinners] = useState<Map<string, string>>(new Map());
+  const [allDuplicates, setAllDuplicates] = useState<Invoice[]>([]);
+  const [loadingDuplicates, setLoadingDuplicates] = useState(true);
 
-  const duplicateGroups = useMemo(() => buildDuplicateGroups(invoices), [invoices]);
+  useEffect(() => {
+    setLoadingDuplicates(true);
+    loadAllDuplicateInvoices()
+      .then(data => {
+        const combined = [...data];
+        for (const inv of invoices) {
+          if (!combined.some(d => d.id === inv.id)) {
+            combined.push(inv);
+          }
+        }
+        setAllDuplicates(combined);
+      })
+      .catch(() => setAllDuplicates(invoices))
+      .finally(() => setLoadingDuplicates(false));
+  }, []);
+
+  const duplicateGroups = useMemo(() => buildDuplicateGroups(allDuplicates), [allDuplicates]);
 
   useEffect(() => {
     const initial = new Map<string, string>();
@@ -223,7 +285,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
             <div>
               <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">Połącz duplikaty</h2>
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                Znaleziono <span className="font-semibold text-orange-600">{duplicateGroups.length}</span> grup duplikatów
+                {loadingDuplicates ? 'Wyszukiwanie duplikatów...' : <>Znaleziono <span className="font-semibold text-orange-600">{duplicateGroups.length}</span> grup duplikatów</>}
               </p>
             </div>
           </div>
@@ -233,7 +295,11 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {duplicateGroups.length === 0 ? (
+          {loadingDuplicates ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="w-8 h-8 animate-spin text-brand-primary" />
+            </div>
+          ) : duplicateGroups.length === 0 ? (
             <div className="text-center py-12">
               <Check className="w-12 h-12 text-green-500 mx-auto mb-3" />
               <p className="text-text-secondary-light dark:text-text-secondary-dark font-medium">Brak duplikatów do połączenia</p>
