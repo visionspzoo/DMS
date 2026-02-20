@@ -47,6 +47,8 @@ interface DepartmentAccess {
 
 export default function SettingsPanel() {
   const { profile } = useAuth();
+  const canManageInvitations = profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik';
+  const canViewDepartments = profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik';
   const [users, setUsers] = useState<Profile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -378,7 +380,7 @@ export default function SettingsPanel() {
             Zarządzanie użytkownikami, rolami i konfiguracją systemu
           </p>
         </div>
-        {activeTab === 'departments' && (
+        {activeTab === 'departments' && profile?.is_admin && (
           <button
             onClick={() => setShowAddDepartment(true)}
             className="inline-flex items-center gap-2 px-3 py-2 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all text-sm"
@@ -401,28 +403,32 @@ export default function SettingsPanel() {
           <Users className="w-4 h-4" />
           Użytkownicy
         </button>
-        <button
-          onClick={() => setActiveTab('invitations')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-            activeTab === 'invitations'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          <Mail className="w-4 h-4" />
-          Zaproszenia
-        </button>
-        <button
-          onClick={() => setActiveTab('departments')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-            activeTab === 'departments'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          Dzialy
-        </button>
+        {canManageInvitations && (
+          <button
+            onClick={() => setActiveTab('invitations')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+              activeTab === 'invitations'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            Zaproszenia
+          </button>
+        )}
+        {canViewDepartments && (
+          <button
+            onClick={() => setActiveTab('departments')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+              activeTab === 'departments'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Dzialy
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('ai_prompts')}
           className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${

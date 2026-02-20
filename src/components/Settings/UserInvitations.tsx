@@ -216,7 +216,9 @@ export default function UserInvitations() {
     return new Date(expiresAt) < new Date();
   };
 
-  if (!profile?.is_admin && profile?.role !== 'director') {
+  const canManageInvitations = profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik';
+
+  if (!canManageInvitations) {
     return (
       <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-6">
         <div className="text-center">
@@ -308,7 +310,9 @@ export default function UserInvitations() {
               className="w-full px-4 py-2 bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
             >
               <option value="specialist">Specjalista</option>
-              <option value="manager">Kierownik</option>
+              {(profile?.is_admin || profile?.role === 'Dyrektor') && (
+                <option value="manager">Kierownik</option>
+              )}
               {profile?.is_admin && (
                 <>
                   <option value="director">Dyrektor</option>

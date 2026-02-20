@@ -43,6 +43,11 @@ interface DepartmentMember {
 
 export default function DepartmentManagement() {
   const { profile } = useAuth();
+  const isAdmin = profile?.is_admin;
+  const isDirector = profile?.role === 'Dyrektor';
+  const canManageDepartments = isAdmin || isDirector;
+  const canCreateDeleteDepartments = isAdmin;
+
   const [departments, setDepartments] = useState<Department[]>([]);
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -307,27 +312,31 @@ export default function DepartmentManagement() {
               )}
             </div>
 
-            <div className="flex gap-0.5 flex-shrink-0">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingDept(dept);
-                  setShowEditDept(true);
-                }}
-                className="p-1 hover:bg-brand-primary/10 dark:hover:bg-brand-primary/20 rounded transition"
-              >
-                <Edit2 className="w-3 h-3 text-brand-primary" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteDept(dept.id);
-                }}
-                className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition"
-              >
-                <Trash2 className="w-3 h-3 text-status-error dark:text-red-400" />
-              </button>
-            </div>
+            {canManageDepartments && (
+              <div className="flex gap-0.5 flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingDept(dept);
+                    setShowEditDept(true);
+                  }}
+                  className="p-1 hover:bg-brand-primary/10 dark:hover:bg-brand-primary/20 rounded transition"
+                >
+                  <Edit2 className="w-3 h-3 text-brand-primary" />
+                </button>
+                {canCreateDeleteDepartments && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteDept(dept.id);
+                    }}
+                    className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition"
+                  >
+                    <Trash2 className="w-3 h-3 text-status-error dark:text-red-400" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {isExpanded && renderDepartmentTree(dept.id, level + 1)}
@@ -363,13 +372,15 @@ export default function DepartmentManagement() {
               Struktura działów
             </h2>
           </div>
-          <button
-            onClick={() => setShowAddDept(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white text-sm font-medium rounded-lg hover:bg-brand-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj dział
-          </button>
+          {canCreateDeleteDepartments && (
+            <button
+              onClick={() => setShowAddDept(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white text-sm font-medium rounded-lg hover:bg-brand-primary/90 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj dział
+            </button>
+          )}
         </div>
 
         <div className="p-3 space-y-1">
@@ -390,58 +401,60 @@ export default function DepartmentManagement() {
         <div className="p-3">
           {selectedDept ? (
             <>
-              <div className="mb-3 pb-3 border-b border-slate-200 dark:border-slate-700/50">
-                <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-                  Dodaj użytkownika
-                </h4>
-                {availableUsers.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-                      <input
-                        type="text"
-                        placeholder="Szukaj użytkownika..."
-                        value={userSearchQuery}
-                        onChange={(e) => setUserSearchQuery(e.target.value)}
-                        className="w-full pl-7 pr-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark"
-                      />
-                    </div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {filteredAvailableUsers.length > 0 ? (
-                        filteredAvailableUsers.map(user => (
-                          <div
-                            key={user.id}
-                            className="flex items-center justify-between p-1.5 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant rounded-md border border-transparent hover:border-slate-200 dark:hover:border-slate-700/50 transition"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-xs text-text-primary-light dark:text-text-primary-dark truncate">
-                                {user.full_name}
-                              </div>
-                              <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
-                                {user.email}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleAddMember(user.id)}
-                              className="p-1 hover:bg-brand-primary/10 dark:hover:bg-brand-primary/20 rounded transition flex-shrink-0"
+              {canManageDepartments && (
+                <div className="mb-3 pb-3 border-b border-slate-200 dark:border-slate-700/50">
+                  <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Dodaj użytkownika
+                  </h4>
+                  {availableUsers.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+                        <input
+                          type="text"
+                          placeholder="Szukaj użytkownika..."
+                          value={userSearchQuery}
+                          onChange={(e) => setUserSearchQuery(e.target.value)}
+                          className="w-full pl-7 pr-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark"
+                        />
+                      </div>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {filteredAvailableUsers.length > 0 ? (
+                          filteredAvailableUsers.map(user => (
+                            <div
+                              key={user.id}
+                              className="flex items-center justify-between p-1.5 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant rounded-md border border-transparent hover:border-slate-200 dark:hover:border-slate-700/50 transition"
                             >
-                              <Plus className="w-3 h-3 text-brand-primary" />
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark text-center py-2">
-                          Brak użytkowników pasujących do zapytania
-                        </p>
-                      )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium text-xs text-text-primary-light dark:text-text-primary-dark truncate">
+                                  {user.full_name}
+                                </div>
+                                <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
+                                  {user.email}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleAddMember(user.id)}
+                                className="p-1 hover:bg-brand-primary/10 dark:hover:bg-brand-primary/20 rounded transition flex-shrink-0"
+                              >
+                                <Plus className="w-3 h-3 text-brand-primary" />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark text-center py-2">
+                            Brak użytkowników pasujących do zapytania
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                    Wszyscy użytkownicy są już przypisani
-                  </p>
-                )}
-              </div>
+                  ) : (
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      Wszyscy użytkownicy są już przypisani
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
@@ -462,12 +475,14 @@ export default function DepartmentManagement() {
                             {member.user.role}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleRemoveMember(member.id)}
-                          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition flex-shrink-0"
-                        >
-                          <X className="w-3 h-3 text-status-error dark:text-red-400" />
-                        </button>
+                        {canManageDepartments && (
+                          <button
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition flex-shrink-0"
+                          >
+                            <X className="w-3 h-3 text-status-error dark:text-red-400" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -480,7 +495,7 @@ export default function DepartmentManagement() {
             </>
           ) : (
             <div className="text-center text-text-secondary-light dark:text-text-secondary-dark text-xs py-8">
-              Wybierz dział aby zarządzać użytkownikami
+              Wybierz dział aby {canManageDepartments ? 'zarządzać użytkownikami' : 'zobaczyć użytkowników'}
             </div>
           )}
         </div>
