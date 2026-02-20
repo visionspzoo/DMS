@@ -272,22 +272,27 @@ export function TransferInvoiceModal({
               Wybierz sposób przesłania faktury:
             </p>
 
-            <button
-              onClick={() => setTransferMode('approval')}
-              className="w-full flex items-center gap-3 p-4 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:border-brand-primary dark:hover:border-brand-primary hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition group"
-            >
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition">
-                <ArrowRight className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                  Prześlij do akceptacji
-                </p>
-                <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                  Normalny proces akceptacji w Twoim dziale
-                </p>
-              </div>
-            </button>
+            {!(uploadedBy !== profile?.id && (
+              (profile?.role === 'Kierownik' && uploaderRole === 'Specjalista') ||
+              (profile?.role === 'Dyrektor' && (uploaderRole === 'Specjalista' || uploaderRole === 'Kierownik'))
+            )) && (
+              <button
+                onClick={() => setTransferMode('approval')}
+                className="w-full flex items-center gap-3 p-4 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:border-brand-primary dark:hover:border-brand-primary hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition group"
+              >
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition">
+                  <ArrowRight className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                    Prześlij do akceptacji
+                  </p>
+                  <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                    Normalny proces akceptacji w Twoim dziale
+                  </p>
+                </div>
+              </button>
+            )}
 
             <button
               onClick={() => setTransferMode('department')}
