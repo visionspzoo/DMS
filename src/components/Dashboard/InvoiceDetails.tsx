@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,6 +105,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [adminRejectComment, setAdminRejectComment] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -147,18 +149,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
     }
   };
-
-  useEffect(() => {
-    loadApprovals();
-    loadAuditLogs();
-    loadDepartments();
-    loadInvoiceDepartments();
-    checkIfFromKSEF();
-    loadPdfAndKsefIfNeeded();
-    loadCostCenters();
-    checkDuplicates();
-    loadInvoiceDepartmentInfo();
-  }, [currentInvoice.id]);
 
   const checkDuplicates = async () => {
     try {
@@ -463,6 +453,96 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       setCostCenters([]);
     }
   };
+
+  const refreshInvoiceData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', currentInvoice.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        setCurrentInvoice(data);
+        setEditedInvoice({
+          ...data,
+          supplier_name: data.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+          supplier_nip: data.supplier_nip?.replace(/\[BŁĄD[^\]]*\]\s*/g, ''),
+        });
+      }
+
+      await Promise.all([
+        loadApprovals(),
+        loadAuditLogs(),
+        loadInvoiceDepartments(),
+        checkDuplicates(),
+        loadInvoiceDepartmentInfo(),
+      ]);
+
+      onUpdate();
+    } catch (err) {
+      console.error('Error refreshing invoice data:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [currentInvoice.id]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`invoice-details-${currentInvoice.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+          filter: `id=eq.${currentInvoice.id}`,
+        },
+        () => {
+          if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+          refreshTimeoutRef.current = setTimeout(() => {
+            refreshInvoiceData();
+          }, 300);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_logs',
+          filter: `invoice_id=eq.${currentInvoice.id}`,
+        },
+        () => {
+          if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+          refreshTimeoutRef.current = setTimeout(() => {
+            loadAuditLogs();
+          }, 300);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'approvals',
+          filter: `invoice_id=eq.${currentInvoice.id}`,
+        },
+        () => {
+          if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+          refreshTimeoutRef.current = setTimeout(() => {
+            loadApprovals();
+          }, 300);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [currentInvoice.id, refreshInvoiceData]);
 
   const handleApprove = async (action: 'approved' | 'rejected', overrideComment?: string) => {
     if (!profile) return;
@@ -2128,7 +2208,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] my-8 flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700/50 flex-shrink-0">
-          <h2 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">Szczegóły faktury</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">Szczegóły faktury</h2>
+            {isRefreshing && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Odświeżanie...</span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
