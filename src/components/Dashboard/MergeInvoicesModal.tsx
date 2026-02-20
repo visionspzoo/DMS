@@ -21,48 +21,76 @@ interface MergeInvoicesModalProps {
   onMergeComplete: () => void;
 }
 
+const INVOICE_FIELDS = `
+  id,
+  invoice_number,
+  supplier_name,
+  supplier_nip,
+  issue_date,
+  due_date,
+  net_amount,
+  tax_amount,
+  gross_amount,
+  pln_gross_amount,
+  exchange_rate,
+  currency,
+  status,
+  description,
+  uploaded_by,
+  current_approver_id,
+  department_id,
+  cost_center_id,
+  file_url,
+  paid_at,
+  paid_by,
+  created_at,
+  updated_at,
+  source,
+  is_duplicate,
+  duplicate_invoice_ids,
+  file_hash,
+  user_drive_file_id,
+  drive_owner_user_id,
+  pz_number,
+  uploader:profiles!uploaded_by(full_name, role),
+  department:departments!department_id(id, name)
+`;
+
 async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
-  const { data, error } = await supabase
+  const { data: flagged, error } = await supabase
     .from('invoices')
-    .select(`
-      id,
-      invoice_number,
-      supplier_name,
-      supplier_nip,
-      issue_date,
-      due_date,
-      net_amount,
-      tax_amount,
-      gross_amount,
-      pln_gross_amount,
-      exchange_rate,
-      currency,
-      status,
-      description,
-      uploaded_by,
-      current_approver_id,
-      department_id,
-      cost_center_id,
-      file_url,
-      paid_at,
-      paid_by,
-      created_at,
-      updated_at,
-      source,
-      is_duplicate,
-      duplicate_invoice_ids,
-      file_hash,
-      user_drive_file_id,
-      drive_owner_user_id,
-      pz_number,
-      uploader:profiles!uploaded_by(full_name, role),
-      department:departments!department_id(id, name)
-    `)
+    .select(INVOICE_FIELDS)
     .eq('is_duplicate', true)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as Invoice[];
+
+  const flaggedInvoices = (flagged || []) as Invoice[];
+
+  const linkedIds = new Set<string>();
+  for (const inv of flaggedInvoices) {
+    const ids = (inv.duplicate_invoice_ids as string[] | null) || [];
+    for (const id of ids) linkedIds.add(id);
+  }
+  const existingIds = new Set(flaggedInvoices.map(i => i.id));
+  const missingIds = [...linkedIds].filter(id => !existingIds.has(id));
+
+  if (missingIds.length > 0) {
+    const { data: linked } = await supabase
+      .from('invoices')
+      .select(INVOICE_FIELDS)
+      .in('id', missingIds);
+    if (linked) {
+      for (const inv of linked as Invoice[]) {
+        if (!existingIds.has(inv.id)) {
+          flaggedInvoices.push(inv);
+          existingIds.add(inv.id);
+        }
+      }
+    }
+  }
+
+  return flaggedInvoices;
 }
 
 function scoreInvoice(inv: Invoice): number {
@@ -76,33 +104,83 @@ function scoreInvoice(inv: Invoice): number {
 }
 
 function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
-  const groups: Map<string, Invoice[]> = new Map();
+  const invoiceMap = new Map<string, Invoice>(invoices.map(inv => [inv.id, inv]));
+  const visited = new Set<string>();
+  const result: DuplicateGroup[] = [];
 
   for (const inv of invoices) {
+    if (visited.has(inv.id)) continue;
+
+    const linkedIds: string[] = (inv.duplicate_invoice_ids as string[] | null) || [];
+    const groupMembers: Invoice[] = [inv];
+
+    for (const linkedId of linkedIds) {
+      const linked = invoiceMap.get(linkedId);
+      if (linked && !visited.has(linkedId)) {
+        groupMembers.push(linked);
+      }
+    }
+
+    if (groupMembers.length >= 2) {
+      for (const m of groupMembers) visited.add(m.id);
+
+      const sorted = [...groupMembers].sort((a, b) => {
+        const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      const winner = sorted[0];
+      const losers = sorted.slice(1);
+      const key = sorted.map(i => i.id).sort().join('__');
+      result.push({ key, invoices: sorted, winner, losers });
+      continue;
+    }
+
+    visited.add(inv.id);
+
     const num = inv.invoice_number?.trim();
+    if (!num) continue;
+
     const nip = inv.supplier_nip?.replace(/[^0-9]/g, '');
-    if (!num || !nip) continue;
-    const key = `${nip}__${num}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(inv);
+    const groupKey = nip ? `${nip}__${num}` : `name__${inv.supplier_name?.toLowerCase().trim()}__${num}`;
+
+    const existing = result.find(g => g.key === groupKey);
+    if (existing) {
+      existing.invoices.push(inv);
+    }
   }
 
-  const result: DuplicateGroup[] = [];
-  for (const [key, group] of groups) {
-    if (group.length < 2) continue;
+  for (const inv of invoices) {
+    if (visited.has(inv.id)) continue;
 
-    const sorted = [...group].sort((a, b) => {
-      const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
-      if (scoreDiff !== 0) return scoreDiff;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    const num = inv.invoice_number?.trim();
+    if (!num) { visited.add(inv.id); continue; }
+
+    const nip = inv.supplier_nip?.replace(/[^0-9]/g, '');
+    const groupKey = nip ? `${nip}__${num}` : `name__${inv.supplier_name?.toLowerCase().trim()}__${num}`;
+
+    let group = result.find(g => g.key === groupKey);
+    if (!group) {
+      group = { key: groupKey, invoices: [], winner: inv, losers: [] };
+      result.push(group);
+    }
+    if (!group.invoices.some(i => i.id === inv.id)) {
+      group.invoices.push(inv);
+    }
+    visited.add(inv.id);
+  }
+
+  return result
+    .filter(g => g.invoices.length >= 2)
+    .map(g => {
+      const sorted = [...g.invoices].sort((a, b) => {
+        const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+      return { key: g.key, invoices: sorted, winner: sorted[0], losers: sorted.slice(1) };
     });
-
-    const winner = sorted[0];
-    const losers = sorted.slice(1);
-    result.push({ key, invoices: sorted, winner, losers });
-  }
-
-  return result;
 }
 
 export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: MergeInvoicesModalProps) {
