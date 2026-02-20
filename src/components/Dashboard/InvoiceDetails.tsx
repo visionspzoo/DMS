@@ -103,6 +103,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [invoiceDepartmentInfo, setInvoiceDepartmentInfo] = useState<{director_id: string | null, uploader_role: string | null} | null>(null);
   const [showAdminRejectModal, setShowAdminRejectModal] = useState(false);
   const [adminRejectComment, setAdminRejectComment] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectComment, setRejectComment] = useState('');
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -462,7 +464,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
-  const handleApprove = async (action: 'approved' | 'rejected') => {
+  const handleApprove = async (action: 'approved' | 'rejected', overrideComment?: string) => {
     if (!profile) return;
 
     setLoading(true);
@@ -474,7 +476,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           approver_id: profile.id,
           approver_role: profile.role,
           action,
-          comment: comment || null,
+          comment: overrideComment || null,
         });
 
       if (approvalError) throw approvalError;
@@ -2326,6 +2328,33 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             )}
 
             <div className="flex flex-col h-full overflow-y-auto space-y-4 pr-2">
+              {canApprove() && (
+                <div className="bg-gradient-to-br from-brand-primary/5 to-brand-primary/10 dark:from-brand-primary/10 dark:to-brand-primary/5 rounded-xl p-4 border-2 border-brand-primary/20">
+                  <h3 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mb-3 flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    Twoja decyzja
+                  </h3>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setRejectComment(''); setShowRejectModal(true); }}
+                      disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-status-error text-white rounded-lg hover:bg-status-error/90 transition font-medium disabled:opacity-50 shadow-sm text-sm"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Odrzuć</span>
+                    </button>
+                    <button
+                      onClick={() => handleApprove('approved')}
+                      disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-status-success text-white rounded-lg hover:bg-status-success/90 transition font-medium disabled:opacity-50 shadow-sm text-sm"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Zaakceptuj</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center gap-2">
@@ -2970,51 +2999,64 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 </div>
               )}
 
-              {canApprove() && (
-                <div className="bg-gradient-to-br from-brand-primary/5 to-brand-primary/10 dark:from-brand-primary/10 dark:to-brand-primary/5 rounded-xl p-5 border-2 border-brand-primary/20">
-                  <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4 flex items-center gap-2">
-                    <MessageSquare className="w-5 h-5" />
-                    Twoja decyzja
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                        Komentarz (opcjonalnie)
-                      </label>
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent resize-none text-sm"
-                        placeholder="Dodaj komentarz do swojej decyzji..."
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleApprove('rejected')}
-                        disabled={loading}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-status-error text-white rounded-lg hover:bg-status-error/90 transition font-medium disabled:opacity-50 shadow-md"
-                      >
-                        <XCircle className="w-5 h-5" />
-                        <span>Odrzuć</span>
-                      </button>
-                      <button
-                        onClick={() => handleApprove('approved')}
-                        disabled={loading}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-status-success text-white rounded-lg hover:bg-status-success/90 transition font-medium disabled:opacity-50 shadow-md"
-                      >
-                        <CheckCircle className="w-5 h-5" />
-                        <span>Zaakceptuj</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       </div>
+
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-status-error/10 rounded-lg">
+                <XCircle className="w-6 h-6 text-status-error" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  Odrzuć fakturę
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Podaj powód odrzucenia (opcjonalnie)
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="ml-auto p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <textarea
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-status-error focus:border-transparent resize-none text-sm mb-4"
+              placeholder="Powód odrzucenia..."
+              disabled={loading}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium text-sm"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={async () => {
+                  setShowRejectModal(false);
+                  await handleApprove('rejected', rejectComment || undefined);
+                }}
+                disabled={loading}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-status-error text-white rounded-lg hover:bg-status-error/90 transition font-medium disabled:opacity-50 text-sm"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>Odrzuć</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAdminRejectModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
