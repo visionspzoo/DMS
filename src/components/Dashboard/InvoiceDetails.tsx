@@ -2151,6 +2151,52 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
   };
 
+  const handleRevertToVerification = async () => {
+    if (!profile || !user) return;
+
+    const confirmed = window.confirm('Czy na pewno chcesz cofnąć tę fakturę do weryfikacji? Faktura zmieni status na "Oczekujące".');
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+          status: 'waiting',
+          current_approver_id: currentInvoice.uploaded_by,
+        })
+        .eq('id', currentInvoice.id);
+
+      if (error) throw error;
+
+      await supabase.from('audit_logs').insert({
+        invoice_id: currentInvoice.id,
+        user_id: profile.id,
+        action: 'revert_to_verification',
+        description: `Faktura cofnięta do weryfikacji przez ${profile.role === 'Dyrektor' ? 'dyrektora' : 'administratora'}`,
+      });
+
+      if (currentInvoice.uploaded_by) {
+        await supabase.from('notifications').insert({
+          user_id: currentInvoice.uploaded_by,
+          type: 'invoice_recalled',
+          title: 'Faktura cofnięta do weryfikacji',
+          message: `Faktura ${currentInvoice.invoice_number || 'bez numeru'} została cofnięta do weryfikacji przez ${profile.role === 'Dyrektor' ? 'dyrektora' : 'administratora'}`,
+          invoice_id: currentInvoice.id,
+        });
+      }
+
+      alert('Faktura została cofnięta do weryfikacji');
+      onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error reverting invoice:', error);
+      alert('Nie udało się cofnąć faktury');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRecallInvoice = async () => {
     if (!profile || !user) return;
 
@@ -2305,16 +2351,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     <span>Cofnij</span>
                   </button>
                 )}
-                {currentInvoice.status === 'accepted' && canTransfer() && (
+                {currentInvoice.status === 'accepted' && (profile?.role === 'Dyrektor' || profile?.is_admin) && invoiceDepartmentInfo?.director_id === profile?.id || (currentInvoice.status === 'accepted' && profile?.is_admin && invoiceDepartmentInfo?.director_id !== profile?.id) ? (
                   <button
-                    onClick={() => setShowTransferModal(true)}
+                    onClick={handleRevertToVerification}
                     disabled={loading}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Cofnij fakturę do weryfikacji"
                   >
-                    <ArrowRight className="w-4 h-4" />
-                    <span>Prześlij</span>
+                    <Undo2 className="w-4 h-4" />
+                    <span>Cofnij do weryfikacji</span>
                   </button>
-                )}
+                ) : null}
                 {profile?.is_admin && currentInvoice.status !== 'rejected' && currentInvoice.status !== 'draft' && (
                   <button
                     onClick={() => setShowAdminRejectModal(true)}
