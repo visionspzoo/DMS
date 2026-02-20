@@ -485,9 +485,61 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       let nextApproverId = null;
 
       if (action === 'approved' && currentInvoice.department_id) {
+        const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
+
         if (profile.role === 'Kierownik') {
-          newStatus = 'accepted';
-          nextApproverId = null;
+          const { data: limitsResult } = await supabase
+            .rpc('check_department_limits', {
+              p_department_id: currentInvoice.department_id,
+              p_invoice_amount: invoiceAmount,
+              p_invoice_date: currentInvoice.issue_date ?? new Date().toISOString().split('T')[0],
+              p_exclude_invoice_id: currentInvoice.id,
+            });
+
+          if (limitsResult?.within_limits === true) {
+            newStatus = 'accepted';
+            nextApproverId = null;
+          } else {
+            const { data: dept } = await supabase
+              .from('departments')
+              .select('director_id')
+              .eq('id', currentInvoice.department_id)
+              .maybeSingle();
+
+            if (dept?.director_id) {
+              newStatus = 'waiting';
+              nextApproverId = dept.director_id;
+            } else {
+              newStatus = 'accepted';
+              nextApproverId = null;
+            }
+          }
+        } else if (profile.role === 'Dyrektor') {
+          const { data: canApprove } = await supabase
+            .rpc('check_director_can_approve', {
+              p_director_id: profile.id,
+              p_invoice_id: currentInvoice.id,
+              p_invoice_amount: invoiceAmount,
+            });
+
+          if (canApprove === true) {
+            newStatus = 'accepted';
+            nextApproverId = null;
+          } else {
+            const { data: ceoProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('role', 'CEO')
+              .maybeSingle();
+
+            if (ceoProfile?.id) {
+              newStatus = 'waiting';
+              nextApproverId = ceoProfile.id;
+            } else {
+              newStatus = 'accepted';
+              nextApproverId = null;
+            }
+          }
         } else {
           const { data: nextApprover, error: approverError } = await supabase
             .rpc('get_next_approver_in_department', {
@@ -1697,22 +1749,52 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         if (approvalError) throw approvalError;
       }
 
-      // Określ następnego approvera
-      const { data: nextApprover, error: approverError } = await supabase
-        .rpc('get_next_approver_in_department', {
-          dept_id: currentInvoice.department_id,
-          user_role: profile.role,
-        });
-
-      if (approverError) {
-        console.error('Error getting next approver:', approverError);
-      }
+      const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
 
       let newStatus = 'accepted';
       let nextApproverId = null;
-      if (nextApprover) {
-        newStatus = 'waiting';
-        nextApproverId = nextApprover;
+
+      if (isDirector) {
+        const { data: canApprove } = await supabase
+          .rpc('check_director_can_approve', {
+            p_director_id: profile.id,
+            p_invoice_id: currentInvoice.id,
+            p_invoice_amount: invoiceAmount,
+          });
+
+        if (canApprove !== true) {
+          const { data: ceoProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('role', 'CEO')
+            .maybeSingle();
+
+          if (ceoProfile?.id) {
+            newStatus = 'waiting';
+            nextApproverId = ceoProfile.id;
+          }
+        }
+      } else if (isManager) {
+        const { data: limitsResult } = await supabase
+          .rpc('check_department_limits', {
+            p_department_id: currentInvoice.department_id,
+            p_invoice_amount: invoiceAmount,
+            p_invoice_date: currentInvoice.issue_date ?? new Date().toISOString().split('T')[0],
+            p_exclude_invoice_id: currentInvoice.id,
+          });
+
+        if (limitsResult?.within_limits !== true) {
+          const { data: dept } = await supabase
+            .from('departments')
+            .select('director_id')
+            .eq('id', currentInvoice.department_id)
+            .maybeSingle();
+
+          if (dept?.director_id) {
+            newStatus = 'waiting';
+            nextApproverId = dept.director_id;
+          }
+        }
       }
 
       // Zaktualizuj fakturę
