@@ -91,7 +91,15 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [costCenters, setCostCenters] = useState<Array<{id: string, code: string, description: string, is_active: boolean}>>([]);
   const [costCenterSearch, setCostCenterSearch] = useState('');
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
-  const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{id: string, invoice_number: string, created_at: string}>>([]);
+  const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{
+    id?: string;
+    invoice_number?: string;
+    invoice_date?: string;
+    created_at: string;
+    department_name: string;
+    status?: string;
+    accessible: boolean;
+  }>>([]);
   const [invoiceDepartmentInfo, setInvoiceDepartmentInfo] = useState<{director_id: string | null, uploader_role: string | null} | null>(null);
   const [showAdminRejectModal, setShowAdminRejectModal] = useState(false);
   const [adminRejectComment, setAdminRejectComment] = useState('');
@@ -157,28 +165,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         return;
       }
 
-      let query = supabase
-        .from('invoices')
-        .select('id, invoice_number, created_at')
-        .eq('invoice_number', currentInvoice.invoice_number)
-        .neq('id', currentInvoice.id);
-
-      if (currentInvoice.supplier_nip) {
-        const cleanNip = currentInvoice.supplier_nip.replace(/[^0-9]/g, '');
-        query = query.ilike('supplier_nip', `%${cleanNip}%`);
-      } else if (currentInvoice.supplier_name) {
-        const cleanName = currentInvoice.supplier_name.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim();
-        query = query.ilike('supplier_name', `%${cleanName}%`);
-      } else {
-        setDuplicateInvoices([]);
-        return;
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('get_duplicate_invoice_info', {
+        p_invoice_id: currentInvoice.id,
+      });
 
       if (error) throw error;
 
-      setDuplicateInvoices(data || []);
+      const result = data as { duplicates: typeof duplicateInvoices; total_count: number } | null;
+      setDuplicateInvoices(result?.duplicates || []);
     } catch (error) {
       console.error('Error checking duplicates:', error);
       setDuplicateInvoices([]);
@@ -2393,15 +2387,48 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   )}
 
                   {isDuplicate && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3 flex items-start gap-2">
-                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-red-900 dark:text-red-300 text-sm">DUPLIKAT!</p>
-                        <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
-                          W systemie znajduje się {duplicateInvoices.length} {duplicateInvoices.length === 1 ? 'inna faktura' : 'innych faktur'}
-                          {' '}o tym samym numerze ({currentInvoice.invoice_number})
-                          {currentInvoice.supplier_nip ? ` i NIP dostawcy (${currentInvoice.supplier_nip})` : ` i nazwie dostawcy (${currentInvoice.supplier_name})`}.
-                        </p>
+                    <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-600 dark:border-red-500 rounded-lg p-3">
+                      <div className="flex items-start gap-2 mb-2">
+                        <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-red-900 dark:text-red-300 text-sm">DUPLIKAT!</p>
+                          <p className="text-red-800 dark:text-red-400 text-xs mt-0.5">
+                            W systemie {duplicateInvoices.length === 1 ? 'znajduje się' : 'znajdują się'}{' '}
+                            {duplicateInvoices.length}{' '}
+                            {duplicateInvoices.length === 1 ? 'inna faktura' : 'inne faktury'}{' '}
+                            o tym samym numerze ({currentInvoice.invoice_number})
+                            {currentInvoice.supplier_nip ? ` i NIP dostawcy (${currentInvoice.supplier_nip})` : ` i nazwie dostawcy (${currentInvoice.supplier_name})`}:
+                          </p>
+                        </div>
+                      </div>
+                      <div className="ml-7 space-y-1.5">
+                        {duplicateInvoices.map((dup, idx) => (
+                          <div
+                            key={dup.id || idx}
+                            className="flex items-center gap-2 text-xs bg-red-100/60 dark:bg-red-900/30 rounded px-2 py-1.5"
+                          >
+                            <span className="font-medium text-red-800 dark:text-red-300 min-w-0 shrink-0">
+                              {dup.department_name}
+                            </span>
+                            <span className="text-red-600 dark:text-red-500">·</span>
+                            {dup.invoice_date && (
+                              <>
+                                <span className="text-red-700 dark:text-red-400">
+                                  Data faktury: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}
+                                </span>
+                                <span className="text-red-600 dark:text-red-500">·</span>
+                              </>
+                            )}
+                            <span className="text-red-700 dark:text-red-400">
+                              Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}
+                            </span>
+                            {!dup.accessible && (
+                              <span className="ml-auto shrink-0 text-red-500 dark:text-red-400 italic">
+                                (brak dostepu)
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
