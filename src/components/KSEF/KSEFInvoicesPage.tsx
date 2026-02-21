@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2 } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -9,6 +9,7 @@ import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
 const AURA_HERBALS_NIP = '5851490834';
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
+const DEFAULT_SYNC_DAYS = 5;
 
 interface KSEFInvoice {
   id: string;
@@ -66,6 +67,12 @@ export function KSEFInvoicesPage() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const datePickerRef = useRef<HTMLDivElement | null>(null);
+  const today = new Date().toISOString().split('T')[0];
+  const fiveDaysAgo = new Date(Date.now() - DEFAULT_SYNC_DAYS * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const [customDateFrom, setCustomDateFrom] = useState(fiveDaysAgo);
+  const [customDateTo, setCustomDateTo] = useState(today);
 
   const canAccessKSEFConfig = profile?.can_access_ksef_config === true ||
                                profile?.is_admin === true ||
@@ -170,6 +177,16 @@ export function KSEFInvoicesPage() {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, [canAccessKSEFConfig]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+        setShowDatePicker(false);
+      }
+    };
+    if (showDatePicker) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDatePicker]);
 
   const checkKSEFConnection = async () => {
     try {
@@ -436,25 +453,27 @@ export function KSEFInvoicesPage() {
     }
   };
 
-  const handleFetchInvoices = async () => {
+  const handleFetchInvoices = async (overrideDateFrom?: string, overrideDateTo?: string) => {
     setFetching(true);
     setError('');
     setSuccessMessage('');
+    setShowDatePicker(false);
 
     try {
       console.log('=== ROZPOCZYNAM POBIERANIE FAKTUR KSEF ===');
       console.log('Profile ID:', profile?.id);
       console.log('Profile email:', profile?.email);
 
-      const dateFrom = new Date();
-      dateFrom.setDate(dateFrom.getDate() - 30);
-      const dateTo = new Date();
+      const defaultFrom = new Date();
+      defaultFrom.setDate(defaultFrom.getDate() - DEFAULT_SYNC_DAYS);
+      const dateFromStr = overrideDateFrom || defaultFrom.toISOString().split('T')[0];
+      const dateToStr = overrideDateTo || new Date().toISOString().split('T')[0];
 
-      console.log('Zakres dat:', dateFrom.toISOString().split('T')[0], '-', dateTo.toISOString().split('T')[0]);
+      console.log('Zakres dat:', dateFromStr, '-', dateToStr);
 
       const response = await fetchKSEFInvoices({
-        dateFrom: dateFrom.toISOString().split('T')[0],
-        dateTo: dateTo.toISOString().split('T')[0],
+        dateFrom: dateFromStr,
+        dateTo: dateToStr,
         subjectType: 'subject2',
         invoiceType: 'all',
         pageSize: 100,
@@ -1059,23 +1078,86 @@ export function KSEFInvoicesPage() {
                     )}
                   </button>
                 )}
-                <button
-                  onClick={handleFetchInvoices}
-                  disabled={fetching}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
-                >
-                  {fetching ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Pobieranie...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4" />
-                      Pobierz nowe faktury
-                    </>
+                <div className="relative" ref={datePickerRef}>
+                  <div className="flex rounded-lg overflow-hidden border border-brand-primary">
+                    <button
+                      onClick={() => handleFetchInvoices()}
+                      disabled={fetching}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white hover:bg-brand-primary/90 transition disabled:opacity-50 text-sm"
+                    >
+                      {fetching ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Pobieranie...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          Pobierz {DEFAULT_SYNC_DAYS} dni
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowDatePicker(p => !p)}
+                      disabled={fetching}
+                      title="Wybierz własny zakres dat"
+                      className="flex items-center px-2 bg-brand-primary/90 hover:bg-brand-primary/80 border-l border-white/20 text-white transition disabled:opacity-50"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {showDatePicker && (
+                    <div className="absolute right-0 top-full mt-1.5 z-50 bg-light-surface dark:bg-dark-surface rounded-xl shadow-xl border border-slate-200 dark:border-slate-700/50 p-4 w-72">
+                      <p className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-3">
+                        Jednorazowa synchronizacja — wybierz zakres dat
+                      </p>
+                      <div className="space-y-2.5">
+                        <div>
+                          <label className="block text-[11px] text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                            Od
+                          </label>
+                          <input
+                            type="date"
+                            value={customDateFrom}
+                            max={customDateTo}
+                            onChange={e => setCustomDateFrom(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-light-bg dark:bg-dark-bg text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                            Do
+                          </label>
+                          <input
+                            type="date"
+                            value={customDateTo}
+                            min={customDateFrom}
+                            max={today}
+                            onChange={e => setCustomDateTo(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-light-bg dark:bg-dark-bg text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => setShowDatePicker(false)}
+                          className="flex-1 px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 text-text-secondary-light dark:text-text-secondary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                        >
+                          Anuluj
+                        </button>
+                        <button
+                          onClick={() => handleFetchInvoices(customDateFrom, customDateTo)}
+                          disabled={!customDateFrom || !customDateTo}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition disabled:opacity-50 font-medium"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                          Pobierz
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
               </>
             )}
           </div>
