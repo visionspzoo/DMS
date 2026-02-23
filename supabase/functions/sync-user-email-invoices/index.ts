@@ -72,17 +72,19 @@ Deno.serve(async (req: Request) => {
 
     const token = authHeader.replace("Bearer ", "");
     let userId: string;
+    let bodyData: any = {};
 
     if (token === supabaseServiceKey) {
-      const body = await req.json().catch(() => ({}));
-      if (!body.user_id) {
+      bodyData = await req.json().catch(() => ({}));
+      if (!bodyData.user_id) {
         return new Response(
           JSON.stringify({ success: false, error: "Brak user_id w trybie cron" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      userId = body.user_id;
+      userId = bodyData.user_id;
     } else {
+      bodyData = await req.json().catch(() => ({}));
       const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       if (userError || !user) {
         return new Response(
@@ -92,6 +94,10 @@ Deno.serve(async (req: Request) => {
       }
       userId = user.id;
     }
+
+    const forceReimport = bodyData.force_reimport === true;
+    const dateFrom = bodyData.date_from ? new Date(bodyData.date_from) : null;
+    const dateTo = bodyData.date_to ? new Date(bodyData.date_to) : null;
 
     const { data: emailConfigs, error: configError } = await supabase
       .from("user_email_configs")
@@ -258,7 +264,10 @@ Deno.serve(async (req: Request) => {
           for (const config of emailConfigs as EmailConfig[]) {
             try {
               await send({ type: "account_start", email: config.email_address });
-              const synced = await syncEmailAccount(supabase, config, userId, warnings, send);
+              const synced = await syncEmailAccount(
+                supabase, config, userId, warnings, send,
+                forceReimport, dateFrom, dateTo
+              );
               totalSynced += synced;
 
               await supabase
@@ -302,7 +311,10 @@ Deno.serve(async (req: Request) => {
 
     for (const config of emailConfigs as EmailConfig[]) {
       try {
-        const synced = await syncEmailAccount(supabase, config, userId, warnings);
+        const synced = await syncEmailAccount(
+          supabase, config, userId, warnings, undefined,
+          forceReimport, dateFrom, dateTo
+        );
         totalSynced += synced;
 
         await supabase
@@ -418,18 +430,36 @@ async function syncEmailAccount(
   config: EmailConfig,
   userId: string,
   warnings: string[],
-  send?: (data: object) => Promise<void>
+  send?: (data: object) => Promise<void>,
+  forceReimport = false,
+  dateFrom: Date | null = null,
+  dateTo: Date | null = null
 ): Promise<number> {
-  console.log(`Connecting to Gmail for ${config.email_address}...`);
+  console.log(`Connecting to Gmail for ${config.email_address}... forceReimport=${forceReimport}`);
 
   const accessToken = await getValidAccessToken(supabase, config);
 
-  const fourteenDaysAgo = new Date();
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-  const afterDate = Math.floor(fourteenDaysAgo.getTime() / 1000);
+  let afterDate: number;
+  let beforeDate: number | null = null;
+
+  if (forceReimport && dateFrom) {
+    afterDate = Math.floor(dateFrom.getTime() / 1000);
+    if (dateTo) {
+      beforeDate = Math.floor(dateTo.getTime() / 1000);
+    }
+  } else {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    afterDate = Math.floor(fourteenDaysAgo.getTime() / 1000);
+  }
+
+  let query = `after:${afterDate} has:attachment filename:pdf`;
+  if (beforeDate) {
+    query += ` before:${beforeDate}`;
+  }
 
   const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=after:${afterDate} has:attachment filename:pdf`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -455,16 +485,25 @@ async function syncEmailAccount(
 
   console.log(`Found ${messages.length} messages with attachments`);
 
-  const { data: processedMessages } = await supabase
-    .from("processed_email_messages")
-    .select("message_uid")
-    .eq("email_config_id", config.id);
+  let processedUids: Set<string>;
 
-  const processedUids = new Set(
-    (processedMessages || []).map((m: any) => m.message_uid)
-  );
+  if (forceReimport) {
+    processedUids = new Set<string>();
+    console.log("Force reimport mode: ignoring processed message history");
+  } else {
+    const { data: processedMessages } = await supabase
+      .from("processed_email_messages")
+      .select("message_uid")
+      .eq("email_config_id", config.id);
 
-  const newMessages = messages.filter((m: any) => !processedUids.has(m.id));
+    processedUids = new Set(
+      (processedMessages || []).map((m: any) => m.message_uid)
+    );
+  }
+
+  const newMessages = forceReimport
+    ? messages
+    : messages.filter((m: any) => !processedUids.has(m.id));
   const totalNew = newMessages.length;
 
   if (send) {
@@ -473,6 +512,7 @@ async function syncEmailAccount(
       email: config.email_address,
       total: messages.length,
       new: totalNew,
+      force_reimport: forceReimport,
     });
   }
 
@@ -483,7 +523,7 @@ async function syncEmailAccount(
     try {
       const messageId = msg.id;
 
-      if (processedUids.has(messageId)) {
+      if (!forceReimport && processedUids.has(messageId)) {
         continue;
       }
 
@@ -711,16 +751,18 @@ async function syncEmailAccount(
           syncedCount++;
       }
 
-      await supabase.from("processed_email_messages").insert({
-        email_config_id: config.id,
-        message_uid: messageId,
-        message_id: messageId,
-        attachment_count: attachmentCount,
-        invoice_count: invoiceCount,
-      }).then(({ error: pErr }: { error: any }) => {
-        if (pErr) console.error("Error marking message as processed:", pErr);
-      });
-      processedUids.add(messageId);
+      if (!forceReimport) {
+        await supabase.from("processed_email_messages").insert({
+          email_config_id: config.id,
+          message_uid: messageId,
+          message_id: messageId,
+          attachment_count: attachmentCount,
+          invoice_count: invoiceCount,
+        }).then(({ error: pErr }: { error: any }) => {
+          if (pErr) console.error("Error marking message as processed:", pErr);
+        });
+        processedUids.add(messageId);
+      }
     } catch (msgError: any) {
       console.error("Error processing message:", msgError);
     }

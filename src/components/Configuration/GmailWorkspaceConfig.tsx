@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle } from 'lucide-react';
+import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle, Calendar, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
@@ -69,6 +69,13 @@ export default function GmailWorkspaceConfig() {
   const [diagResults, setDiagResults] = useState<any>(null);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
+
+  const [showReimportPanel, setShowReimportPanel] = useState(false);
+  const [reimportDateFrom, setReimportDateFrom] = useState('');
+  const [reimportDateTo, setReimportDateTo] = useState('');
+  const [reimporting, setReimporting] = useState(false);
+  const [reimportProgress, setReimportProgress] = useState<{ status: string; current: number; total: number; filename?: string } | null>(null);
+  const [reimportMessage, setReimportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [driveConfig, setDriveConfig] = useState<DriveConfig | null>(null);
   const [driveLoading, setDriveLoading] = useState(true);
@@ -869,6 +876,111 @@ export default function GmailWorkspaceConfig() {
     }
   };
 
+  const handleReimportEmails = async () => {
+    if (!reimportDateFrom) {
+      setReimportMessage({ type: 'error', text: 'Prosze podac date poczatkowa' });
+      return;
+    }
+
+    setReimporting(true);
+    setReimportProgress({ status: 'Laczenie z serwerem...', current: 0, total: 0 });
+    setReimportMessage(null);
+
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error('Nie udalo sie odswiezyc sesji. Prosze sie wylogowac i zalogowac ponownie.');
+      }
+
+      const finalSession = refreshData.session;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices?stream=1`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${finalSession.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            force_reimport: true,
+            date_from: reimportDateFrom,
+            date_to: reimportDateTo || undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || `Serwer zwrocil blad ${response.status}`);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+
+            if (event.type === 'account_start') {
+              setReimportProgress({ status: `Sprawdzanie: ${event.email}`, current: 0, total: 0 });
+            } else if (event.type === 'messages_found') {
+              setReimportProgress({ status: `Znaleziono ${event.total} wiadomosci w zakresie dat`, current: 0, total: event.total });
+            } else if (event.type === 'no_messages') {
+              setReimportProgress({ status: 'Brak wiadomosci z zalacznikami w podanym zakresie dat', current: 0, total: 0 });
+            } else if (event.type === 'processing_message') {
+              setReimportProgress({ status: 'Przetwarzanie wiadomosci...', current: event.current, total: event.total });
+            } else if (event.type === 'processing_attachment') {
+              setReimportProgress(prev => ({ ...prev!, status: 'Pobieranie zalacznika', filename: event.filename, current: event.current, total: event.total }));
+            } else if (event.type === 'uploading') {
+              setReimportProgress(prev => ({ ...prev!, status: 'Przesylanie do magazynu', filename: event.filename }));
+            } else if (event.type === 'invoice_created') {
+              setReimportProgress(prev => ({ ...prev!, status: 'Faktura zapisana', filename: event.filename }));
+            } else if (event.type === 'ocr_start') {
+              setReimportProgress(prev => ({ ...prev!, status: 'Rozpoznawanie tekstu (OCR)', filename: event.filename }));
+            } else if (event.type === 'ocr_done') {
+              setReimportProgress(prev => ({ ...prev!, status: 'OCR zakonczony', filename: event.filename }));
+            } else if (event.type === 'attachment_skipped') {
+              const reason = event.reason === 'duplicate' ? 'duplikat (juz w systemie)' : 'nie jest faktura';
+              setReimportProgress(prev => ({ ...prev!, status: `Pominieto: ${reason}`, filename: event.filename }));
+            } else if (event.type === 'done') {
+              finalResult = event;
+            }
+          } catch {}
+        }
+      }
+
+      if (finalResult) {
+        const errorsText = finalResult.errors?.length ? `. Bledy: ${finalResult.errors.join('; ')}` : '';
+        const warningsText = finalResult.warnings?.length ? `. Ostrzezenia: ${finalResult.warnings.join('; ')}` : '';
+        setReimportMessage({
+          type: finalResult.errors?.length ? 'error' : 'success',
+          text: `Zaimportowano ${finalResult.synced || 0} faktur(y)${errorsText}${warningsText}`,
+        });
+      }
+
+      await loadEmailConfigs();
+    } catch (error: any) {
+      console.error('Error reimporting emails:', error);
+      setReimportMessage({ type: 'error', text: 'Blad: ' + error.message });
+    } finally {
+      setReimporting(false);
+      setReimportProgress(null);
+    }
+  };
+
   if (loading || driveLoading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -921,6 +1033,13 @@ export default function GmailWorkspaceConfig() {
                 >
                   <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
                   {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
+                </button>
+                <button
+                  onClick={() => { setShowReimportPanel(!showReimportPanel); setReimportMessage(null); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors font-medium text-xs ${showReimportPanel ? 'bg-slate-600 hover:bg-slate-700' : 'bg-slate-500 hover:bg-slate-600'} text-white`}
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Ponowny import
                 </button>
                 <button
                   onClick={handleDiagnoseEmails}
@@ -1070,6 +1189,135 @@ export default function GmailWorkspaceConfig() {
                 ))}
               </div>
             ))}
+          </div>
+        )}
+
+        {showReimportPanel && emailConfigs.length > 0 && (
+          <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-600">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  Ponowny import faktur z emaila
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowReimportPanel(false)}
+                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              </button>
+            </div>
+
+            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+              <div className="flex items-start gap-2">
+                <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-800 dark:text-amber-300">
+                  <p className="font-semibold mb-1">Jak dziala ponowny import?</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Przeszukuje Gmail w podanym zakresie dat ignorujac historie pobranych wiadomosci</li>
+                    <li>Faktury ktore juz sa w systemie (ten sam plik) zostana pominięte automatycznie</li>
+                    <li>Przydatne gdy usunieto faktury z systemu i chcesz je ponownie zaimportowac</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+                  Data od <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={reimportDateFrom}
+                    onChange={(e) => setReimportDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  />
+                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+                  Data do (opcjonalnie)
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={reimportDateTo}
+                    onChange={(e) => setReimportDateTo(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  />
+                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                </div>
+              </div>
+            </div>
+
+            {reimportProgress && (
+              <div className="mb-3 p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <Loader className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-spin flex-shrink-0" />
+                  <span className="text-xs font-medium text-blue-800 dark:text-blue-300">{reimportProgress.status}</span>
+                </div>
+                {reimportProgress.filename && (
+                  <p className="text-[10px] text-blue-600 dark:text-blue-400 truncate pl-5">{reimportProgress.filename}</p>
+                )}
+                {reimportProgress.total > 0 && (
+                  <div className="pl-5 mt-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">Wiadomosc {reimportProgress.current} z {reimportProgress.total}</span>
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">{Math.round((reimportProgress.current / reimportProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.round((reimportProgress.current / reimportProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {reimportMessage && (
+              <div
+                className={`mb-3 p-2 rounded-lg border flex items-start gap-2 ${
+                  reimportMessage.type === 'success'
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}
+              >
+                {reimportMessage.type === 'success' ? (
+                  <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                )}
+                <p className={`text-[10px] ${reimportMessage.type === 'success' ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+                  {reimportMessage.text}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleReimportEmails}
+                disabled={reimporting || !reimportDateFrom}
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand-primary hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                {reimporting ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Importowanie...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    Importuj z podanego okresu
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
