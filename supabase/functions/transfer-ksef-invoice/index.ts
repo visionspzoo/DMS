@@ -172,8 +172,8 @@ Deno.serve(async (req: Request) => {
         console.log(`Folder: ${department.google_drive_draft_folder_id}`);
         console.log(`File: ${ksefInvoice.invoice_number}.pdf`);
 
-        // Use fetched_by as userId, or fallback to uploaderId
-        const userIdForUpload = ksefInvoice.fetched_by || uploaderId;
+        // Use the target user (assignee) for Drive upload, not the person doing the transfer
+        const userIdForUpload = userId || ksefInvoice.fetched_by || uploaderId;
 
         if (!userIdForUpload) {
           console.warn("⚠️ No user ID available for Google Drive upload, skipping...");
