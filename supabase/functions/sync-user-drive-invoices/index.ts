@@ -545,25 +545,6 @@ Deno.serve(async (req: Request) => {
               console.error(`OCR failed for ${file.name}:`, ocrErr.message);
             }
 
-            // Delete original file from private folder - invoice is now in the system
-            try {
-              const deleteResp = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${file.id}`,
-                {
-                  method: "DELETE",
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                }
-              );
-              if (deleteResp.ok || deleteResp.status === 204) {
-                console.log(`🗑️  Deleted ${file.name} from user's private folder`);
-              } else {
-                const delErrBody = await deleteResp.text();
-                console.warn(`Could not delete ${file.name} from private folder: ${deleteResp.status} - ${delErrBody}`);
-              }
-            } catch (delErr: any) {
-              console.warn(`Delete from private folder failed for ${file.name}:`, delErr.message);
-            }
-
             try {
               const { data: updatedInvoice } = await supabase
                 .from("invoices")
@@ -572,6 +553,7 @@ Deno.serve(async (req: Request) => {
                 .maybeSingle();
 
               const deptId = updatedInvoice?.department_id || profile?.department_id;
+              let movedToDeptFolder = false;
 
               if (deptId) {
                 const { data: dept } = await supabase
@@ -587,35 +569,63 @@ Deno.serve(async (req: Request) => {
                     ? `${updatedInvoice.invoice_number}.pdf`
                     : file.name;
 
-                  const uploadResp = await fetch(
-                    `${supabaseUrl}/functions/v1/upload-to-google-drive`,
-                    {
-                      method: "POST",
-                      headers: {
-                        Authorization: `Bearer ${supabaseServiceKey}`,
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        fileBase64: base64,
-                        fileName: driveFileName,
-                        invoiceId: invoiceData.id,
-                        folderId: targetFolder,
-                        originalMimeType: "application/pdf",
-                        userId: userId,
-                      }),
-                    }
-                  );
+                  // Move file by copying to department folder then deleting from private folder
+                  try {
+                    const copyResp = await fetch(
+                      `https://www.googleapis.com/drive/v3/files/${file.id}/copy`,
+                      {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${accessToken}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          name: driveFileName,
+                          parents: [targetFolder],
+                        }),
+                      }
+                    );
 
-                  if (uploadResp.ok) {
-                    console.log(`✓ Uploaded ${file.name} to department folder: ${dept.name}`);
-                  } else {
-                    const uploadErrBody = await uploadResp.text();
-                    console.warn(`Upload to department folder failed for ${file.name}: ${uploadResp.status} - ${uploadErrBody}`);
+                    if (copyResp.ok) {
+                      const copyData = await copyResp.json();
+                      console.log(`✓ Copied ${file.name} to department folder: ${dept?.name}, new file ID: ${copyData.id}`);
+
+                      await supabase
+                        .from("invoices")
+                        .update({ user_drive_file_id: copyData.id })
+                        .eq("id", invoiceData.id);
+
+                      movedToDeptFolder = true;
+                    } else {
+                      const copyErrBody = await copyResp.text();
+                      console.warn(`Copy to department folder failed for ${file.name}: ${copyResp.status} - ${copyErrBody}`);
+                    }
+                  } catch (copyErr: any) {
+                    console.warn(`Copy to department folder failed for ${file.name}:`, copyErr.message);
                   }
                 }
               }
+
+              // Always delete from private folder - invoice is now in the system
+              try {
+                const deleteResp = await fetch(
+                  `https://www.googleapis.com/drive/v3/files/${file.id}`,
+                  {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  }
+                );
+                if (deleteResp.ok || deleteResp.status === 204) {
+                  console.log(`🗑️  Deleted ${file.name} from user's private folder (moved to dept: ${movedToDeptFolder})`);
+                } else {
+                  const delErrBody = await deleteResp.text();
+                  console.warn(`Could not delete ${file.name} from private folder: ${deleteResp.status} - ${delErrBody}`);
+                }
+              } catch (delErr: any) {
+                console.warn(`Delete from private folder failed for ${file.name}:`, delErr.message);
+              }
             } catch (driveErr: any) {
-              console.error(`Drive upload to department folder failed for ${file.name}:`, driveErr.message);
+              console.error(`Drive move to department folder failed for ${file.name}:`, driveErr.message);
             }
           }
 
