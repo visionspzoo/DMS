@@ -500,7 +500,6 @@ Deno.serve(async (req: Request) => {
                 invoiceId: invoiceData.id,
               };
 
-              // If publicUrl is available, use it; otherwise use base64
               if (publicUrl) {
                 ocrPayload.fileUrl = publicUrl;
               } else {
@@ -544,6 +543,25 @@ Deno.serve(async (req: Request) => {
               }
             } catch (ocrErr: any) {
               console.error(`OCR failed for ${file.name}:`, ocrErr.message);
+            }
+
+            // Delete original file from private folder - invoice is now in the system
+            try {
+              const deleteResp = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${file.id}`,
+                {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                }
+              );
+              if (deleteResp.ok || deleteResp.status === 204) {
+                console.log(`🗑️  Deleted ${file.name} from user's private folder`);
+              } else {
+                const delErrBody = await deleteResp.text();
+                console.warn(`Could not delete ${file.name} from private folder: ${deleteResp.status} - ${delErrBody}`);
+              }
+            } catch (delErr: any) {
+              console.warn(`Delete from private folder failed for ${file.name}:`, delErr.message);
             }
 
             try {
@@ -590,31 +608,14 @@ Deno.serve(async (req: Request) => {
 
                   if (uploadResp.ok) {
                     console.log(`✓ Uploaded ${file.name} to department folder: ${dept.name}`);
-
-                    // Delete the original file from user's private folder
-                    try {
-                      const deleteResp = await fetch(
-                        `https://www.googleapis.com/drive/v3/files/${file.id}`,
-                        {
-                          method: "DELETE",
-                          headers: { Authorization: `Bearer ${accessToken}` },
-                        }
-                      );
-                      if (deleteResp.ok || deleteResp.status === 204) {
-                        console.log(`🗑️  Deleted ${file.name} from user's private folder`);
-                      } else {
-                        console.warn(`Could not delete ${file.name} from private folder: ${deleteResp.status}`);
-                      }
-                    } catch (delErr: any) {
-                      console.warn(`Delete from private folder failed for ${file.name}:`, delErr.message);
-                    }
                   } else {
-                    console.warn(`Upload to department folder failed for ${file.name}`);
+                    const uploadErrBody = await uploadResp.text();
+                    console.warn(`Upload to department folder failed for ${file.name}: ${uploadResp.status} - ${uploadErrBody}`);
                   }
                 }
               }
             } catch (driveErr: any) {
-              console.error(`Drive upload failed for ${file.name}:`, driveErr.message);
+              console.error(`Drive upload to department folder failed for ${file.name}:`, driveErr.message);
             }
           }
 
