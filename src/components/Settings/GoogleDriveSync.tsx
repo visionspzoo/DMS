@@ -55,13 +55,23 @@ export default function GoogleDriveSync() {
   const [showFailed, setShowFailed] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  async function callBatch(session: any, body: object): Promise<BatchResult> {
+  async function callBatch(body: object): Promise<BatchResult> {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    let token = s?.access_token;
+    if (!token) throw new Error('Brak sesji');
+
+    const expiresAt = s?.expires_at ? s.expires_at * 1000 : 0;
+    if (expiresAt && Date.now() >= expiresAt - 60 * 1000) {
+      const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+      if (refreshed) token = refreshed.access_token;
+    }
+
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-upload-to-drive`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
@@ -90,21 +100,12 @@ export default function GoogleDriveSync() {
     setPreviewData(null);
     setProgress(null);
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      let session = currentSession;
-      if (!session) throw new Error('Brak sesji');
-      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-      if (expiresAt && Date.now() >= expiresAt - 60 * 1000) {
-        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
-        if (refreshed) session = refreshed;
-      }
-
       const allInvoices: InvoicePreview[] = [];
       let offset = 0;
       let hasMore = true;
 
       while (hasMore) {
-        const data = await callBatch(session, {
+        const data = await callBatch({
           dry_run: true,
           only_missing: onlyMissing,
           batch_size: 50,
@@ -136,15 +137,6 @@ export default function GoogleDriveSync() {
     setProgress({ done: 0, total });
 
     try {
-      const { data: { session: currentSession2 } } = await supabase.auth.getSession();
-      let session = currentSession2;
-      if (!session) throw new Error('Brak sesji');
-      const expiresAt2 = session.expires_at ? session.expires_at * 1000 : 0;
-      if (expiresAt2 && Date.now() >= expiresAt2 - 60 * 1000) {
-        const { data: { session: refreshed2 } } = await supabase.auth.refreshSession();
-        if (refreshed2) session = refreshed2;
-      }
-
       let processed = 0;
       let skipped = 0;
       const errors: { id: string; error: string }[] = [];
@@ -153,7 +145,7 @@ export default function GoogleDriveSync() {
       let hasMore = true;
 
       while (hasMore) {
-        const data = await callBatch(session, {
+        const data = await callBatch({
           dry_run: false,
           only_missing: onlyMissing,
           batch_size: BATCH_SIZE,
