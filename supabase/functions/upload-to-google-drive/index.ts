@@ -20,7 +20,7 @@ interface UploadRequest {
   userId?: string;
 }
 
-interface EmailConfig {
+interface OAuthConfig {
   id: string;
   user_id: string;
   email_address: string;
@@ -46,9 +46,88 @@ function extractFolderIdFromUrl(input: string): string {
   return input;
 }
 
-async function refreshAccessToken(
+async function getServiceAccountToken(): Promise<string | null> {
+  const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+  if (!serviceAccountJson) return null;
+
+  try {
+    const serviceAccount = JSON.parse(serviceAccountJson);
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: "RS256", typ: "JWT" };
+    const payload = {
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/drive",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    };
+
+    const encode = (obj: object) =>
+      btoa(JSON.stringify(obj))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+    const headerB64 = encode(header);
+    const payloadB64 = encode(payload);
+    const signingInput = `${headerB64}.${payloadB64}`;
+
+    const pemKey = serviceAccount.private_key;
+    const pemBody = pemKey
+      .replace(/-----BEGIN PRIVATE KEY-----/, "")
+      .replace(/-----END PRIVATE KEY-----/, "")
+      .replace(/\s/g, "");
+
+    const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+    const cryptoKey = await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      new TextEncoder().encode(signingInput)
+    );
+
+    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const jwt = `${signingInput}.${signatureB64}`;
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const err = await tokenResponse.text();
+      console.error("[ServiceAccount] Token error:", err);
+      return null;
+    }
+
+    const tokenData = await tokenResponse.json();
+    return tokenData.access_token;
+  } catch (e) {
+    console.error("[ServiceAccount] Failed to get token:", e);
+    return null;
+  }
+}
+
+async function refreshOAuthToken(
   supabase: any,
-  config: EmailConfig
+  config: OAuthConfig
 ): Promise<string> {
   const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -93,48 +172,75 @@ async function refreshAccessToken(
   return tokens.access_token;
 }
 
-async function getValidAccessToken(
-  supabase: any,
-  config: EmailConfig
-): Promise<string> {
+async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string> {
   if (!config.oauth_token_expiry || !config.oauth_access_token) {
-    return await refreshAccessToken(supabase, config);
+    return await refreshOAuthToken(supabase, config);
   }
 
   const expiryTime = new Date(config.oauth_token_expiry).getTime();
   const now = Date.now();
 
   if (now >= expiryTime - 5 * 60 * 1000) {
-    return await refreshAccessToken(supabase, config);
+    return await refreshOAuthToken(supabase, config);
   }
 
   return config.oauth_access_token;
 }
 
+async function getAccessToken(supabase: any, targetUserId: string): Promise<string> {
+  const serviceToken = await getServiceAccountToken();
+  if (serviceToken) {
+    console.log("[Auth] Using Google Service Account");
+    return serviceToken;
+  }
+
+  console.log("[Auth] Service Account not configured, falling back to OAuth");
+
+  const { data: userConfigs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("user_id", targetUserId)
+    .eq("is_active", true)
+    .eq("provider", "google_workspace");
+
+  if (userConfigs && userConfigs.length > 0) {
+    return await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
+  }
+
+  const { data: anyConfigs, error: anyConfigError } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("provider", "google_workspace")
+    .limit(1);
+
+  if (anyConfigError || !anyConfigs || anyConfigs.length === 0) {
+    throw new Error("No active Google account connected. Please connect a Google account in Configuration or configure a Service Account.");
+  }
+
+  return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
+}
+
 async function findOrCreateFolder(folderName: string, parentFolderId: string, accessToken: string): Promise<string> {
   const escapedName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  
+
   const query = `name='${escapedName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  
+
   const searchResponse = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  
+
   if (!searchResponse.ok) {
     throw new Error(`Failed to search for folder: ${searchResponse.status}`);
   }
-  
+
   const searchData = await searchResponse.json();
-  
+
   if (searchData.files && searchData.files.length > 0) {
     return searchData.files[0].id;
   }
-  
+
   const createResponse = await fetch(
     "https://www.googleapis.com/drive/v3/files",
     {
@@ -150,21 +256,18 @@ async function findOrCreateFolder(folderName: string, parentFolderId: string, ac
       }),
     }
   );
-  
+
   if (!createResponse.ok) {
     throw new Error(`Failed to create folder: ${createResponse.status}`);
   }
-  
+
   const createData = await createResponse.json();
   return createData.id;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -187,8 +290,6 @@ Deno.serve(async (req: Request) => {
 
     let targetUserId: string;
 
-    // If userId is provided (internal call from service), use it
-    // Otherwise authenticate the user from the token
     if (userId) {
       targetUserId = userId;
     } else {
@@ -203,46 +304,13 @@ Deno.serve(async (req: Request) => {
       targetUserId = user.id;
     }
 
-    // Get Google OAuth config - first try the uploading user, then fall back to any active config
-    let emailConfigs = null;
-    let configError = null;
-
-    const { data: userConfigs, error: userConfigError } = await supabase
-      .from("user_email_configs")
-      .select("*")
-      .eq("user_id", targetUserId)
-      .eq("is_active", true)
-      .eq("provider", "google_workspace");
-
-    if (!userConfigError && userConfigs && userConfigs.length > 0) {
-      emailConfigs = userConfigs;
-    } else {
-      // Fall back to any active Google OAuth config in the system
-      const { data: anyConfigs, error: anyConfigError } = await supabase
-        .from("user_email_configs")
-        .select("*")
-        .eq("is_active", true)
-        .eq("provider", "google_workspace")
-        .limit(1);
-
-      emailConfigs = anyConfigs;
-      configError = anyConfigError;
-    }
-
-    if (configError || !emailConfigs || emailConfigs.length === 0) {
-      throw new Error("No active Google account connected. Please connect a Google account in Configuration.");
-    }
-
-    const oauthConfig = emailConfigs[0] as EmailConfig;
-    const accessToken = await getValidAccessToken(supabase, oauthConfig);
+    const accessToken = await getAccessToken(supabase, targetUserId);
 
     let targetFolderId: string;
 
     if (folderId) {
-      // Use direct folder ID (for KSEF invoices)
       targetFolderId = extractFolderIdFromUrl(folderId);
     } else {
-      // Use root folder and create subfolders (for regular invoices)
       const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
       if (!rootFolderUrl) {
         throw new Error("GOOGLE_DRIVE_FOLDER_ID not configured");
@@ -266,7 +334,7 @@ Deno.serve(async (req: Request) => {
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-      fileBlob = new Blob([bytes], { type: originalMimeType || 'application/octet-stream' });
+      fileBlob = new Blob([bytes], { type: originalMimeType || "application/octet-stream" });
     } else if (fileUrl) {
       const fileResponse = await fetch(fileUrl);
       if (!fileResponse.ok) {
@@ -284,19 +352,14 @@ Deno.serve(async (req: Request) => {
     };
 
     const form = new FormData();
-    form.append(
-      "metadata",
-      new Blob([JSON.stringify(metadata)], { type: "application/json" })
-    );
+    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
     form.append("file", fileBlob);
 
     const uploadResponse = await fetch(
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: form,
       }
     );
@@ -318,10 +381,10 @@ Deno.serve(async (req: Request) => {
         .eq("id", invoiceId);
 
       if (updateError) {
-        console.error('[Drive Upload] Failed to update invoice:', updateError);
+        console.error("[Drive Upload] Failed to update invoice:", updateError);
         throw updateError;
       }
-      console.log('[Drive Upload] Updated invoice', invoiceId, 'with file ID', uploadData.id);
+      console.log("[Drive Upload] Updated invoice", invoiceId, "with file ID", uploadData.id);
     }
 
     return new Response(
@@ -329,26 +392,15 @@ Deno.serve(async (req: Request) => {
         success: true,
         fileId: uploadData.id,
         driveFileId: uploadData.id,
-        webViewLink: uploadData.webViewLink
+        webViewLink: uploadData.webViewLink,
       }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Error uploading to Google Drive:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
