@@ -1105,7 +1105,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     targetFolderId: deptData.google_drive_paid_folder_id,
                     issueDate: currentInvoice.issue_date || null,
                     invoiceNumber: currentInvoice.invoice_number || null,
-                    vendorName: currentInvoice.vendor_name || null,
+                    vendorName: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim() || null,
                   }),
                 }
               );

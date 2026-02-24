@@ -330,10 +330,9 @@ Deno.serve(async (req: Request) => {
 
         const cleanFolderId = extractFolderIdFromUrl(folderId);
 
-        const dateStr = new Date(invoice.created_at).toISOString().slice(0, 10);
         const invoiceNum = (invoice.invoice_number || invoice.id.slice(0, 8)).replace(/[/\\:*?"<>|]/g, "_");
         const vendor = (invoice.supplier_name || "unknown").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
-        const fileName = `${dateStr}_${vendor}_${invoiceNum}.pdf`;
+        const fileName = `${invoiceNum} - ${vendor}.pdf`;
 
         const driveFileId = await uploadFileToDrive(
           accessToken,
