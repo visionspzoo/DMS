@@ -11,6 +11,7 @@ type Invoice = Database['public']['Tables']['invoices']['Row'] & {
       color: string;
     };
   }>;
+  cost_center?: { code: string; description: string } | null;
 };
 
 interface InvoiceListProps {
@@ -192,6 +193,18 @@ export function InvoiceList({
                   <span className={`truncate ${isInvalidBuyer ? 'text-red-600 dark:text-red-500 font-semibold' : ''}`}>
                     {(invoice.supplier_name || 'Przetwarzanie...').replace(/\[BŁĄD[^\]]*\]\s*/g, '')}
                   </span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px]">
+                  <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0" />
+                  {(invoice as any).bez_mpk ? (
+                    <span className="text-text-secondary-light dark:text-text-secondary-dark">BEZ MPK</span>
+                  ) : invoice.cost_center ? (
+                    <span className="font-medium text-text-primary-light dark:text-text-primary-dark truncate max-w-[160px]">
+                      {invoice.cost_center.code} – {invoice.cost_center.description}
+                    </span>
+                  ) : (
+                    <span className="font-bold text-red-500 dark:text-red-400">—</span>
+                  )}
                 </div>
                 {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (
                   <div className="flex items-center gap-1 flex-wrap">

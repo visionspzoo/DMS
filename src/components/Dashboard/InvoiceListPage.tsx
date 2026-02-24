@@ -339,7 +339,8 @@ export function InvoiceList() {
             pz_number,
             uploader:profiles!uploaded_by(full_name, role),
             current_approver:profiles!current_approver_id(full_name, role),
-            department:departments!department_id(id, name, parent_department_id)
+            department:departments!department_id(id, name, parent_department_id),
+            cost_center:cost_centers!cost_center_id(code, description)
           `)
           .eq('id', updatedId)
           .maybeSingle();
@@ -451,7 +452,8 @@ export function InvoiceList() {
           pz_number,
           uploader:profiles!uploaded_by(full_name, role),
           current_approver:profiles!current_approver_id(full_name, role),
-          department:departments!department_id(id, name, parent_department_id)
+          department:departments!department_id(id, name, parent_department_id),
+          cost_center:cost_centers!cost_center_id(code, description)
         `)
         .order('created_at', { ascending: false });
 
