@@ -298,20 +298,33 @@ Deno.serve(async (req: Request) => {
     let processed = 0;
     let skipped = 0;
     const errors: { id: string; error: string }[] = [];
+    const items: { id: string; invoice_number: string; vendor: string; status: string; department: string; ok: boolean; error?: string; drive_file_id?: string }[] = [];
 
     for (const invoice of invoices) {
+      const dept = deptMap[invoice.department_id];
+      const invoiceMeta = {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number || '',
+        vendor: invoice.supplier_name || '',
+        status: invoice.status,
+        department: dept?.name || '',
+      };
+
       try {
-        const dept = deptMap[invoice.department_id];
         if (!dept) {
           skipped++;
-          errors.push({ id: invoice.id, error: "Department not found" });
+          const errMsg = "Nie znaleziono dzialu";
+          errors.push({ id: invoice.id, error: errMsg });
+          items.push({ ...invoiceMeta, ok: false, error: errMsg });
           continue;
         }
 
         const folderId = getTargetFolder(invoice, dept);
         if (!folderId) {
           skipped++;
-          errors.push({ id: invoice.id, error: `No folder configured for status '${invoice.status}' in department '${dept.name}'` });
+          const errMsg = `Brak folderu dla statusu '${invoice.status}' w dziale '${dept.name}'`;
+          errors.push({ id: invoice.id, error: errMsg });
+          items.push({ ...invoiceMeta, ok: false, error: errMsg });
           continue;
         }
 
@@ -336,16 +349,18 @@ Deno.serve(async (req: Request) => {
           .eq("id", invoice.id);
 
         processed++;
+        items.push({ ...invoiceMeta, ok: true, drive_file_id: driveFileId });
         console.log(`[BulkUpload] Uploaded ${invoice.id} -> ${driveFileId}`);
       } catch (err: any) {
         errors.push({ id: invoice.id, error: err.message });
+        items.push({ ...invoiceMeta, ok: false, error: err.message });
         console.error(`[BulkUpload] Error for ${invoice.id}:`, err.message);
       }
     }
 
     const has_more = invoices.length === batchSize;
     return new Response(
-      JSON.stringify({ success: true, processed, skipped, errors, total: invoices.length, has_more, next_offset: offset + batchSize }),
+      JSON.stringify({ success: true, processed, skipped, errors, items, total: invoices.length, has_more, next_offset: offset + batchSize }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {

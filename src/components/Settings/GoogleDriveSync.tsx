@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { HardDrive, Play, Eye, CheckCircle, XCircle, AlertCircle, RefreshCw, FileText } from 'lucide-react';
+import { HardDrive, Play, Eye, CheckCircle, XCircle, AlertCircle, RefreshCw, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface InvoicePreview {
   id: string;
@@ -11,6 +11,17 @@ interface InvoicePreview {
   target_folder: string | null;
 }
 
+interface SyncItem {
+  id: string;
+  invoice_number: string;
+  vendor: string;
+  status: string;
+  department: string;
+  ok: boolean;
+  error?: string;
+  drive_file_id?: string;
+}
+
 interface BatchResult {
   success: boolean;
   processed?: number;
@@ -19,6 +30,7 @@ interface BatchResult {
   has_more?: boolean;
   next_offset?: number;
   errors?: { id: string; error: string }[];
+  items?: SyncItem[];
   invoices?: InvoicePreview[];
   error?: string;
 }
@@ -28,6 +40,7 @@ interface SyncSummary {
   processed: number;
   skipped: number;
   errors: { id: string; error: string }[];
+  items: SyncItem[];
   error?: string;
 }
 
@@ -39,6 +52,8 @@ export default function GoogleDriveSync() {
   const [result, setResult] = useState<SyncSummary | null>(null);
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [showFailed, setShowFailed] = useState(true);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   async function callBatch(session: any, body: object): Promise<BatchResult> {
     const response = await fetch(
@@ -87,18 +102,20 @@ export default function GoogleDriveSync() {
 
       setPreviewData(allInvoices);
     } catch (err: any) {
-      setResult({ success: false, processed: 0, skipped: 0, errors: [], error: err.message });
+      setResult({ success: false, processed: 0, skipped: 0, errors: [], items: [], error: err.message });
     } finally {
       setLoading(false);
     }
   }
 
   async function runSync() {
-    if (!confirm(`Czy na pewno chcesz wgrac ${previewData?.length ?? '?'} dokumentow do Google Drive? Operacja moze chwile potrwac.`)) return;
+    if (!confirm(`Czy na pewno chcesz wgrac ${previewData?.length ?? '?'} dokumentow do Google Drive?`)) return;
 
     setLoading(true);
     setPreviewData(null);
     setResult(null);
+    setShowFailed(true);
+    setShowSuccess(false);
 
     const total = previewData?.length ?? 0;
     setProgress({ done: 0, total });
@@ -110,6 +127,7 @@ export default function GoogleDriveSync() {
       let processed = 0;
       let skipped = 0;
       const errors: { id: string; error: string }[] = [];
+      const allItems: SyncItem[] = [];
       let offset = 0;
       let hasMore = true;
 
@@ -124,6 +142,7 @@ export default function GoogleDriveSync() {
         processed += data.processed ?? 0;
         skipped += data.skipped ?? 0;
         if (data.errors) errors.push(...data.errors);
+        if (data.items) allItems.push(...data.items);
 
         hasMore = data.has_more ?? false;
         offset = data.next_offset ?? (offset + BATCH_SIZE);
@@ -131,9 +150,9 @@ export default function GoogleDriveSync() {
         setProgress({ done: processed + skipped + errors.length, total });
       }
 
-      setResult({ success: true, processed, skipped, errors });
+      setResult({ success: true, processed, skipped, errors, items: allItems });
     } catch (err: any) {
-      setResult({ success: false, processed: 0, skipped: 0, errors: [], error: err.message });
+      setResult({ success: false, processed: 0, skipped: 0, errors: [], items: [], error: err.message });
     } finally {
       setLoading(false);
       setProgress(null);
@@ -146,6 +165,9 @@ export default function GoogleDriveSync() {
     accepted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   };
+
+  const failedItems = result?.items.filter(i => !i.ok) ?? [];
+  const successItems = result?.items.filter(i => i.ok) ?? [];
 
   return (
     <div className="space-y-4">
@@ -160,7 +182,6 @@ export default function GoogleDriveSync() {
         <div className="p-4 space-y-4">
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
             Wgraj wszystkie dokumenty z systemu do odpowiednich folderow Google Drive przypisanych do dzialow.
-            Dokumenty zostana wgrane przez Google Cloud API (Service Account) lub przez podpiete konto Google.
           </p>
 
           <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/30 rounded-lg">
@@ -225,13 +246,11 @@ export default function GoogleDriveSync() {
 
       {previewData && (
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-          <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-              <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                Podglad: {previewData.length} dokumentow do wgrania
-              </span>
-            </div>
+          <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+              Podglad: {previewData.length} dokumentow do wgrania
+            </span>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-xs">
@@ -241,21 +260,15 @@ export default function GoogleDriveSync() {
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Dostawca</th>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Dzial</th>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Folder dzialowy</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Folder</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
                 {previewData.map((inv) => (
                   <tr key={inv.id} className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors">
-                    <td className="px-3 py-2 font-mono text-text-primary-light dark:text-text-primary-dark">
-                      {inv.invoice_number || '-'}
-                    </td>
-                    <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark max-w-32 truncate">
-                      {inv.vendor || '-'}
-                    </td>
-                    <td className="px-3 py-2 text-text-secondary-light dark:text-text-secondary-dark">
-                      {inv.department || '-'}
-                    </td>
+                    <td className="px-3 py-2 font-mono text-text-primary-light dark:text-text-primary-dark">{inv.invoice_number || '-'}</td>
+                    <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark max-w-32 truncate">{inv.vendor || '-'}</td>
+                    <td className="px-3 py-2 text-text-secondary-light dark:text-text-secondary-dark">{inv.department || '-'}</td>
                     <td className="px-3 py-2">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColor[inv.status] || 'bg-slate-100 text-slate-600'}`}>
                         {inv.status}
@@ -279,52 +292,120 @@ export default function GoogleDriveSync() {
       )}
 
       {result && (
-        <div className={`rounded-lg border p-4 ${
-          result.success
-            ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/30'
-            : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30'
-        }`}>
+        <div className="space-y-3">
           {result.success ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                <span className="text-sm font-semibold text-green-800 dark:text-green-300">
-                  Synchronizacja zakonczona
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="text-center p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                  <div className="text-lg font-bold text-green-700 dark:text-green-400">{result.processed}</div>
-                  <div className="text-xs text-green-600 dark:text-green-500">Wgrano</div>
+            <>
+              <div className="rounded-lg border bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-semibold text-green-800 dark:text-green-300">Synchronizacja zakonczona</span>
                 </div>
-                <div className="text-center p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
-                  <div className="text-lg font-bold text-amber-700 dark:text-amber-400">{result.skipped}</div>
-                  <div className="text-xs text-amber-600 dark:text-amber-500">Pominieto</div>
-                </div>
-                <div className="text-center p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                  <div className="text-lg font-bold text-red-700 dark:text-red-400">{result.errors?.length ?? 0}</div>
-                  <div className="text-xs text-red-600 dark:text-red-500">Bledy</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                    <div className="text-lg font-bold text-green-700 dark:text-green-400">{result.processed}</div>
+                    <div className="text-xs text-green-600 dark:text-green-500">Wgrano</div>
+                  </div>
+                  <div className="text-center p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
+                    <div className="text-lg font-bold text-amber-700 dark:text-amber-400">{result.skipped}</div>
+                    <div className="text-xs text-amber-600 dark:text-amber-500">Pominieto</div>
+                  </div>
+                  <div className="text-center p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                    <div className="text-lg font-bold text-red-700 dark:text-red-400">{failedItems.length}</div>
+                    <div className="text-xs text-red-600 dark:text-red-500">Bledy</div>
+                  </div>
                 </div>
               </div>
 
-              {result.errors && result.errors.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-red-700 dark:text-red-400">Bledy:</p>
-                  {result.errors.map((err) => (
-                    <div key={err.id} className="text-xs text-red-600 dark:text-red-400 flex gap-2">
-                      <XCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                      <span><span className="font-mono">{err.id.slice(0, 8)}</span>: {err.error}</span>
+              {failedItems.length > 0 && (
+                <div className="rounded-lg border border-red-200 dark:border-red-800/30 overflow-hidden">
+                  <button
+                    onClick={() => setShowFailed(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-red-50 dark:bg-red-900/10 text-sm font-semibold text-red-800 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4" />
+                      Nie wgrano ({failedItems.length})
                     </div>
-                  ))}
+                    {showFailed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                  {showFailed && (
+                    <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-red-50 dark:bg-red-900/10 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Numer</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Dostawca</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Dzial</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Blad</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-100 dark:divide-red-900/20">
+                          {failedItems.map((item) => (
+                            <tr key={item.id} className="bg-white dark:bg-dark-surface">
+                              <td className="px-3 py-2 font-mono text-text-primary-light dark:text-text-primary-dark">{item.invoice_number || '-'}</td>
+                              <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark max-w-28 truncate">{item.vendor || '-'}</td>
+                              <td className="px-3 py-2 text-text-secondary-light dark:text-text-secondary-dark">{item.department || '-'}</td>
+                              <td className="px-3 py-2 text-red-600 dark:text-red-400 max-w-48 truncate" title={item.error}>{item.error}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+
+              {successItems.length > 0 && (
+                <div className="rounded-lg border border-green-200 dark:border-green-800/30 overflow-hidden">
+                  <button
+                    onClick={() => setShowSuccess(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-900/10 text-sm font-semibold text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Wgrano pomyslnie ({successItems.length})
+                    </div>
+                    {showSuccess ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                  {showSuccess && (
+                    <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-green-50 dark:bg-green-900/10 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-green-700 dark:text-green-400 uppercase tracking-wider">Numer</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-green-700 dark:text-green-400 uppercase tracking-wider">Dostawca</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-green-700 dark:text-green-400 uppercase tracking-wider">Dzial</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-medium text-green-700 dark:text-green-400 uppercase tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-green-100 dark:divide-green-900/20">
+                          {successItems.map((item) => (
+                            <tr key={item.id} className="bg-white dark:bg-dark-surface">
+                              <td className="px-3 py-2 font-mono text-text-primary-light dark:text-text-primary-dark">{item.invoice_number || '-'}</td>
+                              <td className="px-3 py-2 text-text-primary-light dark:text-text-primary-dark max-w-28 truncate">{item.vendor || '-'}</td>
+                              <td className="px-3 py-2 text-text-secondary-light dark:text-text-secondary-dark">{item.department || '-'}</td>
+                              <td className="px-3 py-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColor[item.status] || 'bg-slate-100 text-slate-600'}`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-red-800 dark:text-red-300">Blad synchronizacji</p>
-                <p className="text-sm text-red-700 dark:text-red-400">{result.error}</p>
+            <div className="rounded-lg border p-4 bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">Blad synchronizacji</p>
+                  <p className="text-sm text-red-700 dark:text-red-400">{result.error}</p>
+                </div>
               </div>
             </div>
           )}
