@@ -203,16 +203,34 @@ Deno.serve(async (req: Request) => {
       targetUserId = user.id;
     }
 
-    // Get user's Google OAuth config
-    const { data: emailConfigs, error: configError } = await supabase
+    // Get Google OAuth config - first try the uploading user, then fall back to any active config
+    let emailConfigs = null;
+    let configError = null;
+
+    const { data: userConfigs, error: userConfigError } = await supabase
       .from("user_email_configs")
       .select("*")
       .eq("user_id", targetUserId)
       .eq("is_active", true)
       .eq("provider", "google_workspace");
 
+    if (!userConfigError && userConfigs && userConfigs.length > 0) {
+      emailConfigs = userConfigs;
+    } else {
+      // Fall back to any active Google OAuth config in the system
+      const { data: anyConfigs, error: anyConfigError } = await supabase
+        .from("user_email_configs")
+        .select("*")
+        .eq("is_active", true)
+        .eq("provider", "google_workspace")
+        .limit(1);
+
+      emailConfigs = anyConfigs;
+      configError = anyConfigError;
+    }
+
     if (configError || !emailConfigs || emailConfigs.length === 0) {
-      throw new Error("No active Google account connected. Please connect your Google account in Configuration.");
+      throw new Error("No active Google account connected. Please connect a Google account in Configuration.");
     }
 
     const oauthConfig = emailConfigs[0] as EmailConfig;
