@@ -563,8 +563,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     };
   }, [currentInvoice.id, refreshInvoiceData]);
 
+  const hasMpk = () => {
+    return !!(currentInvoice as any).bez_mpk || !!(currentInvoice as any).cost_center_id;
+  };
+
   const handleApprove = async (action: 'approved' | 'rejected', overrideComment?: string) => {
     if (!profile) return;
+
+    if (action === 'approved' && !hasMpk()) {
+      alert('Aby zaakceptować fakturę, musisz najpierw uzupełnić pole "Konto MPK".');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -1053,6 +1062,12 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const handleMarkAsPaid = async () => {
     if (!profile) return;
+
+    if (!hasMpk()) {
+      alert('Aby oznaczyć fakturę jako opłaconą, musisz najpierw uzupełnić pole "Konto MPK".');
+      setShowPaidConfirm(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -1771,6 +1786,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const handleDirectApproval = async () => {
     if (!profile || !currentInvoice.department_id) return;
+
+    if (!hasMpk()) {
+      alert('Aby zaakceptować fakturę, musisz najpierw uzupełnić pole "Konto MPK".');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -2966,7 +2986,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Opis MPK
+                        Konto MPK
                       </label>
                       {isEditing ? (
                         <div className="mt-1 space-y-2">
