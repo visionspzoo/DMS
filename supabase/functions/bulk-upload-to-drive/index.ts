@@ -7,6 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const POLISH_MONTHS: Record<number, string> = {
+  1: "01 - Styczen",
+  2: "02 - Luty",
+  3: "03 - Marzec",
+  4: "04 - Kwiecien",
+  5: "05 - Maj",
+  6: "06 - Czerwiec",
+  7: "07 - Lipiec",
+  8: "08 - Sierpien",
+  9: "09 - Wrzesien",
+  10: "10 - Pazdziernik",
+  11: "11 - Listopad",
+  12: "12 - Grudzien",
+};
+
 function extractFolderIdFromUrl(input: string): string {
   if (!input) return input;
   const patterns = [
@@ -18,6 +33,26 @@ function extractFolderIdFromUrl(input: string): string {
     if (match) return match[1];
   }
   return input;
+}
+
+function sanitize(str: string): string {
+  return str.replace(/[/\\:*?"<>|]/g, "_").trim();
+}
+
+function buildFileName(invoice: any): string {
+  const num = sanitize(invoice.invoice_number || invoice.id.slice(0, 8)).slice(0, 80);
+  const vendor = sanitize(invoice.supplier_name || "").slice(0, 60);
+  if (vendor) return `${num}_${vendor}.pdf`;
+  return `${num}.pdf`;
+}
+
+function getInvoiceDate(invoice: any): Date {
+  const raw = invoice.issue_date || invoice.created_at;
+  if (raw) {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
 }
 
 async function getServiceAccountToken(): Promise<string | null> {
@@ -138,6 +173,64 @@ async function getOAuthTokenFromDb(supabase: any): Promise<string | null> {
   return tokens.access_token;
 }
 
+async function findOrCreateFolder(name: string, parentId: string, accessToken: string): Promise<string> {
+  const escaped = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = `name='${escaped}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+  const searchResp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (searchResp.ok) {
+    const searchData = await searchResp.json();
+    if (searchData.files && searchData.files.length > 0) {
+      return searchData.files[0].id;
+    }
+  }
+
+  const createResp = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    }),
+  });
+
+  if (!createResp.ok) {
+    const err = await createResp.text();
+    throw new Error(`Nie udalo sie utworzyc folderu '${name}': ${createResp.status} - ${err}`);
+  }
+
+  const createData = await createResp.json();
+  return createData.id;
+}
+
+async function getYearMonthFolder(
+  baseFolderId: string,
+  date: Date,
+  accessToken: string,
+  cache: Map<string, string>
+): Promise<string> {
+  const year = date.getFullYear().toString();
+  const month = date.getMonth() + 1;
+  const monthLabel = POLISH_MONTHS[month];
+  const cacheKey = `${baseFolderId}/${year}/${monthLabel}`;
+
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+
+  const yearFolderId = await findOrCreateFolder(year, baseFolderId, accessToken);
+  const monthFolderId = await findOrCreateFolder(monthLabel, yearFolderId, accessToken);
+
+  cache.set(cacheKey, monthFolderId);
+  return monthFolderId;
+}
+
 async function uploadFileToDrive(
   accessToken: string,
   folderId: string,
@@ -191,7 +284,10 @@ function getTargetFolderLabel(invoice: any, dept: any): string {
   const folderType = invoice.status === "paid" ? "oplacone" : invoice.status === "draft" ? "robocze" : "do zaplaty";
   const folderId = getTargetFolder(invoice, dept);
   if (!folderId) return `${dept.name} - brak folderu (${folderType})`;
-  return `${dept.name} / ${folderType}`;
+  const date = getInvoiceDate(invoice);
+  const year = date.getFullYear();
+  const month = POLISH_MONTHS[date.getMonth() + 1];
+  return `${dept.name} / ${folderType} / ${year} / ${month}`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -232,10 +328,9 @@ Deno.serve(async (req: Request) => {
     const accessToken = await getServiceAccountToken() || await getOAuthTokenFromDb(supabase);
     if (!accessToken) throw new Error("No Google Drive authentication available. Configure Service Account or connect a Google account.");
 
-    // Fetch invoices - for dry_run skip pdf_base64 to avoid huge payloads
     const selectFields = dryRun
-      ? "id, status, department_id, supplier_name, invoice_number, created_at"
-      : "id, pdf_base64, status, department_id, supplier_name, invoice_number, created_at";
+      ? "id, status, department_id, supplier_name, invoice_number, issue_date, created_at"
+      : "id, pdf_base64, status, department_id, supplier_name, invoice_number, issue_date, created_at";
 
     let invoicesQuery = supabase
       .from("invoices")
@@ -259,7 +354,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch all needed departments in one query
     const deptIds = [...new Set(invoices.map((i: any) => i.department_id).filter(Boolean))];
     const { data: departments, error: deptError } = await supabase
       .from("departments")
@@ -300,6 +394,8 @@ Deno.serve(async (req: Request) => {
     const errors: { id: string; error: string }[] = [];
     const items: { id: string; invoice_number: string; vendor: string; status: string; department: string; ok: boolean; error?: string; drive_file_id?: string }[] = [];
 
+    const folderCache = new Map<string, string>();
+
     for (const invoice of invoices) {
       const dept = deptMap[invoice.department_id];
       const invoiceMeta = {
@@ -319,8 +415,8 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const folderId = getTargetFolder(invoice, dept);
-        if (!folderId) {
+        const baseFolderRaw = getTargetFolder(invoice, dept);
+        if (!baseFolderRaw) {
           skipped++;
           const errMsg = `Brak folderu dla statusu '${invoice.status}' w dziale '${dept.name}'`;
           errors.push({ id: invoice.id, error: errMsg });
@@ -328,15 +424,16 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const cleanFolderId = extractFolderIdFromUrl(folderId);
+        const baseFolderId = extractFolderIdFromUrl(baseFolderRaw);
+        const invoiceDate = getInvoiceDate(invoice);
 
-        const invoiceNum = (invoice.invoice_number || invoice.id.slice(0, 8)).replace(/[/\\:*?"<>|]/g, "_");
-        const vendor = (invoice.supplier_name || "unknown").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
-        const fileName = `${invoiceNum} - ${vendor}.pdf`;
+        const targetFolderId = await getYearMonthFolder(baseFolderId, invoiceDate, accessToken, folderCache);
+
+        const fileName = buildFileName(invoice);
 
         const driveFileId = await uploadFileToDrive(
           accessToken,
-          cleanFolderId,
+          targetFolderId,
           fileName,
           invoice.pdf_base64,
           "application/pdf"
@@ -349,7 +446,7 @@ Deno.serve(async (req: Request) => {
 
         processed++;
         items.push({ ...invoiceMeta, ok: true, drive_file_id: driveFileId });
-        console.log(`[BulkUpload] Uploaded ${invoice.id} -> ${driveFileId}`);
+        console.log(`[BulkUpload] Uploaded ${invoice.id} -> ${driveFileId} (${fileName})`);
       } catch (err: any) {
         errors.push({ id: invoice.id, error: err.message });
         items.push({ ...invoiceMeta, ok: false, error: err.message });
