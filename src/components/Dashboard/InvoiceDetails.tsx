@@ -862,6 +862,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           cost_center_id: (editedInvoice as any).bez_mpk ? null : (editedInvoice.cost_center_id || null),
           bez_mpk: !!(editedInvoice as any).bez_mpk,
           pz_number: (editedInvoice as any).pz_number || null,
+          internal_comment: (editedInvoice as any).internal_comment || null,
         })
         .eq('id', currentInvoice.id);
 
@@ -3060,6 +3061,23 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         )}
                     </div>
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Komentarz wewnętrzny</label>
+                  {isEditing ? (
+                    <textarea
+                      value={(editedInvoice as any).internal_comment || ''}
+                      onChange={(e) => setEditedInvoice({ ...editedInvoice, ...(editedInvoice as any), internal_comment: e.target.value } as any)}
+                      rows={2}
+                      className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary resize-none text-sm"
+                      placeholder="Dodaj komentarz wewnętrzny (widoczny tylko dla użytkowników systemu)..."
+                    />
+                  ) : (
+                    <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
+                      {(currentInvoice as any).internal_comment || '—'}
+                    </p>
+                  )}
                 </div>
               </div>
 
