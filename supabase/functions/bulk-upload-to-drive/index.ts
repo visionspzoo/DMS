@@ -210,6 +210,8 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const dryRun = body.dry_run === true;
     const onlyMissing = body.only_missing !== false;
+    const batchSize = body.batch_size ?? 5;
+    const offset = body.offset ?? 0;
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -240,7 +242,8 @@ Deno.serve(async (req: Request) => {
       .select(selectFields)
       .not("pdf_base64", "is", null)
       .not("department_id", "is", null)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .range(offset, offset + batchSize - 1);
 
     if (onlyMissing) {
       invoicesQuery = invoicesQuery.is("google_drive_id", null);
@@ -340,8 +343,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const has_more = invoices.length === batchSize;
     return new Response(
-      JSON.stringify({ success: true, processed, skipped, errors, total: invoices.length }),
+      JSON.stringify({ success: true, processed, skipped, errors, total: invoices.length, has_more, next_offset: offset + batchSize }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {

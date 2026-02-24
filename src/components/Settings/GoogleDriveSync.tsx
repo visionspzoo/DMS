@@ -11,82 +11,132 @@ interface InvoicePreview {
   target_folder: string | null;
 }
 
-interface SyncResult {
+interface BatchResult {
   success: boolean;
   processed?: number;
   skipped?: number;
   total?: number;
+  has_more?: boolean;
+  next_offset?: number;
   errors?: { id: string; error: string }[];
-  dry_run?: boolean;
   invoices?: InvoicePreview[];
   error?: string;
 }
 
+interface SyncSummary {
+  success: boolean;
+  processed: number;
+  skipped: number;
+  errors: { id: string; error: string }[];
+  error?: string;
+}
+
+const BATCH_SIZE = 5;
+
 export default function GoogleDriveSync() {
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<InvoicePreview[] | null>(null);
-  const [result, setResult] = useState<SyncResult | null>(null);
+  const [result, setResult] = useState<SyncSummary | null>(null);
   const [onlyMissing, setOnlyMissing] = useState(true);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function callBatch(session: any, body: object): Promise<BatchResult> {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-upload-to-drive`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!response.ok) {
+      let msg = 'Blad synchronizacji';
+      try { const d = await response.json(); msg = d.error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return response.json();
+  }
 
   async function runDryRun() {
     setLoading(true);
     setResult(null);
     setPreviewData(null);
+    setProgress(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-upload-to-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ dry_run: true, only_missing: onlyMissing }),
-        }
-      );
+      const allInvoices: InvoicePreview[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      const data: SyncResult = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Błąd podglądu');
-      setPreviewData(data.invoices || []);
+      while (hasMore) {
+        const data = await callBatch(session, {
+          dry_run: true,
+          only_missing: onlyMissing,
+          batch_size: 50,
+          offset,
+        });
+        allInvoices.push(...(data.invoices || []));
+        hasMore = data.has_more ?? false;
+        offset = data.next_offset ?? (offset + 50);
+      }
+
+      setPreviewData(allInvoices);
     } catch (err: any) {
-      setResult({ success: false, error: err.message });
+      setResult({ success: false, processed: 0, skipped: 0, errors: [], error: err.message });
     } finally {
       setLoading(false);
     }
   }
 
   async function runSync() {
-    if (!confirm(`Czy na pewno chcesz wgrać ${previewData?.length ?? '?'} dokumentów do Google Drive? Operacja może chwilę potrwać.`)) return;
+    if (!confirm(`Czy na pewno chcesz wgrac ${previewData?.length ?? '?'} dokumentow do Google Drive? Operacja moze chwile potrwac.`)) return;
 
     setLoading(true);
     setPreviewData(null);
     setResult(null);
+
+    const total = previewData?.length ?? 0;
+    setProgress({ done: 0, total });
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Brak sesji');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-upload-to-drive`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ dry_run: false, only_missing: onlyMissing }),
-        }
-      );
+      let processed = 0;
+      let skipped = 0;
+      const errors: { id: string; error: string }[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      const data: SyncResult = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Błąd synchronizacji');
-      setResult(data);
+      while (hasMore) {
+        const data = await callBatch(session, {
+          dry_run: false,
+          only_missing: onlyMissing,
+          batch_size: BATCH_SIZE,
+          offset,
+        });
+
+        processed += data.processed ?? 0;
+        skipped += data.skipped ?? 0;
+        if (data.errors) errors.push(...data.errors);
+
+        hasMore = data.has_more ?? false;
+        offset = data.next_offset ?? (offset + BATCH_SIZE);
+
+        setProgress({ done: processed + skipped + errors.length, total });
+      }
+
+      setResult({ success: true, processed, skipped, errors });
     } catch (err: any) {
-      setResult({ success: false, error: err.message });
+      setResult({ success: false, processed: 0, skipped: 0, errors: [], error: err.message });
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -109,8 +159,8 @@ export default function GoogleDriveSync() {
 
         <div className="p-4 space-y-4">
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Wgraj wszystkie dokumenty z systemu do odpowiednich folderów Google Drive przypisanych do działów.
-            Dokumenty zostaną wgrane przez Google Cloud API (Service Account) lub przez podpięte konto Google.
+            Wgraj wszystkie dokumenty z systemu do odpowiednich folderow Google Drive przypisanych do dzialow.
+            Dokumenty zostana wgrane przez Google Cloud API (Service Account) lub przez podpiete konto Google.
           </p>
 
           <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/30 rounded-lg">
@@ -122,7 +172,7 @@ export default function GoogleDriveSync() {
               className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
             />
             <label htmlFor="only_missing" className="text-sm text-text-primary-light dark:text-text-primary-dark cursor-pointer">
-              Tylko dokumenty bez Google Drive ID (brakujące)
+              Tylko dokumenty bez Google Drive ID (brakujace)
             </label>
           </div>
 
@@ -155,6 +205,21 @@ export default function GoogleDriveSync() {
               </button>
             )}
           </div>
+
+          {progress && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                <span>Przetwarzanie...</span>
+                <span>{progress.done} / {progress.total}</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                <div
+                  className="bg-brand-primary h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: progress.total > 0 ? `${Math.round((progress.done / progress.total) * 100)}%` : '0%' }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -174,9 +239,9 @@ export default function GoogleDriveSync() {
                 <tr>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Numer</th>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Dostawca</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Dział</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Dzial</th>
                   <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Folder Drive</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">Folder dzialowy</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
