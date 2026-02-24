@@ -224,8 +224,8 @@ Deno.serve(async (req: Request) => {
 
     // Fetch invoices - for dry_run skip pdf_base64 to avoid huge payloads
     const selectFields = dryRun
-      ? "id, status, department_id, vendor_name, invoice_number, created_at"
-      : "id, pdf_base64, status, department_id, vendor_name, invoice_number, created_at";
+      ? "id, status, department_id, supplier_name, invoice_number, created_at"
+      : "id, pdf_base64, status, department_id, supplier_name, invoice_number, created_at";
 
     let invoicesQuery = supabase
       .from("invoices")
@@ -273,7 +273,7 @@ Deno.serve(async (req: Request) => {
             return {
               id: inv.id,
               invoice_number: inv.invoice_number,
-              vendor: inv.vendor_name,
+              vendor: inv.supplier_name,
               status: inv.status,
               department: dept?.name,
               target_folder: dept ? getTargetFolder(inv, dept) : null,
@@ -308,7 +308,7 @@ Deno.serve(async (req: Request) => {
 
         const dateStr = new Date(invoice.created_at).toISOString().slice(0, 10);
         const invoiceNum = (invoice.invoice_number || invoice.id.slice(0, 8)).replace(/[/\\:*?"<>|]/g, "_");
-        const vendor = (invoice.vendor_name || "unknown").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
+        const vendor = (invoice.supplier_name || "unknown").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
         const fileName = `${dateStr}_${vendor}_${invoiceNum}.pdf`;
 
         const driveFileId = await uploadFileToDrive(
