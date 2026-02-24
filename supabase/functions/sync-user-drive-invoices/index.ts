@@ -259,7 +259,7 @@ Deno.serve(async (req: Request) => {
       tokenExpiry: oauthConfig.oauth_token_expiry,
     });
 
-    const accessToken = await getValidAccessToken(supabase, oauthConfig);
+    let accessToken = await getValidAccessToken(supabase, oauthConfig);
     console.log("Access token obtained, length:", accessToken?.length);
 
     const { data: profile } = await supabase
