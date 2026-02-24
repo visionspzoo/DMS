@@ -227,7 +227,7 @@ async function resolveTargetFolder(
   return monthFolderId;
 }
 
-async function moveFile(accessToken: string, fileId: string, targetFolderId: string): Promise<any> {
+async function moveFile(accessToken: string, fileId: string, targetFolderId: string, newFileName?: string): Promise<any> {
   const getFileResponse = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`,
     {
@@ -244,13 +244,18 @@ async function moveFile(accessToken: string, fileId: string, targetFolderId: str
 
   const moveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${encodeURIComponent(targetFolderId)}&removeParents=${encodeURIComponent(previousParents)}&fields=id%2Cname%2Cparents`;
 
+  const patchBody: Record<string, string> = {};
+  if (newFileName) {
+    patchBody.name = newFileName;
+  }
+
   const moveResponse = await fetch(moveUrl, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(patchBody),
   });
 
   if (!moveResponse.ok) {
@@ -312,7 +317,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { fileId, targetFolderId, issueDate } = body;
+    const { fileId, targetFolderId, issueDate, invoiceNumber, vendorName } = body;
 
     if (!fileId || !targetFolderId) {
       return new Response(
@@ -359,9 +364,16 @@ Deno.serve(async (req: Request) => {
 
     const resolvedFolderId = await resolveTargetFolder(accessToken, targetFolderId, issueDate || null);
 
-    console.log(`[MoveFile] Moving file ${fileId} to folder ${resolvedFolderId} (base: ${targetFolderId}, issueDate: ${issueDate || 'none'}) via ${authMethod}`);
+    const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim();
+    let newFileName: string | undefined;
+    if (invoiceNumber || vendorName) {
+      const parts = [invoiceNumber, vendorName].filter(Boolean).map(sanitize);
+      newFileName = parts.join(' - ') + '.pdf';
+    }
 
-    const result = await moveFile(accessToken, fileId, resolvedFolderId);
+    console.log(`[MoveFile] Moving file ${fileId} to folder ${resolvedFolderId} (base: ${targetFolderId}, issueDate: ${issueDate || 'none'}, newName: ${newFileName || 'unchanged'}) via ${authMethod}`);
+
+    const result = await moveFile(accessToken, fileId, resolvedFolderId, newFileName);
 
     return new Response(
       JSON.stringify({ success: true, result, resolvedFolderId }),

@@ -1104,6 +1104,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     fileId: fileId,
                     targetFolderId: deptData.google_drive_paid_folder_id,
                     issueDate: currentInvoice.issue_date || null,
+                    invoiceNumber: currentInvoice.invoice_number || null,
+                    vendorName: currentInvoice.vendor_name || null,
                   }),
                 }
               );
