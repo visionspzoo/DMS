@@ -196,9 +196,11 @@ export default function GoogleDriveSync() {
                         {inv.status}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-text-secondary-light dark:text-text-secondary-dark">
+                    <td className="px-3 py-2 text-text-secondary-light dark:text-text-secondary-dark">
                       {inv.target_folder ? (
-                        <span className="text-green-600 dark:text-green-400">{inv.target_folder.slice(0, 20)}...</span>
+                        <span className={inv.target_folder.includes('brak folderu') ? 'text-amber-500 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}>
+                          {inv.target_folder}
+                        </span>
                       ) : (
                         <span className="text-red-500">Brak folderu</span>
                       )}

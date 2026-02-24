@@ -569,7 +569,7 @@ Deno.serve(async (req: Request) => {
                     ? `${updatedInvoice.invoice_number}.pdf`
                     : file.name;
 
-                  await fetch(
+                  const uploadResp = await fetch(
                     `${supabaseUrl}/functions/v1/upload-to-google-drive`,
                     {
                       method: "POST",
@@ -587,6 +587,30 @@ Deno.serve(async (req: Request) => {
                       }),
                     }
                   );
+
+                  if (uploadResp.ok) {
+                    console.log(`✓ Uploaded ${file.name} to department folder: ${dept.name}`);
+
+                    // Delete the original file from user's private folder
+                    try {
+                      const deleteResp = await fetch(
+                        `https://www.googleapis.com/drive/v3/files/${file.id}`,
+                        {
+                          method: "DELETE",
+                          headers: { Authorization: `Bearer ${accessToken}` },
+                        }
+                      );
+                      if (deleteResp.ok || deleteResp.status === 204) {
+                        console.log(`🗑️  Deleted ${file.name} from user's private folder`);
+                      } else {
+                        console.warn(`Could not delete ${file.name} from private folder: ${deleteResp.status}`);
+                      }
+                    } catch (delErr: any) {
+                      console.warn(`Delete from private folder failed for ${file.name}:`, delErr.message);
+                    }
+                  } else {
+                    console.warn(`Upload to department folder failed for ${file.name}`);
+                  }
                 }
               }
             } catch (driveErr: any) {

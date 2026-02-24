@@ -186,6 +186,14 @@ function getTargetFolder(invoice: any, dept: any): string | null {
   return dept.google_drive_unpaid_folder_id;
 }
 
+function getTargetFolderLabel(invoice: any, dept: any): string {
+  if (!dept) return "Brak dzialu";
+  const folderType = invoice.status === "paid" ? "oplacone" : invoice.status === "draft" ? "robocze" : "do zaplaty";
+  const folderId = getTargetFolder(invoice, dept);
+  if (!folderId) return `${dept.name} - brak folderu (${folderType})`;
+  return `${dept.name} / ${folderType}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -276,7 +284,7 @@ Deno.serve(async (req: Request) => {
               vendor: inv.supplier_name,
               status: inv.status,
               department: dept?.name,
-              target_folder: dept ? getTargetFolder(inv, dept) : null,
+              target_folder: getTargetFolderLabel(inv, dept),
             };
           }),
         }),
