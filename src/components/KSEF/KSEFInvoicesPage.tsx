@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight, Search, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -67,6 +67,7 @@ export function KSEFInvoicesPage() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement | null>(null);
   const today = new Date().toISOString().split('T')[0];
@@ -87,10 +88,21 @@ export function KSEFInvoicesPage() {
     }
   };
 
-  const getSortedInvoices = () => {
-    if (!sortColumn) return invoices;
+  const getFilteredInvoices = () => {
+    if (!searchQuery.trim()) return invoices;
+    const q = searchQuery.trim().toLowerCase();
+    return invoices.filter(inv =>
+      (inv.supplier_name || '').toLowerCase().includes(q) ||
+      (inv.supplier_nip || '').toLowerCase().includes(q) ||
+      (inv.invoice_number || '').toLowerCase().includes(q)
+    );
+  };
 
-    return [...invoices].sort((a, b) => {
+  const getSortedInvoices = () => {
+    const filtered = getFilteredInvoices();
+    if (!sortColumn) return filtered;
+
+    return [...filtered].sort((a, b) => {
       let aValue: any;
       let bValue: any;
 
@@ -122,6 +134,10 @@ export function KSEFInvoicesPage() {
       return 0;
     });
   };
+
+  useEffect(() => {
+    setSearchQuery('');
+  }, [invoiceTab]);
 
   useEffect(() => {
     loadInvoices();
@@ -1228,6 +1244,27 @@ export function KSEFInvoicesPage() {
           </div>
         )}
 
+        {mainTab === 'invoices' && (
+          <div className="relative mt-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Szukaj po dostawcy, NIP lub numerze faktury..."
+              className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40 transition"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+
         {mainTab === 'invoices' && error && (
           <div className="mt-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg flex items-start gap-2 text-sm">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -1260,18 +1297,39 @@ export function KSEFInvoicesPage() {
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
           </div>
-        ) : invoices.length === 0 ? (
+        ) : getSortedInvoices().length === 0 ? (
           <div className="p-6 text-center">
             <FileText className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
-            <p className="text-text-secondary-light dark:text-text-secondary-dark text-base">
-              Brak faktur KSEF
-            </p>
-            <p className="text-text-secondary-light dark:text-text-secondary-dark text-xs mt-1">
-              Kliknij przycisk "Pobierz faktury" aby pobrać faktury z systemu
-            </p>
+            {searchQuery ? (
+              <>
+                <p className="text-text-secondary-light dark:text-text-secondary-dark text-base">
+                  Brak wyników dla "{searchQuery}"
+                </p>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="mt-2 text-sm text-brand-primary hover:underline"
+                >
+                  Wyczyść wyszukiwanie
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-text-secondary-light dark:text-text-secondary-dark text-base">
+                  Brak faktur KSEF
+                </p>
+                <p className="text-text-secondary-light dark:text-text-secondary-dark text-xs mt-1">
+                  Kliknij przycisk "Pobierz faktury" aby pobrać faktury z systemu
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <>
+            {searchQuery && (
+              <div className="px-3 py-2 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Znaleziono <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{getSortedInvoices().length}</span> wyników dla "<span className="italic">{searchQuery}</span>"
+              </div>
+            )}
             <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
