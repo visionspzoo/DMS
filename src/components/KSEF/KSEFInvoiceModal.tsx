@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User, Trash2, EyeOff, RotateCcw } from 'lucide-react';
+import { X, FileText, Building2, Calendar, DollarSign, ArrowRight, RefreshCw, Undo2, AlertTriangle, User, Trash2, EyeOff, RotateCcw, BookmarkPlus, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -65,6 +65,9 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
   const [ignoreReason, setIgnoreReason] = useState('');
   const [ignoreReasonError, setIgnoreReasonError] = useState('');
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [savingAutomation, setSavingAutomation] = useState(false);
+  const [automationSaved, setAutomationSaved] = useState(false);
+  const [automationError, setAutomationError] = useState('');
 
   const isSupplierInvalid = currentInvoice.supplier_nip === AURA_HERBALS_NIP;
   const isBuyerInvalid = currentInvoice.buyer_nip !== AURA_HERBALS_NIP;
@@ -164,6 +167,54 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
     } catch (error) {
       console.error('Transfer error:', error);
     }
+  };
+
+  const saveNipAutomation = async (departmentId: string, userId?: string) => {
+    if (!currentInvoice.supplier_nip) return;
+
+    setSavingAutomation(true);
+    setAutomationError('');
+    try {
+      const { data: existing } = await supabase
+        .from('ksef_nip_department_mappings')
+        .select('id')
+        .eq('nip', currentInvoice.supplier_nip)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('ksef_nip_department_mappings')
+          .update({
+            department_id: departmentId,
+            assigned_user_id: userId || null,
+            supplier_name: currentInvoice.supplier_name || null,
+          })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('ksef_nip_department_mappings')
+          .insert({
+            nip: currentInvoice.supplier_nip,
+            department_id: departmentId,
+            assigned_user_id: userId || null,
+            supplier_name: currentInvoice.supplier_name || null,
+            created_by: profile?.id,
+          });
+        if (error) throw error;
+      }
+      setAutomationSaved(true);
+    } catch (err: any) {
+      setAutomationError(err.message || 'Nie udało się zapisać automatyzacji');
+    } finally {
+      setSavingAutomation(false);
+    }
+  };
+
+  const handleTransferAndSave = async () => {
+    if (!selectedDepartment) return;
+    await handleTransfer();
+    await saveNipAutomation(selectedDepartment, selectedUser || undefined);
   };
 
   const handleUnassign = async () => {
@@ -520,23 +571,57 @@ export function KSEFInvoiceModal({ invoice, departments, onClose, onTransfer, on
                         )}
                       </div>
                     )}
-                    <button
-                      onClick={handleTransfer}
-                      disabled={transferring || !selectedDepartment}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {transferring ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Dodawanie...
-                        </>
-                      ) : (
-                        <>
-                          <ArrowRight className="w-4 h-4" />
-                          Dodaj do Roboczych
-                        </>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={handleTransfer}
+                        disabled={transferring || !selectedDepartment}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      >
+                        {transferring ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Dodawanie...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight className="w-4 h-4" />
+                            Dodaj do Roboczych
+                          </>
+                        )}
+                      </button>
+                      {currentInvoice.supplier_nip && (
+                        <button
+                          onClick={handleTransferAndSave}
+                          disabled={transferring || savingAutomation || !selectedDepartment || automationSaved}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        >
+                          {transferring || savingAutomation ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              {transferring ? 'Dodawanie...' : 'Zapisywanie reguły...'}
+                            </>
+                          ) : automationSaved ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              Zapisano z automatyzacją
+                            </>
+                          ) : (
+                            <>
+                              <BookmarkPlus className="w-4 h-4" />
+                              Dodaj do roboczych i zapisz dla przyszłych faktur
+                            </>
+                          )}
+                        </button>
                       )}
-                    </button>
+                      {automationError && (
+                        <p className="text-xs text-red-600 dark:text-red-400 text-center">{automationError}</p>
+                      )}
+                      {currentInvoice.supplier_nip && !automationSaved && (
+                        <p className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark text-center">
+                          Zapisuje regułę NIP {currentInvoice.supplier_nip} → wybrany dział
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
