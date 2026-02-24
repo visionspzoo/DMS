@@ -180,6 +180,12 @@ async function uploadFileToDrive(
   return data.id;
 }
 
+function getTargetFolder(invoice: any, dept: any): string | null {
+  if (invoice.status === "paid") return dept.google_drive_paid_folder_id;
+  if (invoice.status === "draft") return dept.google_drive_draft_folder_id;
+  return dept.google_drive_unpaid_folder_id;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -192,6 +198,10 @@ Deno.serve(async (req: Request) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing authorization header");
+
+    const body = await req.json().catch(() => ({}));
+    const dryRun = body.dry_run === true;
+    const onlyMissing = body.only_missing !== false;
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -212,35 +222,40 @@ Deno.serve(async (req: Request) => {
     const accessToken = await getServiceAccountToken() || await getOAuthTokenFromDb(supabase);
     if (!accessToken) throw new Error("No Google Drive authentication available. Configure Service Account or connect a Google account.");
 
-    const body = await req.json().catch(() => ({}));
-    const dryRun = body.dry_run === true;
-    const onlyMissing = body.only_missing !== false;
-
-    const query = supabase
+    // Fetch invoices with their departments separately to avoid !inner join issues
+    let invoicesQuery = supabase
       .from("invoices")
-      .select(`
-        id, file_url, pdf_base64, status, department_id, vendor_name, invoice_number, created_at,
-        departments!inner(
-          name,
-          google_drive_draft_folder_id,
-          google_drive_unpaid_folder_id,
-          google_drive_paid_folder_id
-        )
-      `)
-      .not("pdf_base64", "is", null);
+      .select("id, file_url, pdf_base64, status, department_id, vendor_name, invoice_number, created_at")
+      .not("pdf_base64", "is", null)
+      .not("department_id", "is", null)
+      .order("created_at", { ascending: true });
 
     if (onlyMissing) {
-      query.is("google_drive_id", null);
+      invoicesQuery = invoicesQuery.is("google_drive_id", null);
     }
 
-    const { data: invoices, error: fetchError } = await query.order("created_at", { ascending: true });
-
+    const { data: invoices, error: fetchError } = await invoicesQuery;
     if (fetchError) throw fetchError;
+
     if (!invoices || invoices.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: "No invoices to process", processed: 0, skipped: 0, errors: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Fetch all needed departments in one query
+    const deptIds = [...new Set(invoices.map((i: any) => i.department_id).filter(Boolean))];
+    const { data: departments, error: deptError } = await supabase
+      .from("departments")
+      .select("id, name, google_drive_draft_folder_id, google_drive_unpaid_folder_id, google_drive_paid_folder_id")
+      .in("id", deptIds);
+
+    if (deptError) throw deptError;
+
+    const deptMap: Record<string, any> = {};
+    for (const dept of (departments || [])) {
+      deptMap[dept.id] = dept;
     }
 
     if (dryRun) {
@@ -249,18 +264,17 @@ Deno.serve(async (req: Request) => {
           success: true,
           dry_run: true,
           total: invoices.length,
-          invoices: invoices.map((inv: any) => ({
-            id: inv.id,
-            invoice_number: inv.invoice_number,
-            vendor: inv.vendor_name,
-            status: inv.status,
-            department: inv.departments?.name,
-            target_folder: inv.status === "paid"
-              ? inv.departments?.google_drive_paid_folder_id
-              : inv.status === "draft"
-              ? inv.departments?.google_drive_draft_folder_id
-              : inv.departments?.google_drive_unpaid_folder_id,
-          })),
+          invoices: invoices.map((inv: any) => {
+            const dept = deptMap[inv.department_id];
+            return {
+              id: inv.id,
+              invoice_number: inv.invoice_number,
+              vendor: inv.vendor_name,
+              status: inv.status,
+              department: dept?.name,
+              target_folder: dept ? getTargetFolder(inv, dept) : null,
+            };
+          }),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -272,21 +286,14 @@ Deno.serve(async (req: Request) => {
 
     for (const invoice of invoices) {
       try {
-        const dept = (invoice as any).departments;
+        const dept = deptMap[invoice.department_id];
         if (!dept) {
           skipped++;
+          errors.push({ id: invoice.id, error: "Department not found" });
           continue;
         }
 
-        let folderId: string | null = null;
-        if (invoice.status === "paid") {
-          folderId = dept.google_drive_paid_folder_id;
-        } else if (invoice.status === "draft") {
-          folderId = dept.google_drive_draft_folder_id;
-        } else {
-          folderId = dept.google_drive_unpaid_folder_id;
-        }
-
+        const folderId = getTargetFolder(invoice, dept);
         if (!folderId) {
           skipped++;
           errors.push({ id: invoice.id, error: `No folder configured for status '${invoice.status}' in department '${dept.name}'` });
@@ -296,8 +303,8 @@ Deno.serve(async (req: Request) => {
         const cleanFolderId = extractFolderIdFromUrl(folderId);
 
         const dateStr = new Date(invoice.created_at).toISOString().slice(0, 10);
-        const invoiceNum = invoice.invoice_number || invoice.id.slice(0, 8);
-        const vendor = (invoice.vendor_name || "unknown").replace(/[^a-zA-Z0-9_\-ąćęłńóśźżĄĆĘŁŃÓŚŹŻ ]/g, "").trim();
+        const invoiceNum = (invoice.invoice_number || invoice.id.slice(0, 8)).replace(/[/\\:*?"<>|]/g, "_");
+        const vendor = (invoice.vendor_name || "unknown").replace(/[/\\:*?"<>|]/g, "_").trim().slice(0, 50);
         const fileName = `${dateStr}_${vendor}_${invoiceNum}.pdf`;
 
         const driveFileId = await uploadFileToDrive(
@@ -314,10 +321,10 @@ Deno.serve(async (req: Request) => {
           .eq("id", invoice.id);
 
         processed++;
-        console.log(`[BulkUpload] Uploaded invoice ${invoice.id} -> Drive file ${driveFileId}`);
+        console.log(`[BulkUpload] Uploaded ${invoice.id} -> ${driveFileId}`);
       } catch (err: any) {
         errors.push({ id: invoice.id, error: err.message });
-        console.error(`[BulkUpload] Error for invoice ${invoice.id}:`, err.message);
+        console.error(`[BulkUpload] Error for ${invoice.id}:`, err.message);
       }
     }
 
