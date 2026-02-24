@@ -222,10 +222,14 @@ Deno.serve(async (req: Request) => {
     const accessToken = await getServiceAccountToken() || await getOAuthTokenFromDb(supabase);
     if (!accessToken) throw new Error("No Google Drive authentication available. Configure Service Account or connect a Google account.");
 
-    // Fetch invoices with their departments separately to avoid !inner join issues
+    // Fetch invoices - for dry_run skip pdf_base64 to avoid huge payloads
+    const selectFields = dryRun
+      ? "id, status, department_id, vendor_name, invoice_number, created_at"
+      : "id, pdf_base64, status, department_id, vendor_name, invoice_number, created_at";
+
     let invoicesQuery = supabase
       .from("invoices")
-      .select("id, file_url, pdf_base64, status, department_id, vendor_name, invoice_number, created_at")
+      .select(selectFields)
       .not("pdf_base64", "is", null)
       .not("department_id", "is", null)
       .order("created_at", { ascending: true });
