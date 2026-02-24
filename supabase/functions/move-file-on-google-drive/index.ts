@@ -242,16 +242,16 @@ async function moveFile(accessToken: string, fileId: string, targetFolderId: str
   const fileData = await getFileResponse.json();
   const previousParents = fileData.parents?.join(',') || '';
 
-  const moveResponse = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${targetFolderId}&removeParents=${previousParents}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
+  const moveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${encodeURIComponent(targetFolderId)}&removeParents=${encodeURIComponent(previousParents)}&fields=id%2Cname%2Cparents`;
+
+  const moveResponse = await fetch(moveUrl, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  });
 
   if (!moveResponse.ok) {
     const errorText = await moveResponse.text();
