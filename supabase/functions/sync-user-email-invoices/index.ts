@@ -414,10 +414,15 @@ async function getValidAccessToken(
   supabase: any,
   config: EmailConfig
 ): Promise<string> {
-  const expiryTime = new Date(config.oauth_token_expiry).getTime();
-  const now = new Date().getTime();
+  if (!config.oauth_access_token || !config.oauth_token_expiry) {
+    console.log("No access token or expiry - refreshing...");
+    return await refreshAccessToken(supabase, config);
+  }
 
-  if (now >= expiryTime - 5 * 60 * 1000) {
+  const expiryTime = new Date(config.oauth_token_expiry).getTime();
+  const now = Date.now();
+
+  if (isNaN(expiryTime) || now >= expiryTime - 5 * 60 * 1000) {
     console.log("Token expired or expiring soon, refreshing...");
     return await refreshAccessToken(supabase, config);
   }
