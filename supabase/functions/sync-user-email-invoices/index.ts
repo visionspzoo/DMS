@@ -74,12 +74,8 @@ Deno.serve(async (req: Request) => {
     let userId: string;
     let bodyData: any = {};
 
-    const contentType = req.headers.get("Content-Type") || "";
-    if (contentType.includes("application/json")) {
-      bodyData = await req.json().catch(() => ({}));
-    }
-
     if (token === supabaseServiceKey) {
+      bodyData = await req.json().catch(() => ({}));
       if (!bodyData.user_id) {
         return new Response(
           JSON.stringify({ success: false, error: "Brak user_id w trybie cron" }),
@@ -88,6 +84,7 @@ Deno.serve(async (req: Request) => {
       }
       userId = bodyData.user_id;
     } else {
+      bodyData = await req.json().catch(() => ({}));
       const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       if (userError || !user) {
         return new Response(

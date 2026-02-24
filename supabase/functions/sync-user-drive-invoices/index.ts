@@ -498,9 +498,14 @@ Deno.serve(async (req: Request) => {
 
               const ocrPayload: any = {
                 invoiceId: invoiceData.id,
-                pdfBase64: base64,
-                mimeType: "application/pdf",
               };
+
+              // If publicUrl is available, use it; otherwise use base64
+              if (publicUrl) {
+                ocrPayload.fileUrl = publicUrl;
+              } else {
+                ocrPayload.pdfBase64 = base64;
+              }
 
               const ocrResponse = await fetch(
                 `${supabaseUrl}/functions/v1/process-invoice-ocr`,

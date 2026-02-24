@@ -217,8 +217,8 @@ export async function uploadInvoiceFile(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          fileUrl: publicUrl,
           invoiceId: finalInvoiceData.id,
-          fileBase64: pdfBase64,
           mimeType: file.type,
         }),
       }
