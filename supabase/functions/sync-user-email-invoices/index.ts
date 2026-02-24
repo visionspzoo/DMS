@@ -747,6 +747,53 @@ async function syncEmailAccount(
 
           if (!isRealInvoice) continue;
 
+          // Upload to department Google Drive
+          try {
+            const { data: refreshedInvoice } = await supabase
+              .from("invoices")
+              .select("id, department_id, status")
+              .eq("id", invoiceData.id)
+              .maybeSingle();
+
+            const deptId = refreshedInvoice?.department_id;
+            if (deptId) {
+              const { data: deptData } = await supabase
+                .from("departments")
+                .select("google_drive_draft_folder_id")
+                .eq("id", deptId)
+                .maybeSingle();
+
+              if (deptData?.google_drive_draft_folder_id) {
+                const uploadResp = await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/upload-to-google-drive`,
+                  {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      fileBase64: base64Content,
+                      fileName: part.filename,
+                      folderId: deptData.google_drive_draft_folder_id,
+                      mimeType: "application/pdf",
+                      originalMimeType: "application/pdf",
+                      userId: userId,
+                      invoiceId: invoiceData.id,
+                    }),
+                  }
+                );
+                if (uploadResp.ok) {
+                  console.log(`[email-sync] Uploaded ${part.filename} to department Drive folder`);
+                } else {
+                  console.warn(`[email-sync] Drive upload failed: ${await uploadResp.text()}`);
+                }
+              }
+            }
+          } catch (driveErr) {
+            console.error("[email-sync] Error uploading to Drive:", driveErr);
+          }
+
           invoiceCount++;
           syncedCount++;
       }

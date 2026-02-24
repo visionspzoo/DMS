@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Upload, FileText, Loader, CheckCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { computeFileHash, checkDuplicateInDb, uploadInvoiceFile, validateFiles } from '../../lib/uploadUtils';
 
 export function UploadInvoice() {
   const { user } = useAuth();
@@ -14,11 +14,12 @@ export function UploadInvoice() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setError('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.');
+      const { valid, errors } = validateFiles([selectedFile]);
+      if (errors.length > 0) {
+        setError(errors[0]);
         return;
       }
-      setFile(selectedFile);
+      setFile(valid[0]);
       setError('');
       setSuccess(false);
     }
@@ -30,40 +31,26 @@ export function UploadInvoice() {
     setUploading(true);
     setError('');
     setSuccess(false);
-    setProgress('Przesyłanie pliku...');
+    setProgress('Obliczanie sumy kontrolnej...');
 
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `invoices/${fileName}`;
+      const hash = await computeFileHash(file);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, file);
+      const dupCheck = await checkDuplicateInDb(hash, user.id);
+      if (dupCheck.isDuplicate) {
+        const label = dupCheck.invoiceNumber || dupCheck.uploaderName;
+        setError(`Ten plik został już przesłany (${label})`);
+        setUploading(false);
+        setProgress('');
+        return;
+      }
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
-
-      setProgress('Zapisywanie do bazy danych...');
-
-      const { error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          file_url: publicUrl,
-          file_name: file.name,
-          uploaded_by: user.id,
-        });
-
-      if (insertError) throw insertError;
+      await uploadInvoiceFile(file, hash, user.id, (msg) => setProgress(msg));
 
       setSuccess(true);
       setProgress('');
       setFile(null);
 
-      // Reset form after 2 seconds
       setTimeout(() => {
         setSuccess(false);
       }, 3000);

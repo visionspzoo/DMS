@@ -293,6 +293,59 @@ Deno.serve(async (req: Request) => {
           console.log("[slack-invoice-bot] Invoice created:", invoiceData.id);
           results.push({ name: file.name, status: "ok", invoiceId: invoiceData.id });
 
+          // Upload to department Google Drive in background
+          EdgeRuntime.waitUntil((async () => {
+            try {
+              const supabaseInternal = createClient(
+                Deno.env.get("SUPABASE_URL")!,
+                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+              );
+              const { data: refreshedInvoice } = await supabaseInternal
+                .from("invoices")
+                .select("id, department_id")
+                .eq("id", invoiceData.id)
+                .maybeSingle();
+
+              const deptId = refreshedInvoice?.department_id;
+              if (deptId) {
+                const { data: deptData } = await supabaseInternal
+                  .from("departments")
+                  .select("google_drive_draft_folder_id")
+                  .eq("id", deptId)
+                  .maybeSingle();
+
+                if (deptData?.google_drive_draft_folder_id) {
+                  const uploadResp = await fetch(
+                    `${Deno.env.get("SUPABASE_URL")}/functions/v1/upload-to-google-drive`,
+                    {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        fileBase64: base64,
+                        fileName: file.name,
+                        folderId: deptData.google_drive_draft_folder_id,
+                        mimeType,
+                        originalMimeType: mimeType,
+                        userId,
+                        invoiceId: invoiceData.id,
+                      }),
+                    }
+                  );
+                  if (uploadResp.ok) {
+                    console.log(`[slack-invoice-bot] Uploaded ${file.name} to department Drive folder`);
+                  } else {
+                    console.warn(`[slack-invoice-bot] Drive upload failed: ${await uploadResp.text()}`);
+                  }
+                }
+              }
+            } catch (driveErr) {
+              console.error("[slack-invoice-bot] Error uploading to Drive:", driveErr);
+            }
+          })());
+
           EdgeRuntime.waitUntil((async () => {
             try {
               const ocrUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-invoice-ocr`;
