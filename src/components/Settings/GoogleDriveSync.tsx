@@ -68,8 +68,16 @@ export default function GoogleDriveSync() {
       }
     );
     if (!response.ok) {
-      let msg = 'Blad synchronizacji';
-      try { const d = await response.json(); msg = d.error || msg; } catch {}
+      let msg = `Blad synchronizacji (HTTP ${response.status})`;
+      try {
+        const d = await response.json();
+        msg = d.error || msg;
+      } catch {
+        try {
+          const text = await response.text();
+          if (text) msg = text.substring(0, 200);
+        } catch {}
+      }
       throw new Error(msg);
     }
     return response.json();
