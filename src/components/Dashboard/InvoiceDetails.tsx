@@ -3063,7 +3063,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   </div>
                 </div>
 
-                <div>
+                <div className="mt-4">
                   <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Komentarz wewnętrzny</label>
                   {isEditing ? (
                     <textarea
