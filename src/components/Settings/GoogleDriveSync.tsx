@@ -90,8 +90,14 @@ export default function GoogleDriveSync() {
     setPreviewData(null);
     setProgress(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      let session = currentSession;
       if (!session) throw new Error('Brak sesji');
+      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+      if (expiresAt && Date.now() >= expiresAt - 60 * 1000) {
+        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+        if (refreshed) session = refreshed;
+      }
 
       const allInvoices: InvoicePreview[] = [];
       let offset = 0;
@@ -130,8 +136,14 @@ export default function GoogleDriveSync() {
     setProgress({ done: 0, total });
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session: currentSession2 } } = await supabase.auth.getSession();
+      let session = currentSession2;
       if (!session) throw new Error('Brak sesji');
+      const expiresAt2 = session.expires_at ? session.expires_at * 1000 : 0;
+      if (expiresAt2 && Date.now() >= expiresAt2 - 60 * 1000) {
+        const { data: { session: refreshed2 } } = await supabase.auth.refreshSession();
+        if (refreshed2) session = refreshed2;
+      }
 
       let processed = 0;
       let skipped = 0;
