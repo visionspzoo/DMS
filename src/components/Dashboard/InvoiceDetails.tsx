@@ -1103,6 +1103,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   body: JSON.stringify({
                     fileId: fileId,
                     targetFolderId: deptData.google_drive_paid_folder_id,
+                    issueDate: currentInvoice.issue_date || null,
                   }),
                 }
               );

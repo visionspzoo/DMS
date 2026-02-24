@@ -153,6 +153,80 @@ async function getServiceAccountToken(): Promise<string | null> {
   }
 }
 
+async function getOrCreateFolder(
+  accessToken: string,
+  parentFolderId: string,
+  folderName: string
+): Promise<string> {
+  const searchResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+      `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    )}&fields=files(id,name)&spaces=drive`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!searchResponse.ok) {
+    throw new Error(`Failed to search for folder: ${await searchResponse.text()}`);
+  }
+
+  const searchData = await searchResponse.json();
+
+  if (searchData.files && searchData.files.length > 0) {
+    console.log(`[MoveFile] Found existing folder '${folderName}': ${searchData.files[0].id}`);
+    return searchData.files[0].id;
+  }
+
+  const createResponse = await fetch(
+    "https://www.googleapis.com/drive/v3/files?fields=id,name",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentFolderId],
+      }),
+    }
+  );
+
+  if (!createResponse.ok) {
+    throw new Error(`Failed to create folder '${folderName}': ${await createResponse.text()}`);
+  }
+
+  const createdFolder = await createResponse.json();
+  console.log(`[MoveFile] Created folder '${folderName}': ${createdFolder.id}`);
+  return createdFolder.id;
+}
+
+async function resolveTargetFolder(
+  accessToken: string,
+  baseFolderId: string,
+  issueDate: string | null
+): Promise<string> {
+  if (!issueDate) {
+    return baseFolderId;
+  }
+
+  const date = new Date(issueDate);
+  if (isNaN(date.getTime())) {
+    console.warn(`[MoveFile] Invalid issueDate '${issueDate}', using base folder`);
+    return baseFolderId;
+  }
+
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+
+  const yearFolderId = await getOrCreateFolder(accessToken, baseFolderId, year);
+  const monthFolderId = await getOrCreateFolder(accessToken, yearFolderId, month);
+
+  return monthFolderId;
+}
+
 async function moveFile(accessToken: string, fileId: string, targetFolderId: string): Promise<any> {
   const getFileResponse = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`,
@@ -237,7 +311,8 @@ Deno.serve(async (req: Request) => {
       throw new Error("Unauthorized");
     }
 
-    const { fileId, targetFolderId } = await req.json();
+    const body = await req.json();
+    const { fileId, targetFolderId, issueDate } = body;
 
     if (!fileId || !targetFolderId) {
       return new Response(
@@ -249,7 +324,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Try user's own OAuth first
     let accessToken: string | null = null;
     let authMethod = 'none';
 
@@ -269,13 +343,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Fallback to service account
     if (!accessToken) {
       accessToken = await getServiceAccountToken();
       if (accessToken) authMethod = 'service_account';
     }
 
-    // Fallback to any active OAuth account
     if (!accessToken) {
       accessToken = await getAnyActiveOAuthToken(supabase);
       if (accessToken) authMethod = 'any_oauth';
@@ -285,12 +357,14 @@ Deno.serve(async (req: Request) => {
       throw new Error("No Google Drive authentication available. Configure Service Account or connect a Google account.");
     }
 
-    console.log(`[MoveFile] Moving file ${fileId} to folder ${targetFolderId} via ${authMethod}`);
+    const resolvedFolderId = await resolveTargetFolder(accessToken, targetFolderId, issueDate || null);
 
-    const result = await moveFile(accessToken, fileId, targetFolderId);
+    console.log(`[MoveFile] Moving file ${fileId} to folder ${resolvedFolderId} (base: ${targetFolderId}, issueDate: ${issueDate || 'none'}) via ${authMethod}`);
+
+    const result = await moveFile(accessToken, fileId, resolvedFolderId);
 
     return new Response(
-      JSON.stringify({ success: true, result }),
+      JSON.stringify({ success: true, result, resolvedFolderId }),
       {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
