@@ -609,7 +609,10 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
         if (!row.user) return;
         if (row.user.department_id !== row.department_id) return;
 
-        counts[row.department_id] = (counts[row.department_id] || 0) + 1;
+        const isDirectorOfDept = row.user_id === deptDirectorMap[row.department_id];
+        if (!isDirectorOfDept) {
+          counts[row.department_id] = (counts[row.department_id] || 0) + 1;
+        }
 
         const formalDirectorId = deptDirectorMap[row.department_id];
         const formalManagerId = deptManagerMap[row.department_id];
