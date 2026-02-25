@@ -165,7 +165,7 @@ async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string
   return config.oauth_access_token;
 }
 
-async function getAccessToken(supabase: any, targetUserId: string): Promise<string> {
+async function getAccessToken(supabase: any, targetUserId: string): Promise<string | null> {
   const serviceToken = await getServiceAccountToken();
   if (serviceToken) {
     console.log("[Auth] Using Google Service Account");
@@ -183,18 +183,18 @@ async function getAccessToken(supabase: any, targetUserId: string): Promise<stri
     return await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
   }
 
-  const { data: anyConfigs, error: anyConfigError } = await supabase
+  const { data: anyConfigs } = await supabase
     .from("user_email_configs")
     .select("*")
     .eq("is_active", true)
     .eq("provider", "google_workspace")
     .limit(1);
 
-  if (anyConfigError || !anyConfigs || anyConfigs.length === 0) {
-    throw new Error("No active Google account connected. Please connect a Google account in Configuration or configure a Service Account.");
+  if (anyConfigs && anyConfigs.length > 0) {
+    return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
   }
 
-  return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
+  return null;
 }
 
 async function findOrCreateFolder(folderName: string, parentFolderId: string, accessToken: string): Promise<string> {
@@ -239,6 +239,39 @@ async function findOrCreateFolder(folderName: string, parentFolderId: string, ac
   return createData.id;
 }
 
+async function uploadToSupabaseStorage(
+  supabase: any,
+  userId: string,
+  invoiceId: string,
+  fileName: string,
+  mimeType: string,
+  bytes: Uint8Array
+): Promise<{ storagePath: string; publicUrl: string }> {
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = `${userId}/${invoiceId}/${Date.now()}_${sanitizedFileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("invoice-attachments")
+    .upload(storagePath, bytes, {
+      contentType: mimeType || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw new Error(`Storage upload failed: ${uploadError.message}`);
+  }
+
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from("invoice-attachments")
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    throw new Error(`Failed to create signed URL: ${signedUrlError?.message}`);
+  }
+
+  return { storagePath, publicUrl: signedUrlData.signedUrl };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -272,97 +305,149 @@ Deno.serve(async (req: Request) => {
     if (!fileName) throw new Error("fileName is required");
     if (!invoiceId) throw new Error("invoiceId is required");
 
-    const accessToken = await getAccessToken(supabase, user.id);
-
-    let attachmentsFolderId: string | null = null;
-
-    if (departmentId) {
-      const { data: dept } = await supabase
-        .from("departments")
-        .select("google_drive_attachments_folder_id, name")
-        .eq("id", departmentId)
-        .maybeSingle();
-
-      if (dept?.google_drive_attachments_folder_id) {
-        attachmentsFolderId = extractFolderIdFromUrl(dept.google_drive_attachments_folder_id);
-      }
-    }
-
-    if (!attachmentsFolderId) {
-      const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
-      if (!rootFolderUrl) {
-        throw new Error("Brak skonfigurowanego folderu zalacznikow. Skonfiguruj folder zalacznikow dla dzialu w Ustawieniach -> Dzialy.");
-      }
-      const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
-      attachmentsFolderId = await findOrCreateFolder("Zalaczniki", rootFolderId, accessToken);
-    }
-
-    const invoiceFolderName = invoiceNumber && invoiceNumber.trim()
-      ? invoiceNumber.trim().replace(/[/\\:*?"<>|]/g, "_")
-      : `faktura_${invoiceId.slice(0, 8)}`;
-
-    const invoiceFolderId = await findOrCreateFolder(invoiceFolderName, attachmentsFolderId, accessToken);
-
     const binaryString = atob(fileBase64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    const fileBlob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
 
-    const metadata = {
-      name: fileName,
-      mimeType: mimeType || "application/octet-stream",
-      parents: [invoiceFolderId],
-    };
+    const accessToken = await getAccessToken(supabase, user.id);
 
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", fileBlob);
+    let driveConfigured = false;
+    let attachmentsFolderId: string | null = null;
 
-    const uploadResponse = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: form,
+    if (accessToken) {
+      if (departmentId) {
+        const { data: dept } = await supabase
+          .from("departments")
+          .select("google_drive_attachments_folder_id, name")
+          .eq("id", departmentId)
+          .maybeSingle();
+
+        if (dept?.google_drive_attachments_folder_id) {
+          attachmentsFolderId = extractFolderIdFromUrl(dept.google_drive_attachments_folder_id);
+        }
       }
-    );
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Google Drive upload failed: ${uploadResponse.status} - ${errorText}`);
+      if (!attachmentsFolderId) {
+        const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
+        if (rootFolderUrl) {
+          const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
+          try {
+            attachmentsFolderId = await findOrCreateFolder("Zalaczniki", rootFolderId, accessToken);
+          } catch (e) {
+            console.warn("[Drive] Could not create Zalaczniki folder:", e);
+          }
+        }
+      }
+
+      if (attachmentsFolderId) {
+        driveConfigured = true;
+      }
     }
 
-    const uploadData = await uploadResponse.json();
+    if (driveConfigured && accessToken && attachmentsFolderId) {
+      const invoiceFolderName = invoiceNumber && invoiceNumber.trim()
+        ? invoiceNumber.trim().replace(/[/\\:*?"<>|]/g, "_")
+        : `faktura_${invoiceId.slice(0, 8)}`;
 
-    const { error: insertError } = await supabase
-      .from("invoice_attachments")
-      .insert({
-        invoice_id: invoiceId,
-        uploaded_by: user.id,
-        file_name: fileName,
-        google_drive_file_id: uploadData.id,
-        google_drive_web_view_link: uploadData.webViewLink,
-        google_drive_folder_id: invoiceFolderId,
-        mime_type: mimeType || "application/octet-stream",
-        file_size: fileSize || null,
-      });
+      const invoiceFolderId = await findOrCreateFolder(invoiceFolderName, attachmentsFolderId, accessToken);
 
-    if (insertError) {
-      console.error("[Attachment] Failed to insert record:", insertError);
-      throw new Error(`Database error: ${insertError.message}`);
-    }
+      const fileBlob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        fileId: uploadData.id,
-        webViewLink: uploadData.webViewLink,
+      const metadata = {
+        name: fileName,
+        mimeType: mimeType || "application/octet-stream",
+        parents: [invoiceFolderId],
+      };
+
+      const form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+      form.append("file", fileBlob);
+
+      const uploadResponse = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: form,
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Google Drive upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      const uploadData = await uploadResponse.json();
+
+      const { error: insertError } = await supabase
+        .from("invoice_attachments")
+        .insert({
+          invoice_id: invoiceId,
+          uploaded_by: user.id,
+          file_name: fileName,
+          google_drive_file_id: uploadData.id,
+          google_drive_web_view_link: uploadData.webViewLink,
+          google_drive_folder_id: invoiceFolderId,
+          mime_type: mimeType || "application/octet-stream",
+          file_size: fileSize || null,
+        });
+
+      if (insertError) {
+        throw new Error(`Database error: ${insertError.message}`);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          fileId: uploadData.id,
+          webViewLink: uploadData.webViewLink,
+          fileName,
+          storage: "google_drive",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } else {
+      const { storagePath, publicUrl } = await uploadToSupabaseStorage(
+        supabase,
+        user.id,
+        invoiceId,
         fileName,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+        mimeType,
+        bytes
+      );
+
+      const { error: insertError } = await supabase
+        .from("invoice_attachments")
+        .insert({
+          invoice_id: invoiceId,
+          uploaded_by: user.id,
+          file_name: fileName,
+          google_drive_file_id: null,
+          google_drive_web_view_link: publicUrl,
+          google_drive_folder_id: null,
+          storage_path: storagePath,
+          mime_type: mimeType || "application/octet-stream",
+          file_size: fileSize || null,
+        });
+
+      if (insertError) {
+        await supabase.storage.from("invoice-attachments").remove([storagePath]);
+        throw new Error(`Database error: ${insertError.message}`);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          storagePath,
+          webViewLink: publicUrl,
+          fileName,
+          storage: "supabase",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
   } catch (error) {
     console.error("Error uploading attachment:", error);
     return new Response(

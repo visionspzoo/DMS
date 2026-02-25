@@ -8,8 +8,9 @@ interface Attachment {
   invoice_id: string;
   uploaded_by: string;
   file_name: string;
-  google_drive_file_id: string;
-  google_drive_web_view_link: string;
+  google_drive_file_id: string | null;
+  google_drive_web_view_link: string | null;
+  storage_path: string | null;
   mime_type: string | null;
   file_size: number | null;
   created_at: string;
@@ -55,7 +56,8 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
       const { data, error } = await supabase
         .from('invoice_attachments')
         .select(`
-          *,
+          id, invoice_id, uploaded_by, file_name, google_drive_file_id,
+          google_drive_web_view_link, storage_path, mime_type, file_size, created_at,
           uploader:uploaded_by(full_name)
         `)
         .eq('invoice_id', invoiceId)
@@ -165,6 +167,11 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
         .eq('id', attachment.id);
 
       if (error) throw error;
+
+      if (attachment.storage_path) {
+        await supabase.storage.from('invoice-attachments').remove([attachment.storage_path]);
+      }
+
       setAttachments(prev => prev.filter(a => a.id !== attachment.id));
     } catch (err) {
       console.error('Error deleting attachment:', err);
@@ -265,16 +272,18 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
-                <a
-                  href={attachment.google_drive_web_view_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="p-1.5 rounded-md hover:bg-light-surface dark:hover:bg-dark-surface transition-colors text-brand-primary"
-                  title="Otwórz w Google Drive"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {attachment.google_drive_web_view_link && (
+                  <a
+                    href={attachment.google_drive_web_view_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="p-1.5 rounded-md hover:bg-light-surface dark:hover:bg-dark-surface transition-colors text-brand-primary"
+                    title={attachment.google_drive_file_id ? 'Otwórz w Google Drive' : 'Pobierz plik'}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
                 {canDelete(attachment) && (
                   <button
                     onClick={() => handleDelete(attachment)}
