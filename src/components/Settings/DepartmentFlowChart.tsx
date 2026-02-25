@@ -43,13 +43,15 @@ interface TreeNode {
   dept: Department;
   children: TreeNode[];
   memberCount: number;
-  guestMembers: DeptMember[];
+  workflowDirectors: DeptMember[];
+  allMembers: DeptMember[];
 }
 
 function buildTree(
   departments: Department[],
   memberCounts: Record<string, number>,
-  guestMembersMap: Record<string, DeptMember[]>
+  workflowDirectorsMap: Record<string, DeptMember[]>,
+  allMembersMap: Record<string, DeptMember[]>
 ): TreeNode[] {
   const getChildren = (parentId: string): TreeNode[] => {
     return departments
@@ -58,7 +60,8 @@ function buildTree(
         dept: d,
         children: getChildren(d.id),
         memberCount: memberCounts[d.id] || 0,
-        guestMembers: guestMembersMap[d.id] || [],
+        workflowDirectors: workflowDirectorsMap[d.id] || [],
+        allMembers: allMembersMap[d.id] || [],
       }));
   };
 
@@ -68,73 +71,191 @@ function buildTree(
       dept: d,
       children: getChildren(d.id),
       memberCount: memberCounts[d.id] || 0,
-      guestMembers: guestMembersMap[d.id] || [],
+      workflowDirectors: workflowDirectorsMap[d.id] || [],
+      allMembers: allMembersMap[d.id] || [],
     }));
 }
 
-function NodeCard({ node }: { node: TreeNode }) {
-  const hasLimit = node.dept.max_invoice_amount || node.dept.max_monthly_amount;
+function MembersModal({ node, onClose }: { node: TreeNode; onClose: () => void }) {
+  const roleLabel: Record<string, string> = {
+    Dyrektor: 'Dyrektor',
+    Kierownik: 'Kierownik',
+    Specjalista: 'Specjalista',
+    admin: 'Admin',
+  };
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      {node.dept.director && (
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
-          <Crown className="w-3 h-3" />
-          <span>{node.dept.director.full_name}</span>
-        </div>
-      )}
-
-      {node.guestMembers.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {node.guestMembers.map(m => (
-            <div
-              key={m.user_id}
-              className="flex items-center gap-1.5 px-2 py-1 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50 rounded text-[10px] text-sky-700 dark:text-sky-400 font-medium"
-            >
-              <UserCheck className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate max-w-[140px]">{m.full_name}</span>
-              <span className="opacity-60">({m.role})</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="p-1.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-md flex-shrink-0">
-            <Building2 className="w-3.5 h-3.5 text-brand-primary" />
-          </div>
-          <span className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark truncate">
-            {node.dept.name}
-          </span>
-        </div>
-
-        {node.dept.manager && (
-          <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-1 truncate">
-            {node.dept.manager.full_name}
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 mt-1.5">
-          <div className="flex items-center gap-1">
-            <Users className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-            <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-              {node.memberCount}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-light-surface dark:bg-dark-surface rounded-xl shadow-xl border border-slate-200 dark:border-slate-700/50 w-80 max-h-[480px] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-brand-primary" />
+            <span className="font-semibold text-sm text-text-primary-light dark:text-text-primary-dark">
+              {node.dept.name}
             </span>
           </div>
-          {hasLimit && (
-            <div className="flex items-center gap-1">
-              <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-              <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
-                {node.dept.max_invoice_amount
-                  ? `${(node.dept.max_invoice_amount / 1000).toFixed(0)}k`
-                  : '-'}
-              </span>
+          <button
+            onClick={onClose}
+            className="text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-3">
+          {node.dept.director && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 dark:text-orange-400 mb-1.5">
+                Dyrektor
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded-lg">
+                <Crown className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <span className="text-xs font-medium text-orange-800 dark:text-orange-300">
+                  {node.dept.director.full_name}
+                </span>
+              </div>
             </div>
+          )}
+
+          {node.workflowDirectors.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-500 dark:text-sky-400 mb-1.5">
+                Dyrektorzy w obiegu
+              </div>
+              <div className="space-y-1">
+                {node.workflowDirectors.map(m => (
+                  <div key={m.user_id} className="flex items-center gap-2 px-3 py-2 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50 rounded-lg">
+                    <UserCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 flex-shrink-0" />
+                    <span className="text-xs font-medium text-sky-800 dark:text-sky-300">
+                      {m.full_name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {node.dept.manager && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                Kierownik
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg">
+                <Briefcase className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  {node.dept.manager.full_name}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {node.allMembers.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                Członkowie
+              </div>
+              <div className="space-y-1">
+                {node.allMembers.map(m => (
+                  <div key={m.user_id} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-xs text-slate-700 dark:text-slate-300">{m.full_name}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {roleLabel[m.role] ?? m.role}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!node.dept.director && !node.dept.manager && node.allMembers.length === 0 && node.workflowDirectors.length === 0 && (
+            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark text-center py-4">
+              Brak przypisanych osób
+            </p>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function NodeCard({ node }: { node: TreeNode }) {
+  const [showModal, setShowModal] = useState(false);
+  const hasLimit = node.dept.max_invoice_amount || node.dept.max_monthly_amount;
+
+  return (
+    <>
+      {showModal && <MembersModal node={node} onClose={() => setShowModal(false)} />}
+
+      <div className="flex flex-col items-center gap-2">
+        {node.dept.director && (
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
+            <Crown className="w-3 h-3" />
+            <span>{node.dept.director.full_name}</span>
+          </div>
+        )}
+
+        {node.workflowDirectors.map(m => (
+          <div
+            key={m.user_id}
+            className="flex items-center gap-1.5 px-2 py-1 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50 rounded text-[10px] text-sky-700 dark:text-sky-400 font-medium"
+          >
+            <UserCheck className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate max-w-[140px]">{m.full_name}</span>
+          </div>
+        ))}
+
+        <button
+          onClick={() => setShowModal(true)}
+          className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md hover:border-brand-primary/40 dark:hover:border-brand-primary/40 transition-all text-left group"
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="p-1.5 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-md flex-shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-brand-primary" />
+            </div>
+            <span className="text-xs font-bold text-text-primary-light dark:text-text-primary-dark truncate flex-1">
+              {node.dept.name}
+            </span>
+          </div>
+
+          {node.dept.manager && (
+            <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-1 truncate">
+              {node.dept.manager.full_name}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex items-center gap-1">
+              <Users className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+              <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                {node.memberCount}
+              </span>
+            </div>
+            {hasLimit && (
+              <div className="flex items-center gap-1">
+                <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
+                <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark">
+                  {node.dept.max_invoice_amount
+                    ? `${(node.dept.max_invoice_amount / 1000).toFixed(0)}k`
+                    : '-'}
+                </span>
+              </div>
+            )}
+            <div className="ml-auto opacity-0 group-hover:opacity-60 transition-opacity">
+              <Users className="w-3 h-3 text-brand-primary" />
+            </div>
+          </div>
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -460,7 +581,8 @@ function ContractApprovalChain() {
 
 export default function DepartmentFlowChart({ departments }: { departments: Department[] }) {
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
-  const [guestMembersMap, setGuestMembersMap] = useState<Record<string, DeptMember[]>>({});
+  const [workflowDirectorsMap, setWorkflowDirectorsMap] = useState<Record<string, DeptMember[]>>({});
+  const [allMembersMap, setAllMembersMap] = useState<Record<string, DeptMember[]>>({});
   const [loading, setLoading] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showFlow, setShowFlow] = useState(true);
@@ -479,7 +601,8 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
       if (error) throw error;
 
       const counts: Record<string, number> = {};
-      const guestMap: Record<string, DeptMember[]> = {};
+      const wdMap: Record<string, DeptMember[]> = {};
+      const amMap: Record<string, DeptMember[]> = {};
 
       const deptDirectorMap: Record<string, string | null> = {};
       departments.forEach(d => {
@@ -487,23 +610,30 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
       });
 
       data?.forEach((row: { department_id: string; user_id: string; user: { id: string; full_name: string; role: string } | null }) => {
+        if (!row.user) return;
         counts[row.department_id] = (counts[row.department_id] || 0) + 1;
 
         const formalDirectorId = deptDirectorMap[row.department_id];
-        const isGuest = formalDirectorId !== row.user_id;
+        const member: DeptMember = {
+          user_id: row.user_id,
+          full_name: row.user.full_name,
+          role: row.user.role,
+        };
 
-        if (isGuest && row.user) {
-          if (!guestMap[row.department_id]) guestMap[row.department_id] = [];
-          guestMap[row.department_id].push({
-            user_id: row.user_id,
-            full_name: row.user.full_name,
-            role: row.user.role,
-          });
+        if (row.user_id !== formalDirectorId) {
+          if (row.user.role === 'Dyrektor') {
+            if (!wdMap[row.department_id]) wdMap[row.department_id] = [];
+            wdMap[row.department_id].push(member);
+          } else {
+            if (!amMap[row.department_id]) amMap[row.department_id] = [];
+            amMap[row.department_id].push(member);
+          }
         }
       });
 
       setMemberCounts(counts);
-      setGuestMembersMap(guestMap);
+      setWorkflowDirectorsMap(wdMap);
+      setAllMembersMap(amMap);
     } catch (err) {
       console.error('Error loading member counts:', err);
     } finally {
@@ -511,7 +641,7 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
     }
   };
 
-  const tree = buildTree(departments, memberCounts, guestMembersMap);
+  const tree = buildTree(departments, memberCounts, workflowDirectorsMap, allMembersMap);
 
   if (loading) {
     return (
