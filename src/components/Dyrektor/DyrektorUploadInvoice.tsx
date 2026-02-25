@@ -12,6 +12,8 @@ interface Department {
   id: string;
   name: string;
   google_drive_draft_folder_id: string | null;
+  director_id: string | null;
+  isGuest?: boolean;
 }
 
 export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: DyrektorUploadInvoiceProps) {
@@ -23,14 +25,31 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
 
   useEffect(() => {
     async function loadDepartments() {
-      const { data } = await supabase
-        .from('departments')
-        .select('id, name, google_drive_draft_folder_id')
-        .order('name');
-      if (data) setDepartments(data);
+      const [deptRes, memberRes] = await Promise.all([
+        supabase
+          .from('departments')
+          .select('id, name, google_drive_draft_folder_id, director_id')
+          .order('name'),
+        supabase
+          .from('department_members')
+          .select('department_id')
+          .eq('user_id', userId),
+      ]);
+
+      const allDepts: Department[] = deptRes.data || [];
+      const memberDeptIds = new Set((memberRes.data || []).map((r: { department_id: string }) => r.department_id));
+
+      const visibleDepts: Department[] = allDepts
+        .filter(d => d.director_id === userId || memberDeptIds.has(d.id))
+        .map(d => ({
+          ...d,
+          isGuest: d.director_id !== userId && memberDeptIds.has(d.id),
+        }));
+
+      setDepartments(visibleDepts);
     }
     loadDepartments();
-  }, []);
+  }, [userId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,13 +91,16 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
         reader.readAsDataURL(file);
       });
 
+      const selectedDeptObj = departments.find(d => d.id === departmentId);
+      const isGuestDept = selectedDeptObj?.isGuest ?? false;
+
       const { data: invoiceData, error: insertError } = await supabase
         .from('invoices')
         .insert({
           file_url: publicUrl,
           pdf_base64: file.type === 'application/pdf' ? pdfBase64 : null,
           uploaded_by: userId,
-          status: 'accepted',
+          status: isGuestDept ? 'draft' : 'accepted',
           department_id: departmentId,
           currency: 'PLN',
           source: 'manual',
@@ -164,19 +186,37 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
               </div>
             )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-blue-900">Director Upload</h3>
-                <p className="text-blue-700 text-sm">
-                  Invoices uploaded by directors are automatically marked as accepted and skip the approval workflow
-                </p>
-              </div>
-            </div>
+            {(() => {
+              const selectedDeptObj = departments.find(d => d.id === departmentId);
+              if (selectedDeptObj?.isGuest) {
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-amber-900">Dział obiegu (gościnny)</h3>
+                      <p className="text-amber-700 text-sm">
+                        Faktura zostanie skierowana do normalnego obiegu akceptacji. Koszty tego działu nie wliczają się do Twoich limitów miesięcznych.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-blue-900">Przesyłanie przez Dyrektora</h3>
+                    <p className="text-blue-700 text-sm">
+                      Faktury przesłane przez dyrektora do własnego działu są automatycznie akceptowane i pomijają obieg.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Department *
+                Dział *
               </label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
@@ -186,9 +226,11 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
                   required
                   className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
                 >
-                  <option value="">Select department</option>
+                  <option value="">Wybierz dział</option>
                   {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}{dept.isGuest ? ' (obieg)' : ''}
+                    </option>
                   ))}
                 </select>
               </div>

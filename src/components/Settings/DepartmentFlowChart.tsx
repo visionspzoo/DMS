@@ -33,13 +33,24 @@ interface Department {
   director?: { full_name: string; email: string } | null;
 }
 
+interface DeptMember {
+  user_id: string;
+  full_name: string;
+  role: string;
+}
+
 interface TreeNode {
   dept: Department;
   children: TreeNode[];
   memberCount: number;
+  guestMembers: DeptMember[];
 }
 
-function buildTree(departments: Department[], memberCounts: Record<string, number>): TreeNode[] {
+function buildTree(
+  departments: Department[],
+  memberCounts: Record<string, number>,
+  guestMembersMap: Record<string, DeptMember[]>
+): TreeNode[] {
   const getChildren = (parentId: string): TreeNode[] => {
     return departments
       .filter(d => d.parent_department_id === parentId)
@@ -47,6 +58,7 @@ function buildTree(departments: Department[], memberCounts: Record<string, numbe
         dept: d,
         children: getChildren(d.id),
         memberCount: memberCounts[d.id] || 0,
+        guestMembers: guestMembersMap[d.id] || [],
       }));
   };
 
@@ -56,6 +68,7 @@ function buildTree(departments: Department[], memberCounts: Record<string, numbe
       dept: d,
       children: getChildren(d.id),
       memberCount: memberCounts[d.id] || 0,
+      guestMembers: guestMembersMap[d.id] || [],
     }));
 }
 
@@ -68,6 +81,21 @@ function NodeCard({ node }: { node: TreeNode }) {
         <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
           <Crown className="w-3 h-3" />
           <span>{node.dept.director.full_name}</span>
+        </div>
+      )}
+
+      {node.guestMembers.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {node.guestMembers.map(m => (
+            <div
+              key={m.user_id}
+              className="flex items-center gap-1.5 px-2 py-1 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50 rounded text-[10px] text-sky-700 dark:text-sky-400 font-medium"
+            >
+              <UserCheck className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate max-w-[140px]">{m.full_name}</span>
+              <span className="opacity-60">({m.role})</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -432,28 +460,50 @@ function ContractApprovalChain() {
 
 export default function DepartmentFlowChart({ departments }: { departments: Department[] }) {
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+  const [guestMembersMap, setGuestMembersMap] = useState<Record<string, DeptMember[]>>({});
   const [loading, setLoading] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showFlow, setShowFlow] = useState(true);
   const [showContractFlow, setShowContractFlow] = useState(true);
 
   useEffect(() => {
-    loadMemberCounts();
+    loadMemberData();
   }, [departments]);
 
-  const loadMemberCounts = async () => {
+  const loadMemberData = async () => {
     try {
       const { data, error } = await supabase
         .from('department_members')
-        .select('department_id');
+        .select('department_id, user_id, user:user_id(id, full_name, role)');
 
       if (error) throw error;
 
       const counts: Record<string, number> = {};
-      data?.forEach(row => {
-        counts[row.department_id] = (counts[row.department_id] || 0) + 1;
+      const guestMap: Record<string, DeptMember[]> = {};
+
+      const deptDirectorMap: Record<string, string | null> = {};
+      departments.forEach(d => {
+        deptDirectorMap[d.id] = d.director_id;
       });
+
+      data?.forEach((row: { department_id: string; user_id: string; user: { id: string; full_name: string; role: string } | null }) => {
+        counts[row.department_id] = (counts[row.department_id] || 0) + 1;
+
+        const formalDirectorId = deptDirectorMap[row.department_id];
+        const isGuest = formalDirectorId !== row.user_id;
+
+        if (isGuest && row.user) {
+          if (!guestMap[row.department_id]) guestMap[row.department_id] = [];
+          guestMap[row.department_id].push({
+            user_id: row.user_id,
+            full_name: row.user.full_name,
+            role: row.user.role,
+          });
+        }
+      });
+
       setMemberCounts(counts);
+      setGuestMembersMap(guestMap);
     } catch (err) {
       console.error('Error loading member counts:', err);
     } finally {
@@ -461,7 +511,7 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
     }
   };
 
-  const tree = buildTree(departments, memberCounts);
+  const tree = buildTree(departments, memberCounts, guestMembersMap);
 
   if (loading) {
     return (
