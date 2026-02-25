@@ -1153,6 +1153,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleForwardToCirculation = async () => {
     if (!profile) return;
 
+    if (!hasMpk()) {
+      alert('Aby przesłać fakturę do akceptacji, musisz najpierw uzupełnić pole "Konto MPK".');
+      return;
+    }
+
     setLoading(true);
     try {
       if (currentInvoice.status === 'draft') {
@@ -1997,6 +2002,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
   const handleAdminApproval = async () => {
     if (!profile || !profile.is_admin) return;
+
+    if (!hasMpk()) {
+      alert('Aby zaakceptować fakturę, musisz najpierw uzupełnić pole "Konto MPK".');
+      return;
+    }
 
     setLoading(true);
     try {
