@@ -17,16 +17,6 @@ interface UploadRequest {
   departmentId: string | null;
 }
 
-interface OAuthConfig {
-  id: string;
-  user_id: string;
-  email_address: string;
-  oauth_access_token: string;
-  oauth_refresh_token: string;
-  oauth_token_expiry: string;
-  is_active: boolean;
-}
-
 function extractFolderIdFromUrl(input: string): string {
   if (!input) return input;
   const patterns = [
@@ -38,6 +28,86 @@ function extractFolderIdFromUrl(input: string): string {
     if (match) return match[1];
   }
   return input;
+}
+
+async function uploadViaDriveFunction(
+  supabaseUrl: string,
+  authHeader: string,
+  fileBase64: string,
+  fileName: string,
+  mimeType: string,
+  folderId: string,
+  userId: string
+): Promise<{ fileId: string; webViewLink: string }> {
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/upload-to-google-drive`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fileBase64,
+        fileName,
+        mimeType,
+        originalMimeType: mimeType,
+        folderId,
+        userId,
+      }),
+    }
+  );
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || `Drive upload failed: ${response.status}`);
+  }
+
+  return { fileId: data.fileId || data.driveFileId, webViewLink: data.webViewLink };
+}
+
+async function findOrCreateFolderViaDrive(
+  accessToken: string,
+  folderName: string,
+  parentFolderId: string
+): Promise<string> {
+  const escapedName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const query = `name='${escapedName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+  const searchResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (searchResponse.ok) {
+    const searchData = await searchResponse.json();
+    if (searchData.files && searchData.files.length > 0) {
+      return searchData.files[0].id;
+    }
+  }
+
+  const createResponse = await fetch(
+    "https://www.googleapis.com/drive/v3/files",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentFolderId],
+      }),
+    }
+  );
+
+  if (!createResponse.ok) {
+    throw new Error(`Failed to create folder: ${createResponse.status} ${await createResponse.text()}`);
+  }
+
+  const createData = await createResponse.json();
+  return createData.id;
 }
 
 async function getServiceAccountToken(): Promise<string | null> {
@@ -66,14 +136,12 @@ async function getServiceAccountToken(): Promise<string | null> {
     const payloadB64 = encode(payload);
     const signingInput = `${headerB64}.${payloadB64}`;
 
-    const pemKey = serviceAccount.private_key;
-    const pemBody = pemKey
+    const pemBody = serviceAccount.private_key
       .replace(/-----BEGIN PRIVATE KEY-----/, "")
       .replace(/-----END PRIVATE KEY-----/, "")
       .replace(/\s/g, "");
 
     const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-
     const cryptoKey = await crypto.subtle.importKey(
       "pkcs8",
       binaryDer,
@@ -108,150 +176,128 @@ async function getServiceAccountToken(): Promise<string | null> {
       console.error("[ServiceAccount] Token error:", await tokenResponse.text());
       return null;
     }
+
     const tokenData = await tokenResponse.json();
     return tokenData.access_token;
   } catch (e) {
-    console.error("[ServiceAccount] Failed to get token:", e);
+    console.error("[ServiceAccount] Failed:", e);
     return null;
   }
 }
 
-async function refreshOAuthToken(supabase: any, config: OAuthConfig): Promise<string> {
-  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-
-  if (!googleClientId || !googleClientSecret) {
-    throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
-  }
-
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: googleClientId,
-      client_secret: googleClientSecret,
-      refresh_token: config.oauth_refresh_token,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  if (!tokenResponse.ok) {
-    throw new Error(`Failed to refresh Google token (${tokenResponse.status}).`);
-  }
-
-  const tokens = await tokenResponse.json();
-  const expiryDate = new Date();
-  expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
-
-  await supabase
+async function getOAuthAccessToken(supabase: any, userId: string): Promise<string | null> {
+  const { data: userConfigs } = await supabase
     .from("user_email_configs")
-    .update({
-      oauth_access_token: tokens.access_token,
-      oauth_token_expiry: expiryDate.toISOString(),
-    })
-    .eq("id", config.id);
+    .select("*")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .eq("provider", "google_workspace")
+    .limit(1);
 
-  return tokens.access_token;
-}
+  if (userConfigs && userConfigs.length > 0) {
+    const cfg = userConfigs[0];
+    const expiryTime = cfg.oauth_token_expiry ? new Date(cfg.oauth_token_expiry).getTime() : 0;
 
-async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string | null> {
-  try {
-    if (!config.oauth_token_expiry || !config.oauth_access_token) {
-      return await refreshOAuthToken(supabase, config);
+    if (Date.now() < expiryTime - 5 * 60 * 1000 && cfg.oauth_access_token) {
+      return cfg.oauth_access_token;
     }
-    const expiryTime = new Date(config.oauth_token_expiry).getTime();
-    if (Date.now() >= expiryTime - 5 * 60 * 1000) {
-      return await refreshOAuthToken(supabase, config);
+
+    const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+    const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+    if (googleClientId && googleClientSecret && cfg.oauth_refresh_token) {
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: googleClientId,
+          client_secret: googleClientSecret,
+          refresh_token: cfg.oauth_refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      if (tokenResponse.ok) {
+        const tokens = await tokenResponse.json();
+        const expiryDate = new Date();
+        expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
+        await supabase
+          .from("user_email_configs")
+          .update({
+            oauth_access_token: tokens.access_token,
+            oauth_token_expiry: expiryDate.toISOString(),
+          })
+          .eq("id", cfg.id);
+        return tokens.access_token;
+      }
     }
-    return config.oauth_access_token;
-  } catch (e) {
-    console.warn("[OAuth] Failed to get/refresh token:", e);
-    return null;
   }
-}
 
-async function getAccessToken(supabase: any, targetUserId: string): Promise<string | null> {
-  try {
-    const serviceToken = await getServiceAccountToken();
-    if (serviceToken) {
-      console.log("[Auth] Using Google Service Account");
-      return serviceToken;
-    }
-  } catch (e) {
-    console.warn("[Auth] Service account token failed:", e);
-  }
+  const { data: anyConfigs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("provider", "google_workspace")
+    .limit(1);
 
-  try {
-    const { data: userConfigs } = await supabase
-      .from("user_email_configs")
-      .select("*")
-      .eq("user_id", targetUserId)
-      .eq("is_active", true)
-      .eq("provider", "google_workspace");
+  if (anyConfigs && anyConfigs.length > 0) {
+    const cfg = anyConfigs[0];
+    const expiryTime = cfg.oauth_token_expiry ? new Date(cfg.oauth_token_expiry).getTime() : 0;
 
-    if (userConfigs && userConfigs.length > 0) {
-      const token = await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
-      if (token) return token;
+    if (Date.now() < expiryTime - 5 * 60 * 1000 && cfg.oauth_access_token) {
+      return cfg.oauth_access_token;
     }
 
-    const { data: anyConfigs } = await supabase
-      .from("user_email_configs")
-      .select("*")
-      .eq("is_active", true)
-      .eq("provider", "google_workspace")
-      .limit(1);
+    const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+    const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
 
-    if (anyConfigs && anyConfigs.length > 0) {
-      const token = await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
-      if (token) return token;
+    if (googleClientId && googleClientSecret && cfg.oauth_refresh_token) {
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: googleClientId,
+          client_secret: googleClientSecret,
+          refresh_token: cfg.oauth_refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      if (tokenResponse.ok) {
+        const tokens = await tokenResponse.json();
+        const expiryDate = new Date();
+        expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
+        await supabase
+          .from("user_email_configs")
+          .update({
+            oauth_access_token: tokens.access_token,
+            oauth_token_expiry: expiryDate.toISOString(),
+          })
+          .eq("id", cfg.id);
+        return tokens.access_token;
+      }
     }
-  } catch (e) {
-    console.warn("[Auth] OAuth token lookup failed:", e);
   }
 
   return null;
 }
 
-async function findOrCreateFolder(folderName: string, parentFolderId: string, accessToken: string): Promise<string> {
-  const escapedName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const query = `name='${escapedName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+async function getAccessToken(supabase: any, userId: string): Promise<string> {
+  const serviceToken = await getServiceAccountToken();
+  if (serviceToken) {
+    console.log("[Auth] Using Google Service Account");
+    return serviceToken;
+  }
 
-  const searchResponse = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+  const oauthToken = await getOAuthAccessToken(supabase, userId);
+  if (oauthToken) {
+    console.log("[Auth] Using OAuth token");
+    return oauthToken;
+  }
+
+  throw new Error(
+    "Brak konfiguracji Google Drive. Skonfiguruj Service Account lub połącz konto Google w Konfiguracji."
   );
-
-  if (!searchResponse.ok) {
-    throw new Error(`Failed to search for folder: ${searchResponse.status} ${await searchResponse.text()}`);
-  }
-
-  const searchData = await searchResponse.json();
-  if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id;
-  }
-
-  const createResponse = await fetch(
-    "https://www.googleapis.com/drive/v3/files",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: folderName,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [parentFolderId],
-      }),
-    }
-  );
-
-  if (!createResponse.ok) {
-    throw new Error(`Failed to create folder: ${createResponse.status} ${await createResponse.text()}`);
-  }
-
-  const createData = await createResponse.json();
-  return createData.id;
 }
 
 async function uploadToSupabaseStorage(
@@ -326,58 +372,39 @@ Deno.serve(async (req: Request) => {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    const accessToken = await getAccessToken(supabase, user.id);
-
-    let driveConfigured = false;
     let attachmentsFolderId: string | null = null;
+    let deptName: string | null = null;
 
-    if (accessToken) {
-      if (departmentId) {
-        const { data: dept } = await supabase
-          .from("departments")
-          .select("google_drive_attachments_folder_id, name")
-          .eq("id", departmentId)
-          .maybeSingle();
+    if (departmentId) {
+      const { data: dept } = await supabase
+        .from("departments")
+        .select("google_drive_attachments_folder_id, name")
+        .eq("id", departmentId)
+        .maybeSingle();
 
-        if (dept?.google_drive_attachments_folder_id) {
-          attachmentsFolderId = extractFolderIdFromUrl(dept.google_drive_attachments_folder_id);
-        }
+      if (dept?.google_drive_attachments_folder_id) {
+        attachmentsFolderId = extractFolderIdFromUrl(dept.google_drive_attachments_folder_id);
       }
-
-      if (!attachmentsFolderId) {
-        const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
-        if (rootFolderUrl) {
-          const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
-          try {
-            attachmentsFolderId = await findOrCreateFolder("Zalaczniki", rootFolderId, accessToken);
-          } catch (e) {
-            console.warn("[Drive] Could not create Zalaczniki folder:", e);
-          }
-        }
-      }
-
-      if (attachmentsFolderId) {
-        driveConfigured = true;
-      }
+      deptName = dept?.name || null;
     }
 
-    if (driveConfigured && accessToken && attachmentsFolderId) {
+    if (attachmentsFolderId) {
+      const accessToken = await getAccessToken(supabase, user.id);
+
       const invoiceFolderName = invoiceNumber && invoiceNumber.trim()
         ? invoiceNumber.trim().replace(/[/\\:*?"<>|]/g, "_")
         : `faktura_${invoiceId.slice(0, 8)}`;
 
-      const invoiceFolderId = await findOrCreateFolder(invoiceFolderName, attachmentsFolderId, accessToken);
+      const invoiceFolderId = await findOrCreateFolderViaDrive(accessToken, invoiceFolderName, attachmentsFolderId);
 
       const fileBlob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
 
-      const metadata = {
+      const form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify({
         name: fileName,
         mimeType: mimeType || "application/octet-stream",
         parents: [invoiceFolderId],
-      };
-
-      const form = new FormData();
-      form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+      })], { type: "application/json" }));
       form.append("file", fileBlob);
 
       const uploadResponse = await fetch(
@@ -423,15 +450,44 @@ Deno.serve(async (req: Request) => {
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    } else {
-      const { storagePath, publicUrl } = await uploadToSupabaseStorage(
-        supabase,
-        user.id,
-        invoiceId,
-        fileName,
-        mimeType,
-        bytes
+    }
+
+    const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
+    if (rootFolderUrl) {
+      const accessToken = await getAccessToken(supabase, user.id);
+      const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
+      const attachmentsRootId = await findOrCreateFolderViaDrive(accessToken, "Zalaczniki", rootFolderId);
+
+      const invoiceFolderName = invoiceNumber && invoiceNumber.trim()
+        ? invoiceNumber.trim().replace(/[/\\:*?"<>|]/g, "_")
+        : `faktura_${invoiceId.slice(0, 8)}`;
+
+      const invoiceFolderId = await findOrCreateFolderViaDrive(accessToken, invoiceFolderName, attachmentsRootId);
+
+      const fileBlob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
+      const form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify({
+        name: fileName,
+        mimeType: mimeType || "application/octet-stream",
+        parents: [invoiceFolderId],
+      })], { type: "application/json" }));
+      form.append("file", fileBlob);
+
+      const uploadResponse = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: form,
+        }
       );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Google Drive upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      const uploadData = await uploadResponse.json();
 
       const { error: insertError } = await supabase
         .from("invoice_attachments")
@@ -439,30 +495,67 @@ Deno.serve(async (req: Request) => {
           invoice_id: invoiceId,
           uploaded_by: user.id,
           file_name: fileName,
-          google_drive_file_id: null,
-          google_drive_web_view_link: publicUrl,
-          google_drive_folder_id: null,
-          storage_path: storagePath,
+          google_drive_file_id: uploadData.id,
+          google_drive_web_view_link: uploadData.webViewLink,
+          google_drive_folder_id: invoiceFolderId,
           mime_type: mimeType || "application/octet-stream",
           file_size: fileSize || null,
         });
 
       if (insertError) {
-        await supabase.storage.from("invoice-attachments").remove([storagePath]);
         throw new Error(`Database error: ${insertError.message}`);
       }
 
       return new Response(
         JSON.stringify({
           success: true,
-          storagePath,
-          webViewLink: publicUrl,
+          fileId: uploadData.id,
+          webViewLink: uploadData.webViewLink,
           fileName,
-          storage: "supabase",
+          storage: "google_drive",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const { storagePath, publicUrl } = await uploadToSupabaseStorage(
+      supabase,
+      user.id,
+      invoiceId,
+      fileName,
+      mimeType,
+      bytes
+    );
+
+    const { error: insertError } = await supabase
+      .from("invoice_attachments")
+      .insert({
+        invoice_id: invoiceId,
+        uploaded_by: user.id,
+        file_name: fileName,
+        google_drive_file_id: null,
+        google_drive_web_view_link: publicUrl,
+        google_drive_folder_id: null,
+        storage_path: storagePath,
+        mime_type: mimeType || "application/octet-stream",
+        file_size: fileSize || null,
+      });
+
+    if (insertError) {
+      await supabase.storage.from("invoice-attachments").remove([storagePath]);
+      throw new Error(`Database error: ${insertError.message}`);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        storagePath,
+        webViewLink: publicUrl,
+        fileName,
+        storage: "supabase",
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Error uploading attachment:", error);
     return new Response(
