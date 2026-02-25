@@ -590,9 +590,9 @@ export default function DepartmentManagement() {
                   className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                 >
                   <option value="">Brak</option>
-                  {users.filter(u => u.role === 'Dyrektor').map(user => (
+                  {users.filter(u => u.role === 'Dyrektor' || u.role === 'CEO').map(user => (
                     <option key={user.id} value={user.id}>
-                      {user.full_name}
+                      {user.full_name} {user.role === 'CEO' ? '(CEO)' : ''}
                     </option>
                   ))}
                 </select>
@@ -817,7 +817,7 @@ export default function DepartmentManagement() {
                 >
                   <option value="">Brak</option>
                   {(() => {
-                    const directors = users.filter(u => u.role === 'Dyrektor');
+                    const directors = users.filter(u => u.role === 'Dyrektor' || u.role === 'CEO');
                     const currentDirector = editingDept.director_id
                       ? users.find(u => u.id === editingDept.director_id)
                       : null;
