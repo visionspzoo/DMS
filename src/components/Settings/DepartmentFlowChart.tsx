@@ -196,23 +196,6 @@ function NodeCard({ node }: { node: TreeNode }) {
       {showModal && <MembersModal node={node} onClose={() => setShowModal(false)} />}
 
       <div className="flex flex-col items-center gap-2">
-        {node.dept.director && (
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded text-[10px] text-orange-700 dark:text-orange-400 font-medium">
-            <Crown className="w-3 h-3" />
-            <span>{node.dept.director.full_name}</span>
-          </div>
-        )}
-
-        {node.workflowDirectors.map(m => (
-          <div
-            key={m.user_id}
-            className="flex items-center gap-1.5 px-2 py-1 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50 rounded text-[10px] text-sky-700 dark:text-sky-400 font-medium"
-          >
-            <UserCheck className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate max-w-[140px]">{m.full_name}</span>
-          </div>
-        ))}
-
         <button
           onClick={() => setShowModal(true)}
           className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg p-3 min-w-[160px] max-w-[200px] shadow-sm hover:shadow-md hover:border-brand-primary/40 dark:hover:border-brand-primary/40 transition-all text-left group"
