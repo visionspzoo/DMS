@@ -579,7 +579,7 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
     try {
       const { data, error } = await supabase
         .from('department_members')
-        .select('department_id, user_id, user:user_id(id, full_name, role)');
+        .select('department_id, user_id, user:user_id(id, full_name, role, department_id)');
 
       if (error) throw error;
 
@@ -588,22 +588,27 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
       const amMap: Record<string, DeptMember[]> = {};
 
       const deptDirectorMap: Record<string, string | null> = {};
+      const deptManagerMap: Record<string, string | null> = {};
       departments.forEach(d => {
         deptDirectorMap[d.id] = d.director_id;
+        deptManagerMap[d.id] = d.manager_id;
       });
 
-      data?.forEach((row: { department_id: string; user_id: string; user: { id: string; full_name: string; role: string } | null }) => {
+      data?.forEach((row: { department_id: string; user_id: string; user: { id: string; full_name: string; role: string; department_id: string | null } | null }) => {
         if (!row.user) return;
+        if (row.user.department_id !== row.department_id) return;
+
         counts[row.department_id] = (counts[row.department_id] || 0) + 1;
 
         const formalDirectorId = deptDirectorMap[row.department_id];
+        const formalManagerId = deptManagerMap[row.department_id];
         const member: DeptMember = {
           user_id: row.user_id,
           full_name: row.user.full_name,
           role: row.user.role,
         };
 
-        if (row.user_id !== formalDirectorId) {
+        if (row.user_id !== formalDirectorId && row.user_id !== formalManagerId) {
           if (row.user.role === 'Dyrektor') {
             if (!wdMap[row.department_id]) wdMap[row.department_id] = [];
             wdMap[row.department_id].push(member);
@@ -611,6 +616,12 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
             if (!amMap[row.department_id]) amMap[row.department_id] = [];
             amMap[row.department_id].push(member);
           }
+        }
+      });
+
+      departments.forEach(d => {
+        if (d.manager_id) {
+          counts[d.id] = (counts[d.id] || 0) + 1;
         }
       });
 
