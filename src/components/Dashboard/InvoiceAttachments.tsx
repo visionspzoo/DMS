@@ -79,16 +79,22 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
 
     const errors: string[] = [];
 
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setUploadError('Not authenticated');
+      setUploading(false);
+      return;
+    }
+
     for (const file of fileArray) {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('invoiceId', invoiceId);
-        formData.append('invoiceNumber', invoiceNumber || '');
-        if (departmentId) formData.append('departmentId', departmentId);
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated');
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const fileBase64 = btoa(binary);
 
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-invoice-attachment`,
@@ -96,8 +102,17 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
             method: 'POST',
             headers: {
               Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
             },
-            body: formData,
+            body: JSON.stringify({
+              fileBase64,
+              fileName: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+              invoiceId,
+              invoiceNumber: invoiceNumber || '',
+              departmentId: departmentId || null,
+            }),
           }
         );
 

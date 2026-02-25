@@ -7,6 +7,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+interface UploadRequest {
+  fileBase64: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  invoiceId: string;
+  invoiceNumber: string;
+  departmentId: string | null;
+}
+
 interface OAuthConfig {
   id: string;
   user_id: string;
@@ -94,7 +104,10 @@ async function getServiceAccountToken(): Promise<string | null> {
       }),
     });
 
-    if (!tokenResponse.ok) return null;
+    if (!tokenResponse.ok) {
+      console.error("[ServiceAccount] Token error:", await tokenResponse.text());
+      return null;
+    }
     const tokenData = await tokenResponse.json();
     return tokenData.access_token;
   } catch (e) {
@@ -154,7 +167,10 @@ async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string
 
 async function getAccessToken(supabase: any, targetUserId: string): Promise<string> {
   const serviceToken = await getServiceAccountToken();
-  if (serviceToken) return serviceToken;
+  if (serviceToken) {
+    console.log("[Auth] Using Google Service Account");
+    return serviceToken;
+  }
 
   const { data: userConfigs } = await supabase
     .from("user_email_configs")
@@ -175,7 +191,7 @@ async function getAccessToken(supabase: any, targetUserId: string): Promise<stri
     .limit(1);
 
   if (anyConfigError || !anyConfigs || anyConfigs.length === 0) {
-    throw new Error("No active Google account connected.");
+    throw new Error("No active Google account connected. Please connect a Google account in Configuration or configure a Service Account.");
   }
 
   return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
@@ -191,7 +207,7 @@ async function findOrCreateFolder(folderName: string, parentFolderId: string, ac
   );
 
   if (!searchResponse.ok) {
-    throw new Error(`Failed to search for folder: ${searchResponse.status}`);
+    throw new Error(`Failed to search for folder: ${searchResponse.status} ${await searchResponse.text()}`);
   }
 
   const searchData = await searchResponse.json();
@@ -216,7 +232,7 @@ async function findOrCreateFolder(folderName: string, parentFolderId: string, ac
   );
 
   if (!createResponse.ok) {
-    throw new Error(`Failed to create folder: ${createResponse.status}`);
+    throw new Error(`Failed to create folder: ${createResponse.status} ${await createResponse.text()}`);
   }
 
   const createData = await createResponse.json();
@@ -249,13 +265,11 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) throw new Error("Unauthorized");
 
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const invoiceId = formData.get("invoiceId") as string;
-    const invoiceNumber = formData.get("invoiceNumber") as string;
-    const departmentId = formData.get("departmentId") as string | null;
+    const body: UploadRequest = await req.json();
+    const { fileBase64, fileName, mimeType, fileSize, invoiceId, invoiceNumber, departmentId } = body;
 
-    if (!file) throw new Error("No file provided");
+    if (!fileBase64) throw new Error("No file data provided");
+    if (!fileName) throw new Error("fileName is required");
     if (!invoiceId) throw new Error("invoiceId is required");
 
     const accessToken = await getAccessToken(supabase, user.id);
@@ -276,7 +290,9 @@ Deno.serve(async (req: Request) => {
 
     if (!attachmentsFolderId) {
       const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
-      if (!rootFolderUrl) throw new Error("No attachments folder configured. Please set up the attachments folder for the department in Settings -> Dzialy.");
+      if (!rootFolderUrl) {
+        throw new Error("Brak skonfigurowanego folderu zalacznikow. Skonfiguruj folder zalacznikow dla dzialu w Ustawieniach -> Dzialy.");
+      }
       const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
       attachmentsFolderId = await findOrCreateFolder("Zalaczniki", rootFolderId, accessToken);
     }
@@ -287,13 +303,16 @@ Deno.serve(async (req: Request) => {
 
     const invoiceFolderId = await findOrCreateFolder(invoiceFolderName, attachmentsFolderId, accessToken);
 
-    const arrayBuffer = await file.arrayBuffer();
-    const fileBytes = new Uint8Array(arrayBuffer);
-    const fileBlob = new Blob([fileBytes], { type: file.type || "application/octet-stream" });
+    const binaryString = atob(fileBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const fileBlob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
 
     const metadata = {
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
+      name: fileName,
+      mimeType: mimeType || "application/octet-stream",
       parents: [invoiceFolderId],
     };
 
@@ -302,7 +321,7 @@ Deno.serve(async (req: Request) => {
     form.append("file", fileBlob);
 
     const uploadResponse = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size",
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
       {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -322,17 +341,17 @@ Deno.serve(async (req: Request) => {
       .insert({
         invoice_id: invoiceId,
         uploaded_by: user.id,
-        file_name: file.name,
+        file_name: fileName,
         google_drive_file_id: uploadData.id,
         google_drive_web_view_link: uploadData.webViewLink,
         google_drive_folder_id: invoiceFolderId,
-        mime_type: file.type || "application/octet-stream",
-        file_size: file.size,
+        mime_type: mimeType || "application/octet-stream",
+        file_size: fileSize || null,
       });
 
     if (insertError) {
       console.error("[Attachment] Failed to insert record:", insertError);
-      throw insertError;
+      throw new Error(`Database error: ${insertError.message}`);
     }
 
     return new Response(
@@ -340,7 +359,7 @@ Deno.serve(async (req: Request) => {
         success: true,
         fileId: uploadData.id,
         webViewLink: uploadData.webViewLink,
-        fileName: file.name,
+        fileName,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
