@@ -200,6 +200,18 @@ export function KSEFConfiguration() {
       setError(null);
       setSuccess(null);
 
+      const { data: existingMappings } = await supabase
+        .from('ksef_nip_department_mappings')
+        .select('nip')
+        .in('nip', nips);
+
+      if (existingMappings && existingMappings.length > 0) {
+        const duplicateNips = [...new Set(existingMappings.map((m: any) => m.nip))];
+        setError(`Mapowanie dla NIP ${duplicateNips.join(', ')} już istnieje. Każdy NIP może mieć tylko jedno mapowanie.`);
+        setAdding(false);
+        return;
+      }
+
       const mappingsToAdd = nips.map(nip => ({
         nip,
         supplier_name: newSupplierName.trim() || null,
@@ -223,7 +235,7 @@ export function KSEFConfiguration() {
     } catch (err: any) {
       console.error('Error adding mapping:', err);
       if (err.code === '23505') {
-        setError('Jeden lub więcej NIPów jest już przypisanych do działu');
+        setError('Jeden lub więcej NIPów jest już przypisanych. Każdy NIP może mieć tylko jedno mapowanie.');
       } else {
         setError('Nie udało się dodać mapowania');
       }

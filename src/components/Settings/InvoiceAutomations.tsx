@@ -297,6 +297,19 @@ export default function InvoiceAutomations() {
       return;
     }
 
+    if (formNip.trim()) {
+      const { data: existing } = await supabase
+        .from('nip_automation_rules')
+        .select('id')
+        .eq('supplier_nip', formNip.trim())
+        .neq('id', editingId || '')
+        .maybeSingle();
+      if (existing) {
+        setError(`Automatyzacja dla NIP ${formNip.trim()} już istnieje. Każdy NIP może mieć tylko jedną regułę.`);
+        return;
+      }
+    }
+
     setSaving(true);
     setError('');
 
