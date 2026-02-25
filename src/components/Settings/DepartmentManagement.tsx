@@ -16,6 +16,7 @@ interface Department {
   google_drive_draft_folder_id: string | null;
   google_drive_unpaid_folder_id: string | null;
   google_drive_paid_folder_id: string | null;
+  google_drive_attachments_folder_id: string | null;
   created_at: string;
   manager?: {
     full_name: string;
@@ -68,6 +69,7 @@ export default function DepartmentManagement() {
     google_drive_draft_folder_id: '',
     google_drive_unpaid_folder_id: '',
     google_drive_paid_folder_id: '',
+    google_drive_attachments_folder_id: '',
   });
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
@@ -149,12 +151,13 @@ export default function DepartmentManagement() {
         google_drive_draft_folder_id: newDept.google_drive_draft_folder_id || null,
         google_drive_unpaid_folder_id: newDept.google_drive_unpaid_folder_id || null,
         google_drive_paid_folder_id: newDept.google_drive_paid_folder_id || null,
+        google_drive_attachments_folder_id: newDept.google_drive_attachments_folder_id || null,
         created_by: profile?.id,
       });
 
       if (error) throw error;
 
-      setNewDept({ name: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '' });
+      setNewDept({ name: '', mpk_code: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '', google_drive_attachments_folder_id: '' });
       setShowAddDept(false);
       loadDepartments();
     } catch (err) {
@@ -180,6 +183,7 @@ export default function DepartmentManagement() {
           google_drive_draft_folder_id: editingDept.google_drive_draft_folder_id,
           google_drive_unpaid_folder_id: editingDept.google_drive_unpaid_folder_id,
           google_drive_paid_folder_id: editingDept.google_drive_paid_folder_id,
+          google_drive_attachments_folder_id: editingDept.google_drive_attachments_folder_id,
         })
         .eq('id', editingDept.id);
 
@@ -686,6 +690,19 @@ export default function DepartmentManagement() {
                       placeholder="ID folderu z Google Drive"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                      Folder dla załączników
+                    </label>
+                    <input
+                      type="text"
+                      value={newDept.google_drive_attachments_folder_id}
+                      onChange={(e) => setNewDept({ ...newDept, google_drive_attachments_folder_id: e.target.value })}
+                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="ID folderu z Google Drive"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -920,6 +937,19 @@ export default function DepartmentManagement() {
                       type="text"
                       value={editingDept.google_drive_paid_folder_id || ''}
                       onChange={(e) => setEditingDept({ ...editingDept, google_drive_paid_folder_id: e.target.value || null })}
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="ID folderu z Google Drive"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                      Folder dla załączników
+                    </label>
+                    <input
+                      type="text"
+                      value={editingDept.google_drive_attachments_folder_id || ''}
+                      onChange={(e) => setEditingDept({ ...editingDept, google_drive_attachments_folder_id: e.target.value || null })}
                       className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
                       placeholder="ID folderu z Google Drive"
                     />

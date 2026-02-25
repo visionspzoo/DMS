@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 import { InvoiceTags } from './InvoiceTags';
+import { InvoiceAttachments } from './InvoiceAttachments';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 import { TransferInvoiceModal } from './TransferInvoiceModal';
 
@@ -3201,6 +3202,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 onConfirmAIData={handleConfirmAIData}
                 confirmLoading={loading}
               />
+
+              <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
+                <InvoiceAttachments
+                  invoiceId={currentInvoice.id}
+                  invoiceNumber={currentInvoice.invoice_number}
+                  departmentId={currentInvoice.department_id}
+                />
+              </div>
 
               {approvals.length > 0 && (
                 <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5">
