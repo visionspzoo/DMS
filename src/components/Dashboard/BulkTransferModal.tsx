@@ -201,6 +201,7 @@ export function BulkTransferModal({
             .update({
               department_id: selectedDepartment,
               current_approver_id: selectedUser,
+              uploaded_by: selectedUser,
               status: 'draft',
             })
             .eq('id', invoiceId);
