@@ -169,6 +169,23 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
 
       if (error) throw error;
 
+      if (attachment.google_drive_file_id) {
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileId: attachment.google_drive_file_id,
+              ownerUserId: user?.id,
+            }),
+          }
+        ).catch(err => console.error('Drive delete failed:', err));
+      }
+
       if (attachment.storage_path) {
         await supabase.storage.from('invoice-attachments').remove([attachment.storage_path]);
       }
