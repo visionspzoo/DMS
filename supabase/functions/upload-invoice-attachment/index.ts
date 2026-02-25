@@ -371,12 +371,24 @@ Deno.serve(async (req: Request) => {
     if (departmentId) {
       const { data: dept } = await supabase
         .from("departments")
-        .select("google_drive_attachments_folder_id, name")
+        .select("google_drive_attachments_folder_id, google_drive_unpaid_folder_id, google_drive_draft_folder_id, google_drive_paid_folder_id, name")
         .eq("id", departmentId)
         .maybeSingle();
 
       if (dept?.google_drive_attachments_folder_id) {
         attachmentsFolderId = extractFolderIdFromUrl(dept.google_drive_attachments_folder_id);
+      } else {
+        const fallbackFolder =
+          dept?.google_drive_unpaid_folder_id ||
+          dept?.google_drive_draft_folder_id ||
+          dept?.google_drive_paid_folder_id;
+        if (fallbackFolder) {
+          const accessToken = await getAccessToken(supabase, resolvedUserId).catch(() => null);
+          if (accessToken) {
+            const parentId = extractFolderIdFromUrl(fallbackFolder);
+            attachmentsFolderId = await findOrCreateFolderViaDrive(accessToken, "Zalaczniki", parentId).catch(() => null);
+          }
+        }
       }
       deptName = dept?.name || null;
     }
