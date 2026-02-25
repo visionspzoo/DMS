@@ -209,9 +209,20 @@ function NodeCard({ node }: { node: TreeNode }) {
             </span>
           </div>
 
+          {node.dept.director && (
+            <div className="flex items-center gap-1 mb-0.5">
+              <Crown className="w-2.5 h-2.5 text-orange-500 flex-shrink-0" />
+              <span className="text-[10px] text-orange-600 dark:text-orange-400 truncate font-medium">
+                {node.dept.director.full_name}
+              </span>
+            </div>
+          )}
           {node.dept.manager && (
-            <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-1 truncate">
-              {node.dept.manager.full_name}
+            <div className="flex items-center gap-1 mb-1">
+              <Briefcase className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" />
+              <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
+                {node.dept.manager.full_name}
+              </span>
             </div>
           )}
 
