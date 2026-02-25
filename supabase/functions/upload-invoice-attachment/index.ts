@@ -154,44 +154,59 @@ async function refreshOAuthToken(supabase: any, config: OAuthConfig): Promise<st
   return tokens.access_token;
 }
 
-async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string> {
-  if (!config.oauth_token_expiry || !config.oauth_access_token) {
-    return await refreshOAuthToken(supabase, config);
+async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string | null> {
+  try {
+    if (!config.oauth_token_expiry || !config.oauth_access_token) {
+      return await refreshOAuthToken(supabase, config);
+    }
+    const expiryTime = new Date(config.oauth_token_expiry).getTime();
+    if (Date.now() >= expiryTime - 5 * 60 * 1000) {
+      return await refreshOAuthToken(supabase, config);
+    }
+    return config.oauth_access_token;
+  } catch (e) {
+    console.warn("[OAuth] Failed to get/refresh token:", e);
+    return null;
   }
-  const expiryTime = new Date(config.oauth_token_expiry).getTime();
-  if (Date.now() >= expiryTime - 5 * 60 * 1000) {
-    return await refreshOAuthToken(supabase, config);
-  }
-  return config.oauth_access_token;
 }
 
 async function getAccessToken(supabase: any, targetUserId: string): Promise<string | null> {
-  const serviceToken = await getServiceAccountToken();
-  if (serviceToken) {
-    console.log("[Auth] Using Google Service Account");
-    return serviceToken;
+  try {
+    const serviceToken = await getServiceAccountToken();
+    if (serviceToken) {
+      console.log("[Auth] Using Google Service Account");
+      return serviceToken;
+    }
+  } catch (e) {
+    console.warn("[Auth] Service account token failed:", e);
   }
 
-  const { data: userConfigs } = await supabase
-    .from("user_email_configs")
-    .select("*")
-    .eq("user_id", targetUserId)
-    .eq("is_active", true)
-    .eq("provider", "google_workspace");
+  try {
+    const { data: userConfigs } = await supabase
+      .from("user_email_configs")
+      .select("*")
+      .eq("user_id", targetUserId)
+      .eq("is_active", true)
+      .eq("provider", "google_workspace");
 
-  if (userConfigs && userConfigs.length > 0) {
-    return await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
-  }
+    if (userConfigs && userConfigs.length > 0) {
+      const token = await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
+      if (token) return token;
+    }
 
-  const { data: anyConfigs } = await supabase
-    .from("user_email_configs")
-    .select("*")
-    .eq("is_active", true)
-    .eq("provider", "google_workspace")
-    .limit(1);
+    const { data: anyConfigs } = await supabase
+      .from("user_email_configs")
+      .select("*")
+      .eq("is_active", true)
+      .eq("provider", "google_workspace")
+      .limit(1);
 
-  if (anyConfigs && anyConfigs.length > 0) {
-    return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
+    if (anyConfigs && anyConfigs.length > 0) {
+      const token = await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
+      if (token) return token;
+    }
+  } catch (e) {
+    console.warn("[Auth] OAuth token lookup failed:", e);
   }
 
   return null;
