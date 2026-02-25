@@ -82,7 +82,7 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
     const errors: string[] = [];
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    if (!session || !user) {
       setUploadError('Not authenticated');
       setUploading(false);
       return;
@@ -103,7 +103,7 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
           {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -114,6 +114,7 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
               invoiceId,
               invoiceNumber: invoiceNumber || '',
               departmentId: departmentId || null,
+              userId: user.id,
             }),
           }
         );

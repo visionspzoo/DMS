@@ -15,6 +15,7 @@ interface UploadRequest {
   invoiceId: string;
   invoiceNumber: string;
   departmentId: string | null;
+  userId?: string;
 }
 
 function extractFolderIdFromUrl(input: string): string {
@@ -341,30 +342,22 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Supabase configuration missing");
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) throw new Error("Unauthorized");
-
     const body: UploadRequest = await req.json();
-    const { fileBase64, fileName, mimeType, fileSize, invoiceId, invoiceNumber, departmentId } = body;
+    const { fileBase64, fileName, mimeType, fileSize, invoiceId, invoiceNumber, departmentId, userId: bodyUserId } = body;
 
     if (!fileBase64) throw new Error("No file data provided");
     if (!fileName) throw new Error("fileName is required");
     if (!invoiceId) throw new Error("invoiceId is required");
+    if (!bodyUserId) throw new Error("userId is required");
+
+    const resolvedUserId = bodyUserId;
 
     const binaryString = atob(fileBase64);
     const bytes = new Uint8Array(binaryString.length);
@@ -389,7 +382,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (attachmentsFolderId) {
-      const accessToken = await getAccessToken(supabase, user.id);
+      const accessToken = await getAccessToken(supabase, resolvedUserId);
 
       const invoiceFolderName = invoiceNumber && invoiceNumber.trim()
         ? invoiceNumber.trim().replace(/[/\\:*?"<>|]/g, "_")
@@ -427,7 +420,7 @@ Deno.serve(async (req: Request) => {
         .from("invoice_attachments")
         .insert({
           invoice_id: invoiceId,
-          uploaded_by: user.id,
+          uploaded_by: resolvedUserId,
           file_name: fileName,
           google_drive_file_id: uploadData.id,
           google_drive_web_view_link: uploadData.webViewLink,
@@ -454,7 +447,7 @@ Deno.serve(async (req: Request) => {
 
     const rootFolderUrl = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
     if (rootFolderUrl) {
-      const accessToken = await getAccessToken(supabase, user.id);
+      const accessToken = await getAccessToken(supabase, resolvedUserId);
       const rootFolderId = extractFolderIdFromUrl(rootFolderUrl);
       const attachmentsRootId = await findOrCreateFolderViaDrive(accessToken, "Zalaczniki", rootFolderId);
 
@@ -493,7 +486,7 @@ Deno.serve(async (req: Request) => {
         .from("invoice_attachments")
         .insert({
           invoice_id: invoiceId,
-          uploaded_by: user.id,
+          uploaded_by: resolvedUserId,
           file_name: fileName,
           google_drive_file_id: uploadData.id,
           google_drive_web_view_link: uploadData.webViewLink,
@@ -520,7 +513,7 @@ Deno.serve(async (req: Request) => {
 
     const { storagePath, publicUrl } = await uploadToSupabaseStorage(
       supabase,
-      user.id,
+      resolvedUserId,
       invoiceId,
       fileName,
       mimeType,
@@ -531,7 +524,7 @@ Deno.serve(async (req: Request) => {
       .from("invoice_attachments")
       .insert({
         invoice_id: invoiceId,
-        uploaded_by: user.id,
+        uploaded_by: resolvedUserId,
         file_name: fileName,
         google_drive_file_id: null,
         google_drive_web_view_link: publicUrl,
