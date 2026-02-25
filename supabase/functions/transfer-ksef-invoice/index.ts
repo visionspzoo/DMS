@@ -278,8 +278,9 @@ Deno.serve(async (req: Request) => {
     // 8. Create invoice record
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
 
-    // The invoice owner is the selected user (or auto-detected manager), not the admin doing the transfer
-    const invoiceOwner = appropriateApproverId || uploaderId || ksefInvoice.fetched_by;
+    // Owner = explicitly selected user OR the person doing the transfer.
+    // appropriateApproverId (auto-detected approver like CEO) should NOT become the owner.
+    const invoiceOwner = userId || uploaderId || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
