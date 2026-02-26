@@ -188,7 +188,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = (invoices || []).map((inv: any) => {
-      const isBezMpk = bezMpkUserIds.has(inv.uploaded_by);
+      const isBezMpk = inv.bez_mpk === true || bezMpkUserIds.has(inv.uploaded_by);
       const mpkCode = isBezMpk ? 'BEZ MPK' : (inv.department?.mpk_code || null);
       const departmentName = isBezMpk ? 'BEZ MPK' : (inv.department?.name || null);
       const mpkDescription = isBezMpk ? (inv.description || null) : (mpkCode ? (costCentersMap[mpkCode] || null) : null);
