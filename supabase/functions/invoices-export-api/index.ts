@@ -3,7 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return json({ success: false, error: 'Method not allowed' }, 405);
   }
 
@@ -65,6 +65,62 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = new URL(req.url);
+
+    if (req.method === 'POST') {
+      const pathname = url.pathname;
+      const markPaidMatch = pathname.match(/\/invoices-export-api\/invoices\/([^/]+)\/mark-paid$/);
+
+      if (!markPaidMatch) {
+        return json({ success: false, error: 'Not found. Use POST /invoices-export-api/invoices/{invoice_number}/mark-paid' }, 404);
+      }
+
+      const invoiceNumber = decodeURIComponent(markPaidMatch[1]);
+
+      const { data: invoice, error: fetchError } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, status')
+        .eq('invoice_number', invoiceNumber)
+        .maybeSingle();
+
+      if (fetchError || !invoice) {
+        return json({ success: false, error: `Invoice not found: ${invoiceNumber}` }, 404);
+      }
+
+      if (invoice.status !== 'accepted') {
+        return json({
+          success: false,
+          error: `Invoice cannot be marked as paid. Current status: "${invoice.status}". Only invoices with status "accepted" can be marked as paid.`,
+        }, 422);
+      }
+
+      const paidAt = new Date().toISOString();
+
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: 'paid', paid_at: paidAt, updated_at: paidAt })
+        .eq('id', invoice.id);
+
+      if (updateError) {
+        console.error('Error updating invoice status:', updateError);
+        return json({ success: false, error: 'Failed to update invoice status' }, 500);
+      }
+
+      await supabase.from('audit_logs').insert({
+        invoice_id: invoice.id,
+        action: 'status_changed',
+        performed_by: tokenRow.user_id,
+        description: `Status zmieniony z "accepted" na "paid" przez zewnętrzny system (API)`,
+      });
+
+      return json({
+        success: true,
+        data: {
+          invoice_number: invoiceNumber,
+          status: 'paid',
+          paid_at: paidAt,
+        },
+      });
+    }
     const statusParam = url.searchParams.get('status');
     const limitParam = url.searchParams.get('limit');
     const offsetParam = url.searchParams.get('offset');
