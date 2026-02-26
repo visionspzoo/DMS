@@ -30,6 +30,7 @@ interface AutomationRule {
   supplier_nip: string | null;
   supplier_name: string | null;
   auto_accept: boolean;
+  auto_bez_mpk: boolean;
   cost_center_id: string | null;
   department_id: string | null;
   is_active: boolean;
@@ -67,6 +68,7 @@ export default function InvoiceAutomations() {
   const [formNip, setFormNip] = useState('');
   const [formName, setFormName] = useState('');
   const [formAutoAccept, setFormAutoAccept] = useState(false);
+  const [formAutoBezMpk, setFormAutoBezMpk] = useState(false);
   const [formCostCenterId, setFormCostCenterId] = useState('');
   const [formDepartmentId, setFormDepartmentId] = useState('');
   const [formSelectedTags, setFormSelectedTags] = useState<TagType[]>([]);
@@ -259,6 +261,7 @@ export default function InvoiceAutomations() {
     setFormNip('');
     setFormName('');
     setFormAutoAccept(false);
+    setFormAutoBezMpk(false);
     setFormCostCenterId('');
     setFormDepartmentId('');
     setFormSelectedTags([]);
@@ -273,6 +276,7 @@ export default function InvoiceAutomations() {
     setFormNip(rule.supplier_nip || '');
     setFormName(rule.supplier_name || '');
     setFormAutoAccept(rule.auto_accept);
+    setFormAutoBezMpk(rule.auto_bez_mpk);
     setFormCostCenterId(rule.cost_center_id || '');
     setFormDepartmentId(rule.department_id || '');
     setFormSelectedTags(rule.tags);
@@ -318,6 +322,7 @@ export default function InvoiceAutomations() {
         supplier_nip: formNip.trim() || null,
         supplier_name: formName.trim() || null,
         auto_accept: formAutoAccept,
+        auto_bez_mpk: formAutoBezMpk,
         cost_center_id: formCostCenterId || null,
         department_id: formDepartmentId || null,
         is_active: true,
@@ -471,6 +476,7 @@ export default function InvoiceAutomations() {
         formNip={formNip}
         formName={formName}
         formAutoAccept={formAutoAccept}
+        formAutoBezMpk={formAutoBezMpk}
         formCostCenterId={formCostCenterId}
         formDepartmentId={formDepartmentId}
         formSelectedTags={formSelectedTags}
@@ -486,6 +492,7 @@ export default function InvoiceAutomations() {
         onNipChange={setFormNip}
         onNameChange={setFormName}
         onAutoAcceptChange={setFormAutoAccept}
+        onAutoBezMpkChange={setFormAutoBezMpk}
         onCostCenterChange={setFormCostCenterId}
         onCostCenterSearchChange={setFormCostCenterSearch}
         onDepartmentChange={setFormDepartmentId}
@@ -584,21 +591,21 @@ function SuggestionsPanel({
 }
 
 function RuleForm({
-  show, editing, formNip, formName, formAutoAccept, formCostCenterId, formDepartmentId,
+  show, editing, formNip, formName, formAutoAccept, formAutoBezMpk, formCostCenterId, formDepartmentId,
   formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
   selectedCostCenter, selectedDepartment, filteredTags, filteredCostCenters, filteredDepartments,
-  saving, onNipChange, onNameChange, onAutoAcceptChange, onCostCenterChange, onCostCenterSearchChange,
+  saving, onNipChange, onNameChange, onAutoAcceptChange, onAutoBezMpkChange, onCostCenterChange, onCostCenterSearchChange,
   onDepartmentChange, onDepartmentSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
   onSave, onCancel, onShow,
 }: {
-  show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean;
+  show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean; formAutoBezMpk: boolean;
   formCostCenterId: string; formDepartmentId: string; formSelectedTags: TagType[];
   formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string;
   selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined;
   filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[];
   saving: boolean;
   onNipChange: (v: string) => void; onNameChange: (v: string) => void;
-  onAutoAcceptChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
+  onAutoAcceptChange: (v: boolean) => void; onAutoBezMpkChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
   onCostCenterSearchChange: (v: string) => void; onDepartmentChange: (v: string) => void;
   onDepartmentSearchChange: (v: string) => void; onTagSearchChange: (v: string) => void;
   onAddTag: (tag: TagType) => void; onRemoveTag: (id: string) => void;
@@ -673,21 +680,40 @@ function RuleForm({
           </div>
         </div>
 
-        <div className="flex items-center gap-3 p-3.5 bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50">
-          <button type="button" onClick={() => onAutoAcceptChange(!formAutoAccept)} className="flex-shrink-0">
-            {formAutoAccept ? (
-              <ToggleRight className="w-8 h-5 text-green-600" />
-            ) : (
-              <ToggleLeft className="w-8 h-5 text-slate-400" />
-            )}
-          </button>
-          <div>
-            <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              Automatyczna akceptacja
-            </span>
-            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-              Faktura zostanie automatycznie zaakceptowana po dodaniu do systemu
-            </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="flex items-center gap-3 p-3.5 bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50">
+            <button type="button" onClick={() => onAutoAcceptChange(!formAutoAccept)} className="flex-shrink-0">
+              {formAutoAccept ? (
+                <ToggleRight className="w-8 h-5 text-green-600" />
+              ) : (
+                <ToggleLeft className="w-8 h-5 text-slate-400" />
+              )}
+            </button>
+            <div>
+              <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                Automatyczna akceptacja
+              </span>
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Faktura zostanie automatycznie zaakceptowana po dodaniu do systemu
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3.5 bg-slate-50 dark:bg-dark-surface-variant rounded-lg border border-slate-200 dark:border-slate-700/50">
+            <button type="button" onClick={() => onAutoBezMpkChange(!formAutoBezMpk)} className="flex-shrink-0">
+              {formAutoBezMpk ? (
+                <ToggleRight className="w-8 h-5 text-amber-500" />
+              ) : (
+                <ToggleLeft className="w-8 h-5 text-slate-400" />
+              )}
+            </button>
+            <div>
+              <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                Automatyczne BEZ MPK
+              </span>
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Faktura zostanie automatycznie oznaczona jako "Bez MPK"
+              </p>
+            </div>
           </div>
         </div>
 
@@ -926,6 +952,12 @@ function RulesList({
                       Auto-akceptacja
                     </span>
                   )}
+                  {rule.auto_bez_mpk && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/30">
+                      <Zap className="w-3 h-3" />
+                      BEZ MPK
+                    </span>
+                  )}
                   {rule.department && (
                     <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/30">
                       <Building2 className="w-3 h-3" />
@@ -947,7 +979,7 @@ function RulesList({
                       {tag.name}
                     </span>
                   ))}
-                  {!rule.auto_accept && !rule.department && !rule.cost_center && rule.tags.length === 0 && (
+                  {!rule.auto_accept && !rule.auto_bez_mpk && !rule.department && !rule.cost_center && rule.tags.length === 0 && (
                     <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
                       Brak przypisanych akcji
                     </span>

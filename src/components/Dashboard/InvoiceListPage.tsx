@@ -1369,20 +1369,7 @@ export function InvoiceList() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Filtry:</label>
-            <button
-              onClick={() => setFilterBezMpkNoPz(v => !v)}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                filterBezMpkNoPz
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-amber-500/10'
-              }`}
-            >
-              BEZ MPK: Brak powiązania
-            </button>
-          </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Rok:</label>
               <select
@@ -1418,6 +1405,18 @@ export function InvoiceList() {
                 <option value="12">Grudzień</option>
               </select>
             </div>
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600"></div>
+            <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Filtrowanie:</label>
+            <button
+              onClick={() => setFilterBezMpkNoPz(v => !v)}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                filterBezMpkNoPz
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-amber-500/10'
+              }`}
+            >
+              BEZ MPK: Brak powiązania
+            </button>
           </div>
         </div>
       </div>
