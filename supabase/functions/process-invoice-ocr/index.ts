@@ -30,7 +30,9 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "net_amount": "kwota netto jako string z kropką np. 1234.56 (BEZ SPACJI, BEZ PRZECINKÓW)",
   "tax_amount": "kwota VAT jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
   "gross_amount": "kwota brutto jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
-  "currency": "kod waluty: PLN, EUR, USD, GBP itp."
+  "currency": "kod waluty: PLN, EUR, USD, GBP itp.",
+  "supplier_country": "kod kraju dostawcy (US, PL, DE, GB itp.) lub null",
+  "date_format_detected": "US (MM/DD/YYYY) lub EU (DD.MM.YYYY lub DD/MM/YYYY) lub ISO (YYYY-MM-DD) lub null"
 }
 
 BARDZO WAŻNE - FORMATOWANIE KWOT:
@@ -47,9 +49,32 @@ KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
 - "Bill to:" ZAWSZE = NABYWCA, nigdy Sprzedawca
 - Szukaj etykiet: "Sprzedawca:", "Nabywca:", "Seller:", "Buyer:", "From:", "Bill to:"
 
+KRYTYCZNA ZASADA - FORMATOWANIE DAT:
+Faktury od kontrahentów AMERYKAŃSKICH (USA) używają formatu MM/DD/YYYY, który RÓŻNI się od europejskiego DD/MM/YYYY.
+Musisz poprawnie rozpoznać format daty na podstawie kraju wystawcy faktury i kontekstu dokumentu.
+
+ROZPOZNAWANIE FORMATU DAT:
+- Faktura z USA/US address/$ currency → format MM/DD/YYYY → np. "01/15/2024" to 15 stycznia 2024 → YYYY-MM-DD: "2024-01-15"
+- Faktura europejska (PL, DE, FR, GB itp.) → format DD.MM.YYYY lub DD/MM/YYYY → np. "15.01.2024" to 15 stycznia 2024
+- Jeśli widzisz miesiąc słownie (January, Feb, March, Jan itp.) → zawsze konwertuj do YYYY-MM-DD
+- Zawsze zwracaj daty w formacie YYYY-MM-DD
+
+PRZYKŁADY KONWERSJI DAT:
+- US: "01/15/2024" → "2024-01-15" (styczeń 15)
+- US: "12/31/2023" → "2023-12-31" (grudzień 31)
+- EU: "15.01.2024" → "2024-01-15" (15 styczeń)
+- EU: "31/12/2023" → "2023-12-31" (31 grudzień)
+- Słownie: "January 15, 2024" → "2024-01-15"
+- Słownie: "15 January 2024" → "2024-01-15"
+
+WSKAZÓWKI DO WYKRYWANIA KRAJU DOSTAWCY:
+- Adres z stanami USA (CA, NY, TX, FL, WA itp.) → kraj US
+- Adres z "United States" lub "USA" → kraj US
+- Waluta USD na fakturze od dostawcy → sugeruje US
+- NIP/VAT format: EIN xx-xxxxxxx (USA), NIP xxxxxxxxxx (PL)
+
 DODATKOWE UWAGI:
 - Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
-- Daty w formacie YYYY-MM-DD
 - Walutę zapisz jako 3-literowy kod ISO
 - Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
 
@@ -245,6 +270,81 @@ async function callMistralWithDocument(base64Data: string, mimeType: string, api
 
   const data = await response.json();
   return data.choices[0].message.content;
+}
+
+function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDetected?: string): string | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const s = dateStr.trim();
+  if (!s) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return s;
+    return null;
+  }
+
+  const isUS = supplierCountry === 'US' || dateFormatDetected === 'US (MM/DD/YYYY)';
+
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, a, b, y] = slashMatch.map(Number);
+    if (isUS) {
+      const month = a, day = b;
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    } else {
+      if (a > 12) {
+        const day = a, month = b;
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      } else if (b > 12) {
+        const month = a, day = b;
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      } else {
+        const day = a, month = b;
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      }
+    }
+  }
+
+  const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch.map(Number);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  const MONTHS: Record<string, string> = {
+    january: '01', february: '02', march: '03', april: '04',
+    may: '05', june: '06', july: '07', august: '08',
+    september: '09', october: '10', november: '11', december: '12',
+    jan: '01', feb: '02', mar: '03', apr: '04',
+    jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  };
+
+  const wordMatch1 = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (wordMatch1) {
+    const [, monthWord, day, year] = wordMatch1;
+    const month = MONTHS[monthWord.toLowerCase()];
+    if (month) return `${year}-${month}-${String(Number(day)).padStart(2, '0')}`;
+  }
+
+  const wordMatch2 = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (wordMatch2) {
+    const [, day, monthWord, year] = wordMatch2;
+    const month = MONTHS[monthWord.toLowerCase()];
+    if (month) return `${year}-${month}-${String(Number(day)).padStart(2, '0')}`;
+  }
+
+  console.warn(`normalizeDate: could not parse date "${s}" (country=${supplierCountry}, format=${dateFormatDetected})`);
+  return null;
 }
 
 function createFallback() {
@@ -484,13 +584,28 @@ Deno.serve(async (req: Request) => {
 
     const updateData: Record<string, unknown> = {};
 
+    const supplierCountry = typeof parsedData.supplier_country === 'string' ? parsedData.supplier_country.toUpperCase() : undefined;
+    const dateFormatDetected = typeof parsedData.date_format_detected === 'string' ? parsedData.date_format_detected : undefined;
+
+    console.log(`Supplier country: ${supplierCountry}, date format: ${dateFormatDetected}`);
+
+    const normalizedIssueDate = normalizeDate(parsedData.issue_date, supplierCountry, dateFormatDetected);
+    const normalizedDueDate = normalizeDate(parsedData.due_date, supplierCountry, dateFormatDetected);
+
+    if (normalizedIssueDate && normalizedIssueDate !== parsedData.issue_date) {
+      console.log(`Date normalized (issue_date): "${parsedData.issue_date}" → "${normalizedIssueDate}" [country=${supplierCountry}]`);
+    }
+    if (normalizedDueDate && normalizedDueDate !== parsedData.due_date) {
+      console.log(`Date normalized (due_date): "${parsedData.due_date}" → "${normalizedDueDate}" [country=${supplierCountry}]`);
+    }
+
     if (parsedData.invoice_number) updateData.invoice_number = parsedData.invoice_number;
     if (parsedData.supplier_name) updateData.supplier_name = parsedData.supplier_name;
     if (parsedData.supplier_nip) updateData.supplier_nip = parsedData.supplier_nip;
     if (parsedData.buyer_name) updateData.buyer_name = parsedData.buyer_name;
     if (parsedData.buyer_nip) updateData.buyer_nip = parsedData.buyer_nip;
-    if (parsedData.issue_date) updateData.issue_date = parsedData.issue_date;
-    if (parsedData.due_date) updateData.due_date = parsedData.due_date;
+    if (normalizedIssueDate) updateData.issue_date = normalizedIssueDate;
+    if (normalizedDueDate) updateData.due_date = normalizedDueDate;
     if (parsedData.currency) updateData.currency = parsedData.currency;
 
     const parseAmount = (val: unknown): number | null => {
