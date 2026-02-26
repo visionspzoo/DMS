@@ -940,15 +940,21 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak aktywnej sesji');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) throw new Error('Brak aktywnej sesji - zaloguj się ponownie');
+      }
+
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) throw new Error('Brak aktywnej sesji');
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${currentSession.access_token}`,
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
@@ -960,10 +966,15 @@ export function KSEFInvoicesPage() {
         }
       );
 
-      const result = await response.json();
+      let result: any;
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(`Błąd serwera (${response.status}): ${response.statusText}`);
+      }
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Nie udało się przenieść faktury');
+        throw new Error(result.error || `Błąd serwera (${response.status})`);
       }
 
       console.log('✅ === TRANSFER FAKTURY ZAKOŃCZONY POMYŚLNIE ===');
