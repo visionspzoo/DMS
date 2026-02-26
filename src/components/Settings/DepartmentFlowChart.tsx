@@ -607,35 +607,32 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
 
       data?.forEach((row: { department_id: string; user_id: string; user: { id: string; full_name: string; role: string; department_id: string | null } | null }) => {
         if (!row.user) return;
-        if (row.user.department_id !== row.department_id) return;
-
-        const isDirectorOfDept = row.user_id === deptDirectorMap[row.department_id];
-        if (!isDirectorOfDept) {
-          counts[row.department_id] = (counts[row.department_id] || 0) + 1;
-        }
 
         const formalDirectorId = deptDirectorMap[row.department_id];
         const formalManagerId = deptManagerMap[row.department_id];
+        const isNativeToThisDept = row.user.department_id === row.department_id;
+
+        const isDirectorOfDept = row.user_id === formalDirectorId;
+        const isManagerOfDept = row.user_id === formalManagerId;
+
+        if (isNativeToThisDept && !isDirectorOfDept) {
+          counts[row.department_id] = (counts[row.department_id] || 0) + 1;
+        }
+
         const member: DeptMember = {
           user_id: row.user_id,
           full_name: row.user.full_name,
           role: row.user.role,
         };
 
-        if (row.user_id !== formalDirectorId && row.user_id !== formalManagerId) {
+        if (!isDirectorOfDept && !isManagerOfDept) {
           if (row.user.role === 'Dyrektor') {
             if (!wdMap[row.department_id]) wdMap[row.department_id] = [];
             wdMap[row.department_id].push(member);
-          } else {
+          } else if (isNativeToThisDept) {
             if (!amMap[row.department_id]) amMap[row.department_id] = [];
             amMap[row.department_id].push(member);
           }
-        }
-      });
-
-      departments.forEach(d => {
-        if (d.manager_id) {
-          counts[d.id] = (counts[d.id] || 0) + 1;
         }
       });
 
