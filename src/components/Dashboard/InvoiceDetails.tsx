@@ -2923,9 +2923,20 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
                         />
                       ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {(currentInvoice as any).pz_number || '—'}
-                        </p>
+                        <>
+                          <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                            {(currentInvoice as any).pz_number || '—'}
+                          </p>
+                          {(currentInvoice as any).bez_mpk && !(currentInvoice as any).pz_number && (
+                            <button
+                              onClick={() => {}}
+                              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary text-white text-xs font-medium rounded-lg hover:bg-brand-primary/90 transition-colors"
+                            >
+                              <FileCheck className="w-3.5 h-3.5" />
+                              Powiąż z PZ
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
