@@ -626,7 +626,7 @@ export default function DepartmentFlowChart({ departments }: { departments: Depa
         };
 
         if (!isDirectorOfDept && !isManagerOfDept) {
-          if (row.user.role === 'Dyrektor') {
+          if (row.user.role === 'Dyrektor' && !isNativeToThisDept) {
             if (!wdMap[row.department_id]) wdMap[row.department_id] = [];
             wdMap[row.department_id].push(member);
           } else if (isNativeToThisDept) {
