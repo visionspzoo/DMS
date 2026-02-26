@@ -67,6 +67,7 @@ export function InvoiceList() {
   const [selectedYear, setSelectedYear] = useState<string>(String(currentDate.getFullYear()));
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [filterBezMpkNoPz, setFilterBezMpkNoPz] = useState(false);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -547,7 +548,7 @@ export function InvoiceList() {
     if (profile?.id) {
       filterInvoices();
     }
-  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, invoices, profile]);
+  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, filterBezMpkNoPz, invoices, profile]);
 
 
   const filterInvoices = () => {
@@ -613,6 +614,12 @@ export function InvoiceList() {
         inv.supplier_nip?.toLowerCase().includes(query) ||
         inv.description?.toLowerCase().includes(query) ||
         inv.uploader?.full_name?.toLowerCase().includes(query)
+      );
+    }
+
+    if (filterBezMpkNoPz) {
+      filtered = filtered.filter(inv =>
+        (inv as any).bez_mpk === true && (!inv.pz_number || inv.pz_number.trim() === '')
       );
     }
 
@@ -1361,6 +1368,19 @@ export function InvoiceList() {
                 ))}
               </>
             )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Filtry:</label>
+            <button
+              onClick={() => setFilterBezMpkNoPz(v => !v)}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                filterBezMpkNoPz
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-amber-500/10'
+              }`}
+            >
+              BEZ MPK: Brak powiązania
+            </button>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
