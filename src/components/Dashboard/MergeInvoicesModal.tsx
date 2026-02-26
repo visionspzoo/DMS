@@ -52,6 +52,8 @@ const INVOICE_FIELDS = `
   user_drive_file_id,
   drive_owner_user_id,
   pz_number,
+  bez_mpk,
+  internal_comment,
   uploader:profiles!uploaded_by(full_name, role),
   department:departments!department_id(id, name)
 `;
