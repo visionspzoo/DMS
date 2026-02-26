@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     // 2. Get department info
     const { data: department, error: deptError } = await supabase
       .from("departments")
-      .select("name, google_drive_draft_folder_id")
+      .select("name, google_drive_draft_folder_id, manager_id, director_id")
       .eq("id", departmentId)
       .single();
 
@@ -278,9 +278,9 @@ Deno.serve(async (req: Request) => {
     // 8. Create invoice record
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
 
-    // Owner = explicitly selected user OR the person doing the transfer.
-    // appropriateApproverId (auto-detected approver like CEO) should NOT become the owner.
-    const invoiceOwner = userId || uploaderId || ksefInvoice.fetched_by;
+    // Owner = explicitly selected user OR department manager OR director.
+    // The person doing the transfer should NOT become the owner.
+    const invoiceOwner = userId || department.manager_id || department.director_id || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
