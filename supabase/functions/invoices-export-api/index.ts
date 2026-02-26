@@ -94,10 +94,14 @@ Deno.serve(async (req: Request) => {
         invoice_number,
         supplier_name,
         supplier_nip,
+        buyer_name,
+        buyer_nip,
         issue_date,
         due_date,
         currency,
         description,
+        internal_comment,
+        bez_mpk,
         net_amount,
         tax_amount,
         gross_amount,
@@ -114,6 +118,15 @@ Deno.serve(async (req: Request) => {
           id,
           name,
           mpk_code
+        ),
+        invoice_attachments (
+          id,
+          file_name,
+          google_drive_web_view_link,
+          mime_type,
+          file_size,
+          storage_path,
+          created_at
         )
       `)
       .in('status', statuses)
@@ -180,17 +193,30 @@ Deno.serve(async (req: Request) => {
       const departmentName = isBezMpk ? 'BEZ MPK' : (inv.department?.name || null);
       const mpkDescription = isBezMpk ? (inv.description || null) : (mpkCode ? (costCentersMap[mpkCode] || null) : null);
 
+      const attachments = (inv.invoice_attachments || []).map((a: any) => ({
+        id: a.id,
+        file_name: a.file_name,
+        url: a.google_drive_web_view_link || null,
+        mime_type: a.mime_type,
+        file_size: a.file_size,
+        created_at: a.created_at,
+      }));
+
       const entry: Record<string, unknown> = {
         invoice_number: inv.invoice_number,
         supplier_name: inv.supplier_name,
         supplier_nip: inv.supplier_nip,
+        buyer_name: inv.buyer_name || null,
+        buyer_nip: inv.buyer_nip || null,
         issue_date: inv.issue_date,
         due_date: inv.due_date,
         mpk_code: mpkCode,
         department_name: departmentName,
         currency: inv.currency,
-        description: inv.description,
+        description: inv.description || null,
+        internal_comment: inv.internal_comment || null,
         mpk_description: mpkDescription,
+        bez_mpk: inv.bez_mpk || false,
         net_amount: inv.net_amount,
         tax_amount: inv.tax_amount,
         gross_amount: inv.gross_amount,
@@ -200,6 +226,7 @@ Deno.serve(async (req: Request) => {
         paid_at: inv.paid_at,
         updated_at: inv.updated_at,
         pz_number: inv.pz_number || null,
+        attachments,
       };
 
       if (includePdf) {
