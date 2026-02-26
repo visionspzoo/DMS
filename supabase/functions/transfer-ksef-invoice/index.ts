@@ -320,8 +320,8 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insertError) {
-      console.error('❌ Invoice insert error:', insertError);
-      throw insertError;
+      console.error('❌ Invoice insert error:', JSON.stringify(insertError));
+      throw new Error(`Insert failed: ${insertError.message} | code: ${insertError.code} | details: ${insertError.details} | hint: ${insertError.hint}`);
     }
 
     console.log(`✓ Invoice created successfully with ID: ${newInvoice.id}`);
