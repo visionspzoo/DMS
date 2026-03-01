@@ -352,7 +352,34 @@ Deno.serve(async (req: Request) => {
       throw updateError;
     }
 
-    // 10. Run OCR on the transferred invoice (only if PDF is available)
+    // 10. If Drive upload failed but PDF is available, retry via auto-upload function
+    if (pdfBase64 && !googleDriveId && department.google_drive_draft_folder_id) {
+      console.log("🔁 Retrying Google Drive upload via auto-upload-ksef-pdfs...");
+      try {
+        const retryResponse = await fetch(
+          `${supabaseUrl}/functions/v1/auto-upload-ksef-pdfs`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ invoiceId: newInvoice.id }),
+          }
+        );
+        if (retryResponse.ok) {
+          const retryResult = await retryResponse.json();
+          console.log(`✓ Retry upload result:`, retryResult);
+        } else {
+          const retryError = await retryResponse.text();
+          console.error(`❌ Retry upload failed: ${retryError}`);
+        }
+      } catch (retryError: any) {
+        console.error("❌ Retry upload error (non-blocking):", retryError.message);
+      }
+    }
+
+    // 11. Run OCR on the transferred invoice (only if PDF is available)
     if (pdfBase64) {
       try {
         console.log("🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===");
