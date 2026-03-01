@@ -248,6 +248,25 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
     return hasDesc || hasMpk || hasTags;
   };
 
+  const deleteFromDrive = async (fileId: string, ownerUserId?: string | null) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fileId, ownerUserId: ownerUserId ?? undefined }),
+        }
+      );
+    } catch {
+    }
+  };
+
   const mergeGroup = async (group: DuplicateGroup, winnerId: string) => {
     const winner = group.invoices.find(inv => inv.id === winnerId) || group.winner;
     const losers = group.invoices.filter(inv => inv.id !== winnerId);
@@ -295,6 +314,14 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
       if (loser.source === 'ksef') {
         continue;
       }
+
+      if (loser.google_drive_id) {
+        await deleteFromDrive(loser.google_drive_id);
+      }
+      if (loser.user_drive_file_id && loser.user_drive_file_id !== loser.google_drive_id) {
+        await deleteFromDrive(loser.user_drive_file_id, (loser as any).drive_owner_user_id);
+      }
+
       const { error } = await supabase
         .from('invoices')
         .delete()
