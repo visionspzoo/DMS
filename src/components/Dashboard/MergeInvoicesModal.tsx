@@ -187,12 +187,14 @@ function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
 
 export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: MergeInvoicesModalProps) {
   const [merging, setMerging] = useState(false);
+  const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
   const [mergeResults, setMergeResults] = useState<{ key: string; success: boolean; error?: string }[]>([]);
   const [done, setDone] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedWinners, setSelectedWinners] = useState<Map<string, string>>(new Map());
   const [allDuplicates, setAllDuplicates] = useState<Invoice[]>([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(true);
+  const [mergedKeys, setMergedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoadingDuplicates(true);
@@ -301,13 +303,27 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
     }
   };
 
+  const handleMergeSingle = async (group: DuplicateGroup) => {
+    const winnerId = selectedWinners.get(group.key) || group.winner.id;
+    setMergingGroupKey(group.key);
+    try {
+      await mergeGroup(group, winnerId);
+      setMergedKeys(prev => new Set(prev).add(group.key));
+    } catch (err: any) {
+      alert(`Błąd scalania: ${err.message}`);
+    } finally {
+      setMergingGroupKey(null);
+    }
+  };
+
   const handleMergeAll = async () => {
-    if (!confirm(`Czy na pewno chcesz połączyć ${duplicateGroups.length} grup duplikatów? Zduplikowane faktury zostaną usunięte, a dane opisowe przeniesione do faktury głównej.`)) return;
+    const remaining = duplicateGroups.filter(g => !mergedKeys.has(g.key));
+    if (!confirm(`Czy na pewno chcesz połączyć ${remaining.length} grup duplikatów? Zduplikowane faktury zostaną usunięte, a dane opisowe przeniesione do faktury głównej.`)) return;
 
     setMerging(true);
     const results: typeof mergeResults = [];
 
-    for (const group of duplicateGroups) {
+    for (const group of remaining) {
       const winnerId = selectedWinners.get(group.key) || group.winner.id;
       try {
         await mergeGroup(group, winnerId);
@@ -322,8 +338,10 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
     setDone(true);
   };
 
+  const visibleGroups = duplicateGroups.filter(g => !mergedKeys.has(g.key));
+
   if (done) {
-    const succeeded = mergeResults.filter(r => r.success).length;
+    const succeeded = mergeResults.filter(r => r.success).length + mergedKeys.size;
     const failed = mergeResults.filter(r => !r.success).length;
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -365,7 +383,12 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
             <div>
               <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">Połącz duplikaty</h2>
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                {loadingDuplicates ? 'Wyszukiwanie duplikatów...' : <>Znaleziono <span className="font-semibold text-orange-600">{duplicateGroups.length}</span> grup duplikatów</>}
+                {loadingDuplicates ? 'Wyszukiwanie duplikatów...' : (
+                  <>
+                    {mergedKeys.size > 0 && <><span className="font-semibold text-green-600">{mergedKeys.size}</span> połączono · </>}
+                    <span className="font-semibold text-orange-600">{visibleGroups.length}</span> pozostało
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -379,11 +402,23 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
             <div className="flex items-center justify-center py-12">
               <Loader className="w-8 h-8 animate-spin text-brand-primary" />
             </div>
-          ) : duplicateGroups.length === 0 ? (
+          ) : visibleGroups.length === 0 ? (
             <div className="text-center py-12">
               <Check className="w-12 h-12 text-green-500 mx-auto mb-3" />
-              <p className="text-text-secondary-light dark:text-text-secondary-dark font-medium">Brak duplikatów do połączenia</p>
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">Wszystkie faktury są unikalne</p>
+              <p className="text-text-secondary-light dark:text-text-secondary-dark font-medium">
+                {mergedKeys.size > 0 ? 'Wszystkie duplikaty zostały połączone' : 'Brak duplikatów do połączenia'}
+              </p>
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                {mergedKeys.size > 0 ? `Połączono ${mergedKeys.size} grup` : 'Wszystkie faktury są unikalne'}
+              </p>
+              {mergedKeys.size > 0 && (
+                <button
+                  onClick={onMergeComplete}
+                  className="mt-4 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium text-sm"
+                >
+                  Zamknij i odśwież
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -392,35 +427,51 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
                 Faktura główna zostanie zachowana. Pozostałe zostaną usunięte. Dane opisowe (opis, opis MPK, tagi) zostaną przeniesione jeśli faktura główna ich nie posiada.
               </div>
 
-              {duplicateGroups.map(group => {
+              {visibleGroups.map(group => {
                 const currentWinnerId = selectedWinners.get(group.key) || group.winner.id;
                 const currentWinner = group.invoices.find(inv => inv.id === currentWinnerId) || group.winner;
                 const isExpanded = expandedGroups.has(group.key);
+                const isMergingThis = mergingGroupKey === group.key;
 
                 return (
                   <div key={group.key} className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => toggleExpand(group.key)}
-                      className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition text-left"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileCheck className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <span className="font-medium text-sm text-text-primary-light dark:text-text-primary-dark truncate block">
-                            {currentWinner.invoice_number}
-                          </span>
-                          <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                            {currentWinner.supplier_name} · {group.invoices.length} faktury
-                          </span>
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => toggleExpand(group.key)}
+                        className="flex-1 flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition text-left"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileCheck className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <span className="font-medium text-sm text-text-primary-light dark:text-text-primary-dark truncate block">
+                              {currentWinner.invoice_number}
+                            </span>
+                            <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                              {currentWinner.supplier_name} · {group.invoices.length} faktury
+                            </span>
+                          </div>
                         </div>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full">
+                            {group.invoices.length} duplikatów
+                          </span>
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" /> : <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />}
+                        </div>
+                      </button>
+                      <div className="px-3 flex-shrink-0 border-l border-slate-200 dark:border-slate-700/50">
+                        <button
+                          onClick={() => handleMergeSingle(group)}
+                          disabled={isMergingThis || merging}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition font-medium text-xs disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          {isMergingThis ? (
+                            <><Loader className="w-3.5 h-3.5 animate-spin" />Scalanie...</>
+                          ) : (
+                            <><GitMerge className="w-3.5 h-3.5" />Połącz</>
+                          )}
+                        </button>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full">
-                          {group.invoices.length} duplikatów
-                        </span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" /> : <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />}
-                      </div>
-                    </button>
+                    </div>
 
                     {isExpanded && (
                       <div className="border-t border-slate-200 dark:border-slate-700/50 p-3 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">
@@ -476,18 +527,18 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
           )}
         </div>
 
-        {duplicateGroups.length > 0 && (
+        {visibleGroups.length > 0 && (
           <div className="border-t border-slate-200 dark:border-slate-700/50 p-4 flex-shrink-0 flex items-center justify-between gap-3">
             <button
               onClick={onClose}
-              disabled={merging}
+              disabled={merging || mergingGroupKey !== null}
               className="px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-text-primary-light dark:text-text-primary-dark rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition font-medium text-sm disabled:opacity-50"
             >
               Anuluj
             </button>
             <button
               onClick={handleMergeAll}
-              disabled={merging}
+              disabled={merging || mergingGroupKey !== null}
               className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition font-medium text-sm disabled:opacity-50"
             >
               {merging ? (
@@ -498,7 +549,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
               ) : (
                 <>
                   <GitMerge className="w-4 h-4" />
-                  Połącz wszystkie ({duplicateGroups.length})
+                  Połącz wszystkie ({visibleGroups.length})
                 </>
               )}
             </button>
