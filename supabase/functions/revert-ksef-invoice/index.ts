@@ -162,15 +162,6 @@ Deno.serve(async (req: Request) => {
       console.log("No Drive file IDs found on invoice, skipping Drive deletion");
     }
 
-    const { error: deleteInvoiceError } = await supabase
-      .from("invoices")
-      .delete()
-      .eq("id", invoiceId);
-
-    if (deleteInvoiceError) throw deleteInvoiceError;
-
-    console.log(`Invoice ${invoiceId} deleted from DB`);
-
     const { error: updateKsefError } = await supabase
       .from("ksef_invoices")
       .update({
@@ -181,6 +172,17 @@ Deno.serve(async (req: Request) => {
       .eq("id", ksefInvoiceId);
 
     if (updateKsefError) throw updateKsefError;
+
+    console.log(`KSEF reference cleared for ${ksefInvoiceId}`);
+
+    const { error: deleteInvoiceError } = await supabase
+      .from("invoices")
+      .delete()
+      .eq("id", invoiceId);
+
+    if (deleteInvoiceError) throw deleteInvoiceError;
+
+    console.log(`Invoice ${invoiceId} deleted from DB`);
 
     console.log(`KSEF invoice ${ksefInvoiceId} reverted successfully`);
 
