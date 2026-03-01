@@ -22,6 +22,82 @@ interface EmailConfig {
   is_active: boolean;
 }
 
+async function getServiceAccountToken(): Promise<string | null> {
+  const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+  if (!serviceAccountJson) return null;
+
+  try {
+    const serviceAccount = JSON.parse(serviceAccountJson);
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: "RS256", typ: "JWT" };
+    const payload = {
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/drive",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    };
+
+    const encode = (obj: object) =>
+      btoa(JSON.stringify(obj))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+    const headerB64 = encode(header);
+    const payloadB64 = encode(payload);
+    const signingInput = `${headerB64}.${payloadB64}`;
+
+    const pemKey = serviceAccount.private_key;
+    const pemBody = pemKey
+      .replace(/-----BEGIN PRIVATE KEY-----/, "")
+      .replace(/-----END PRIVATE KEY-----/, "")
+      .replace(/\s/g, "");
+
+    const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      new TextEncoder().encode(signingInput)
+    );
+
+    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const jwt = `${signingInput}.${signatureB64}`;
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error("[ServiceAccount] Token error:", await tokenResponse.text());
+      return null;
+    }
+
+    const tokenData = await tokenResponse.json();
+    return tokenData.access_token;
+  } catch (e) {
+    console.error("[ServiceAccount] Failed to get token:", e);
+    return null;
+  }
+}
+
 async function refreshAccessToken(
   supabase: any,
   config: EmailConfig
@@ -87,6 +163,43 @@ async function getValidAccessToken(
   return config.oauth_access_token;
 }
 
+async function getAccessToken(supabase: any, preferredUserId?: string): Promise<string> {
+  const serviceToken = await getServiceAccountToken();
+  if (serviceToken) {
+    console.log("[Auth] Using Google Service Account");
+    return serviceToken;
+  }
+
+  console.log("[Auth] Service Account not configured, falling back to OAuth");
+
+  if (preferredUserId) {
+    const { data: userConfigs } = await supabase
+      .from("user_email_configs")
+      .select("*")
+      .eq("user_id", preferredUserId)
+      .eq("is_active", true)
+      .eq("provider", "google_workspace");
+
+    if (userConfigs && userConfigs.length > 0) {
+      return await getValidAccessToken(supabase, userConfigs[0] as EmailConfig);
+    }
+    console.log(`No OAuth for user ${preferredUserId}, trying any active config`);
+  }
+
+  const { data: anyConfigs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("provider", "google_workspace")
+    .limit(1);
+
+  if (!anyConfigs || anyConfigs.length === 0) {
+    throw new Error("No active Google account connected. Please connect a Google account in Configuration.");
+  }
+
+  return await getValidAccessToken(supabase, anyConfigs[0] as EmailConfig);
+}
+
 async function deleteFileFromGoogleDrive(fileId: string, accessToken: string): Promise<void> {
   console.log(`Deleting file from Google Drive: ${fileId}`);
 
@@ -99,6 +212,11 @@ async function deleteFileFromGoogleDrive(fileId: string, accessToken: string): P
       },
     }
   );
+
+  if (deleteResponse.status === 404) {
+    console.warn(`File ${fileId} not found in Google Drive, skipping deletion`);
+    return;
+  }
 
   if (!deleteResponse.ok) {
     const errorText = await deleteResponse.text();
@@ -133,18 +251,6 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Extract JWT token from Authorization header
-    const token = authHeader.replace('Bearer ', '');
-
-    // Verify the JWT token and get user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) {
-      console.error("Auth error:", userError);
-      throw new Error("Unauthorized");
-    }
-
-    console.log(`Authenticated user: ${user.id}`);
-
     const { fileId, ownerUserId }: DeleteRequest = await req.json();
 
     if (!fileId) {
@@ -153,53 +259,12 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Request to delete file: ${fileId}`);
 
-    // Use ownerUserId (Drive file owner) if provided, otherwise fall back to the calling user
-    const lookupUserId = ownerUserId || user.id;
-    console.log(`Looking up Google OAuth for user: ${lookupUserId}${ownerUserId ? ' (drive owner override)' : ''}`);
-
-    // Get Google OAuth config for the file owner
-    const { data: emailConfigs, error: configError } = await supabase
-      .from("user_email_configs")
-      .select("*")
-      .eq("user_id", lookupUserId)
-      .eq("is_active", true)
-      .eq("provider", "google_workspace");
-
-    if (configError || !emailConfigs || emailConfigs.length === 0) {
-      // If the owner user has no OAuth, fall back to the calling user's credentials
-      if (ownerUserId && ownerUserId !== user.id) {
-        console.log(`No OAuth for owner user ${ownerUserId}, trying calling user ${user.id}`);
-        const { data: fallbackConfigs, error: fallbackError } = await supabase
-          .from("user_email_configs")
-          .select("*")
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .eq("provider", "google_workspace");
-
-        if (fallbackError || !fallbackConfigs || fallbackConfigs.length === 0) {
-          throw new Error("No active Google account connected. Please connect your Google account in Configuration.");
-        }
-
-        const fallbackOauthConfig = fallbackConfigs[0] as EmailConfig;
-        const fallbackAccessToken = await getValidAccessToken(supabase, fallbackOauthConfig);
-        await deleteFileFromGoogleDrive(fileId, fallbackAccessToken);
-
-        console.log("=== DELETE FROM GOOGLE DRIVE COMPLETED (fallback credentials) ===");
-        return new Response(
-          JSON.stringify({ success: true, message: "File deleted from Google Drive", fileId }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error("No active Google account connected. Please connect your Google account in Configuration.");
-    }
-
-    const oauthConfig = emailConfigs[0] as EmailConfig;
-    const accessToken = await getValidAccessToken(supabase, oauthConfig);
+    const accessToken = await getAccessToken(supabase, ownerUserId);
 
     await deleteFileFromGoogleDrive(fileId, accessToken);
-    
+
     console.log("=== DELETE FROM GOOGLE DRIVE COMPLETED ===");
-    
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -213,10 +278,10 @@ Deno.serve(async (req: Request) => {
         },
       }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("=== DELETE FROM GOOGLE DRIVE FAILED ===");
     console.error("Error:", error);
-    
+
     return new Response(
       JSON.stringify({
         error: error.message,

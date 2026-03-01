@@ -706,12 +706,13 @@ export function KSEFInvoicesPage() {
 
       if (invoice?.google_drive_id) {
         try {
+          const { data: { session: driveSession } } = await supabase.auth.getSession();
           const deleteResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
             {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${driveSession?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
