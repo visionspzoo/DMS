@@ -42,6 +42,7 @@ Deno.serve(async (req: Request) => {
       .select(`
         id,
         invoice_number,
+        issue_date,
         pdf_base64,
         department_id,
         uploaded_by,
@@ -119,6 +120,7 @@ Deno.serve(async (req: Request) => {
               folderId: department.google_drive_draft_folder_id,
               mimeType: "application/pdf",
               userId: invoice.uploaded_by,
+              issueDate: invoice.issue_date || null,
             }),
           }
         );

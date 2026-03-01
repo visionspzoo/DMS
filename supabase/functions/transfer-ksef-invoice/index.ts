@@ -97,6 +97,39 @@ async function getGoogleAccessToken(supabase: any, userId: string): Promise<stri
   return config.oauth_access_token;
 }
 
+const POLISH_MONTHS: Record<number, string> = {
+  1: "01 - Styczen", 2: "02 - Luty", 3: "03 - Marzec", 4: "04 - Kwiecien",
+  5: "05 - Maj", 6: "06 - Czerwiec", 7: "07 - Lipiec", 8: "08 - Sierpien",
+  9: "09 - Wrzesien", 10: "10 - Pazdziernik", 11: "11 - Listopad", 12: "12 - Grudzien",
+};
+
+async function findOrCreateFolder(folderName: string, parentId: string, accessToken: string): Promise<string> {
+  const escaped = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = `name='${escaped}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const searchData = await searchRes.json();
+  if (searchData.files && searchData.files.length > 0) return searchData.files[0].id;
+  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: folderName, mimeType: "application/vnd.google-apps.folder", parents: [parentId] }),
+  });
+  const createData = await createRes.json();
+  return createData.id;
+}
+
+async function resolveYearMonthFolder(baseFolderId: string, issueDate: string | null, accessToken: string): Promise<string> {
+  if (!issueDate) return baseFolderId;
+  const date = new Date(issueDate);
+  if (isNaN(date.getTime())) return baseFolderId;
+  const year = String(date.getFullYear());
+  const monthLabel = POLISH_MONTHS[date.getMonth() + 1];
+  const yearFolderId = await findOrCreateFolder(year, baseFolderId, accessToken);
+  return await findOrCreateFolder(monthLabel, yearFolderId, accessToken);
+}
+
 async function uploadToDrive(
   accessToken: string,
   fileName: string,
@@ -400,11 +433,17 @@ Deno.serve(async (req: Request) => {
             return;
           }
 
+          const targetFolderId = await resolveYearMonthFolder(
+            department.google_drive_draft_folder_id,
+            ksefInvoice.issue_date,
+            accessToken
+          );
+
           const result = await uploadToDrive(
             accessToken,
             `${ksefInvoice.invoice_number}.pdf`,
             pdfBase64,
-            department.google_drive_draft_folder_id
+            targetFolderId
           );
 
           if (result) {

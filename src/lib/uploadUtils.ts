@@ -185,6 +185,7 @@ export async function uploadInvoiceFile(
               originalMimeType: file.type,
               userId: userId,
               invoiceId: finalInvoiceData.id,
+              issueDate: finalInvoiceData.issue_date || null,
             }),
           }
         );

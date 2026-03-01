@@ -7,6 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const POLISH_MONTHS: Record<number, string> = {
+  1: "01 - Styczen",
+  2: "02 - Luty",
+  3: "03 - Marzec",
+  4: "04 - Kwiecien",
+  5: "05 - Maj",
+  6: "06 - Czerwiec",
+  7: "07 - Lipiec",
+  8: "08 - Sierpien",
+  9: "09 - Wrzesien",
+  10: "10 - Pazdziernik",
+  11: "11 - Listopad",
+  12: "12 - Grudzien",
+};
+
 interface UploadRequest {
   fileUrl?: string;
   fileBase64?: string;
@@ -18,6 +33,7 @@ interface UploadRequest {
   originalMimeType?: string;
   isContract?: boolean;
   userId?: string;
+  issueDate?: string;
 }
 
 interface OAuthConfig {
@@ -286,7 +302,7 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { fileUrl, fileBase64, fileName, invoiceId, department, folderId, mimeType, originalMimeType, isContract, userId }: UploadRequest = await req.json();
+    const { fileUrl, fileBase64, fileName, invoiceId, department, folderId, mimeType, originalMimeType, isContract, userId, issueDate }: UploadRequest = await req.json();
 
     let targetUserId: string;
 
@@ -323,6 +339,17 @@ Deno.serve(async (req: Request) => {
         targetFolderId = await findOrCreateFolder(department, rootFolderId, accessToken);
       } else if (isContract) {
         targetFolderId = await findOrCreateFolder("Umowy", rootFolderId, accessToken);
+      }
+    }
+
+    if (issueDate) {
+      const date = new Date(issueDate);
+      if (!isNaN(date.getTime())) {
+        const year = String(date.getFullYear());
+        const month = date.getMonth() + 1;
+        const monthLabel = POLISH_MONTHS[month];
+        const yearFolderId = await findOrCreateFolder(year, targetFolderId, accessToken);
+        targetFolderId = await findOrCreateFolder(monthLabel, yearFolderId, accessToken);
       }
     }
 
