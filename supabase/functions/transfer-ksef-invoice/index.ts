@@ -400,39 +400,36 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) throw updateError;
 
-    // 9. Upload PDF to Google Drive directly (after invoice is saved)
+    // 9. Upload PDF to Google Drive synchronously (before returning response)
     if (pdfBase64 && department.google_drive_draft_folder_id) {
-      EdgeRuntime.waitUntil((async () => {
-        try {
-          console.log(`Uploading PDF to Google Drive for invoice ${newInvoice.id}...`);
+      try {
+        console.log(`Uploading PDF to Google Drive for invoice ${newInvoice.id}...`);
 
-          const userIdsToTry = [
-            userId,
-            invoiceOwner,
-            ksefInvoice.fetched_by,
-            department.manager_id,
-            department.director_id,
-          ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+        const userIdsToTry = [
+          userId,
+          invoiceOwner,
+          ksefInvoice.fetched_by,
+          department.manager_id,
+          department.director_id,
+        ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
 
-          let accessToken: string | null = null;
+        let accessToken: string | null = null;
 
-          for (const uid of userIdsToTry) {
-            try {
-              accessToken = await getGoogleAccessToken(supabase, uid);
-              if (accessToken) {
-                console.log(`Got Google access token for user ${uid}`);
-                break;
-              }
-            } catch (err: any) {
-              console.warn(`Could not get token for user ${uid}: ${err.message}`);
+        for (const uid of userIdsToTry) {
+          try {
+            accessToken = await getGoogleAccessToken(supabase, uid);
+            if (accessToken) {
+              console.log(`Got Google access token for user ${uid}`);
+              break;
             }
+          } catch (err: any) {
+            console.warn(`Could not get token for user ${uid}: ${err.message}`);
           }
+        }
 
-          if (!accessToken) {
-            console.error("No Google access token available from any user");
-            return;
-          }
-
+        if (!accessToken) {
+          console.error("No Google access token available from any user");
+        } else {
           const targetFolderId = await resolveYearMonthFolder(
             department.google_drive_draft_folder_id,
             ksefInvoice.issue_date,
@@ -466,10 +463,10 @@ Deno.serve(async (req: Request) => {
           } else {
             console.error("Drive upload returned no result");
           }
-        } catch (driveError: any) {
-          console.error("Background Drive upload error:", driveError.message);
         }
-      })());
+      } catch (driveError: any) {
+        console.error("Drive upload error:", driveError.message);
+      }
     }
 
     // 10. Run OCR on the transferred invoice
