@@ -13,6 +13,135 @@ interface TransferRequest {
   userId?: string;
 }
 
+interface OAuthConfig {
+  id: string;
+  user_id: string;
+  oauth_access_token: string;
+  oauth_refresh_token: string;
+  oauth_token_expiry: string;
+}
+
+async function refreshOAuthToken(supabase: any, config: OAuthConfig): Promise<string> {
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+
+  if (!googleClientId || !googleClientSecret) {
+    throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+  }
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      refresh_token: config.oauth_refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorBody = await tokenResponse.text();
+    throw new Error(`Failed to refresh Google token: ${errorBody}`);
+  }
+
+  const tokens = await tokenResponse.json();
+  const expiryDate = new Date();
+  expiryDate.setSeconds(expiryDate.getSeconds() + tokens.expires_in);
+
+  await supabase
+    .from("user_email_configs")
+    .update({
+      oauth_access_token: tokens.access_token,
+      oauth_token_expiry: expiryDate.toISOString(),
+    })
+    .eq("id", config.id);
+
+  return tokens.access_token;
+}
+
+async function getGoogleAccessToken(supabase: any, userId: string): Promise<string | null> {
+  const { data: configs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .eq("provider", "google_workspace")
+    .limit(1);
+
+  if (!configs || configs.length === 0) {
+    const { data: anyConfigs } = await supabase
+      .from("user_email_configs")
+      .select("*")
+      .eq("is_active", true)
+      .eq("provider", "google_workspace")
+      .limit(1);
+
+    if (!anyConfigs || anyConfigs.length === 0) {
+      return null;
+    }
+
+    const config = anyConfigs[0] as OAuthConfig;
+    const expiryTime = config.oauth_token_expiry ? new Date(config.oauth_token_expiry).getTime() : 0;
+    if (Date.now() >= expiryTime - 5 * 60 * 1000) {
+      return await refreshOAuthToken(supabase, config);
+    }
+    return config.oauth_access_token;
+  }
+
+  const config = configs[0] as OAuthConfig;
+  const expiryTime = config.oauth_token_expiry ? new Date(config.oauth_token_expiry).getTime() : 0;
+  if (Date.now() >= expiryTime - 5 * 60 * 1000) {
+    return await refreshOAuthToken(supabase, config);
+  }
+  return config.oauth_access_token;
+}
+
+async function uploadToDrive(
+  accessToken: string,
+  fileName: string,
+  pdfBase64: string,
+  folderId: string
+): Promise<{ fileId: string; webViewLink: string } | null> {
+  const binaryString = atob(pdfBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const fileBlob = new Blob([bytes], { type: "application/pdf" });
+
+  const cleanFolderId = folderId.replace(/\/folders\/([a-zA-Z0-9_-]+).*/, "$1").replace(/^.*id=([a-zA-Z0-9_-]+).*/, "$1");
+  const actualFolderId = cleanFolderId.match(/^[a-zA-Z0-9_-]+$/) ? cleanFolderId : folderId;
+
+  const metadata = {
+    name: fileName,
+    mimeType: "application/pdf",
+    parents: [actualFolderId],
+  };
+
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", fileBlob);
+
+  const uploadResponse = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    console.error(`Drive upload API error ${uploadResponse.status}: ${errorText}`);
+    return null;
+  }
+
+  const data = await uploadResponse.json();
+  return { fileId: data.id, webViewLink: data.webViewLink };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -28,9 +157,8 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { ksefInvoiceId, departmentId, userId }: TransferRequest = await req.json();
-    console.log(`🔄 Transfer request:`, { ksefInvoiceId, departmentId, userId });
+    console.log(`Transfer request:`, { ksefInvoiceId, departmentId, userId });
 
-    // Get auth user ID from JWT early (needed for various operations)
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
     let uploaderId = null;
@@ -39,9 +167,9 @@ Deno.serve(async (req: Request) => {
       try {
         const { data: { user } } = await supabase.auth.getUser(token);
         uploaderId = user?.id;
-        console.log(`✓ Authenticated user ID: ${uploaderId}`);
+        console.log(`Authenticated user ID: ${uploaderId}`);
       } catch (error) {
-        console.warn("Could not extract user from token, will use fetched_by instead");
+        console.warn("Could not extract user from token");
       }
     }
 
@@ -52,17 +180,11 @@ Deno.serve(async (req: Request) => {
       .eq("id", ksefInvoiceId)
       .single();
 
-    if (ksefError) {
-      console.error("❌ Error fetching KSEF invoice:", ksefError);
-      throw new Error(`KSEF invoice fetch error: ${ksefError.message}`);
+    if (ksefError || !ksefInvoice) {
+      throw new Error(`KSEF invoice not found: ${ksefError?.message}`);
     }
 
-    if (!ksefInvoice) {
-      console.error("❌ KSEF invoice not found:", ksefInvoiceId);
-      throw new Error("KSEF invoice not found");
-    }
-
-    console.log(`✓ Found KSEF invoice: ${ksefInvoice.invoice_number}`);
+    console.log(`Found KSEF invoice: ${ksefInvoice.invoice_number}`);
 
     // 2. Get department info
     const { data: department, error: deptError } = await supabase
@@ -71,30 +193,23 @@ Deno.serve(async (req: Request) => {
       .eq("id", departmentId)
       .single();
 
-    if (deptError) {
-      console.error("❌ Error fetching department:", deptError);
-      throw new Error(`Department fetch error: ${deptError.message}`);
+    if (deptError || !department) {
+      throw new Error(`Department not found: ${deptError?.message}`);
     }
 
-    if (!department) {
-      console.error("❌ Department not found:", departmentId);
-      throw new Error("Department not found");
-    }
+    console.log(`Found department: ${department.name}`);
 
-    console.log(`✓ Found department: ${department.name}`);
-
-    // 3. Get PDF - use existing from database, or try to download if not available
+    // 3. Get PDF - use existing from database, or try to download
     let pdfBase64 = ksefInvoice.pdf_base64;
 
     if (!pdfBase64) {
       console.log("No PDF in database, attempting download from KSEF...");
       try {
-        const ksefProxyUrl = `${supabaseUrl}/functions/v1/ksef-proxy`;
         const pdfParams = new URLSearchParams({
           path: `/api/external/invoices/${encodeURIComponent(ksefInvoice.ksef_reference_number)}/pdf-base64`,
         });
 
-        const pdfResponse = await fetch(`${ksefProxyUrl}?${pdfParams}`, {
+        const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/ksef-proxy?${pdfParams}`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${supabaseAnonKey}`,
@@ -106,139 +221,59 @@ Deno.serve(async (req: Request) => {
           const pdfData = await pdfResponse.json();
           if (pdfData.success && pdfData.data?.base64) {
             pdfBase64 = pdfData.data.base64;
-            const sizeBytes = pdfData.data.sizeBytes || "unknown";
-            console.log(`PDF downloaded from KSEF (${sizeBytes} bytes)`);
-
-            await supabase
-              .from("ksef_invoices")
-              .update({ pdf_base64: pdfBase64 })
-              .eq("id", ksefInvoice.id);
-          } else {
-            console.warn("Invalid PDF response format, trying XML generation");
+            console.log(`PDF downloaded from KSEF`);
+            await supabase.from("ksef_invoices").update({ pdf_base64: pdfBase64 }).eq("id", ksefInvoice.id);
           }
-        } else {
-          console.warn(`PDF download failed (${pdfResponse.status}), trying XML generation`);
         }
       } catch (pdfError: any) {
-        console.warn("PDF download failed, trying XML generation:", pdfError.message);
+        console.warn("PDF download failed:", pdfError.message);
       }
-    } else {
-      console.log(`Using existing PDF from database`);
     }
 
     // 4. If still no PDF, try generating from XML content
     if (!pdfBase64 && ksefInvoice.xml_content) {
       console.log("Generating PDF from XML content...");
       try {
-        const genResponse = await fetch(
-          `${supabaseUrl}/functions/v1/generate-ksef-pdf`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              xml: ksefInvoice.xml_content,
-              ksefNumber: ksefInvoice.ksef_reference_number,
-            }),
-          }
-        );
+        const genResponse = await fetch(`${supabaseUrl}/functions/v1/generate-ksef-pdf`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            xml: ksefInvoice.xml_content,
+            ksefNumber: ksefInvoice.ksef_reference_number,
+          }),
+        });
 
         if (genResponse.ok) {
           const pdfArrayBuffer = await genResponse.arrayBuffer();
           pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfArrayBuffer)));
           console.log(`PDF generated from XML (${pdfArrayBuffer.byteLength} bytes)`);
-
-          await supabase
-            .from("ksef_invoices")
-            .update({ pdf_base64: pdfBase64 })
-            .eq("id", ksefInvoice.id);
-        } else {
-          console.warn(`PDF generation from XML failed (${genResponse.status})`);
+          await supabase.from("ksef_invoices").update({ pdf_base64: pdfBase64 }).eq("id", ksefInvoice.id);
         }
       } catch (genError: any) {
         console.warn("PDF generation from XML failed:", genError.message);
       }
     }
 
-    // 5. Upload PDF to Google Drive (ZAWSZE gdy PDF jest dostępny i folder skonfigurowany)
-    let driveFileUrl = null;
-    let googleDriveId = null;
-
-    if (pdfBase64 && department.google_drive_draft_folder_id) {
-      try {
-        console.log("📤 Uploading PDF to Google Drive...");
-        console.log(`Folder: ${department.google_drive_draft_folder_id}`);
-        console.log(`File: ${ksefInvoice.invoice_number}.pdf`);
-
-        // Use the target user (assignee) for Drive upload, not the person doing the transfer
-        const userIdForUpload = userId || ksefInvoice.fetched_by || uploaderId;
-
-        if (!userIdForUpload) {
-          console.warn("⚠️ No user ID available for Google Drive upload, skipping...");
-        } else {
-          const uploadResponse = await fetch(
-            `${supabaseUrl}/functions/v1/upload-to-google-drive`,
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${supabaseAnonKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                fileName: `${ksefInvoice.invoice_number}.pdf`,
-                fileBase64: pdfBase64,
-                folderId: department.google_drive_draft_folder_id,
-                mimeType: "application/pdf",
-                userId: userIdForUpload,
-              }),
-            }
-          );
-
-          if (uploadResponse.ok) {
-            const uploadResult = await uploadResponse.json();
-            googleDriveId = uploadResult.fileId;
-            driveFileUrl = `https://drive.google.com/file/d/${uploadResult.fileId}/view`;
-            console.log(`✓ PDF uploaded to Google Drive: ${driveFileUrl}`);
-          } else {
-            const errorText = await uploadResponse.text();
-            console.error(`❌ Failed to upload to Google Drive: ${errorText}`);
-            console.warn("Will store PDF in database only");
-          }
-        }
-      } catch (uploadError: any) {
-        console.error("❌ Error during Google Drive upload:", uploadError.message);
-        console.warn("Will store PDF in database only");
-      }
-    } else {
-      if (!pdfBase64) {
-        console.log("⚠️ Skipping Google Drive upload - no PDF available");
-      } else if (!department.google_drive_draft_folder_id) {
-        console.log("⚠️ Skipping Google Drive upload - no Google Drive folder configured for department");
-      }
-    }
-
-    // 6. Get exchange rate if needed
+    // 5. Get exchange rate if needed
     let exchangeRate = 1;
     let plnGrossAmount = ksefInvoice.gross_amount;
 
     if (ksefInvoice.currency !== "PLN" && ksefInvoice.issue_date) {
       try {
-        const rateResponse = await fetch(
-          `${supabaseUrl}/functions/v1/get-exchange-rate`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              currency: ksefInvoice.currency,
-              date: ksefInvoice.issue_date,
-            }),
-          }
-        );
+        const rateResponse = await fetch(`${supabaseUrl}/functions/v1/get-exchange-rate`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            currency: ksefInvoice.currency,
+            date: ksefInvoice.issue_date,
+          }),
+        });
 
         if (rateResponse.ok) {
           const rateData = await rateResponse.json();
@@ -250,36 +285,26 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 7. Find appropriate approver for department if userId not provided
+    // 6. Find appropriate approver for department if userId not provided
     let appropriateApproverId = userId || null;
 
     if (!appropriateApproverId) {
-      console.log("👤 Finding appropriate approver for department...");
       try {
-        const { data: approverData, error: approverError } = await supabase
-          .rpc("get_next_approver_in_department", {
-            dept_id: departmentId,
-            user_role: null,
-          });
-
-        if (approverError) {
-          console.error("⚠️ Error finding approver:", approverError);
-        } else if (approverData) {
+        const { data: approverData } = await supabase.rpc("get_next_approver_in_department", {
+          dept_id: departmentId,
+          user_role: null,
+        });
+        if (approverData) {
           appropriateApproverId = approverData;
-          console.log("✓ Found appropriate approver:", appropriateApproverId);
-        } else {
-          console.warn("⚠️ No approver found for department");
+          console.log("Found appropriate approver:", appropriateApproverId);
         }
       } catch (err) {
-        console.error("⚠️ Error calling get_next_approver_in_department:", err);
+        console.error("Error finding approver:", err);
       }
     }
 
-    // 8. Create invoice record
+    // 7. Create invoice record (without Drive URL yet)
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
-
-    // Owner = explicitly selected user OR department manager OR director.
-    // The person doing the transfer should NOT become the owner.
     const invoiceOwner = userId || department.manager_id || department.director_id || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
@@ -296,21 +321,20 @@ Deno.serve(async (req: Request) => {
       status: "draft",
       uploaded_by: invoiceOwner,
       department_id: departmentId,
-      file_url: driveFileUrl,
+      file_url: null,
       pdf_base64: pdfBase64,
       description: "Faktura z KSEF - dodana jako wersja robocza",
       pln_gross_amount: plnGrossAmount,
       exchange_rate: exchangeRate,
       source: "ksef",
-      google_drive_id: googleDriveId,
+      google_drive_id: null,
       current_approver_id: appropriateApproverId,
     };
 
-    console.log(`📝 Creating invoice with data:`, {
+    console.log(`Creating invoice:`, {
       uploaded_by: invoiceData.uploaded_by,
       department_id: invoiceData.department_id,
       invoice_number: invoiceData.invoice_number,
-      status: invoiceData.status
     });
 
     const { data: newInvoice, error: insertError } = await supabase
@@ -320,13 +344,12 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insertError) {
-      console.error('❌ Invoice insert error:', JSON.stringify(insertError));
-      throw new Error(`Insert failed: ${insertError.message} | code: ${insertError.code} | details: ${insertError.details} | hint: ${insertError.hint}`);
+      throw new Error(`Insert failed: ${insertError.message} | code: ${insertError.code} | details: ${insertError.details}`);
     }
 
-    console.log(`✓ Invoice created successfully with ID: ${newInvoice.id}`);
+    console.log(`Invoice created with ID: ${newInvoice.id}`);
 
-    // 9. Update KSEF invoice record
+    // 8. Update KSEF invoice record
     const updateData: any = {
       transferred_to_invoice_id: newInvoice.id,
       transferred_to_department_id: departmentId,
@@ -334,76 +357,103 @@ Deno.serve(async (req: Request) => {
       assigned_to_department_at: new Date().toISOString(),
     };
 
-    if (ksefInvoice.xml_content) {
-      updateData.xml_content = ksefInvoice.xml_content;
-    }
-
-    // Save PDF base64 to ksef_invoices for preview
-    if (pdfBase64) {
-      updateData.pdf_base64 = pdfBase64;
-    }
+    if (ksefInvoice.xml_content) updateData.xml_content = ksefInvoice.xml_content;
+    if (pdfBase64) updateData.pdf_base64 = pdfBase64;
 
     const { error: updateError } = await supabase
       .from("ksef_invoices")
       .update(updateData)
       .eq("id", ksefInvoiceId);
 
-    if (updateError) {
-      throw updateError;
+    if (updateError) throw updateError;
+
+    // 9. Upload PDF to Google Drive directly (after invoice is saved)
+    if (pdfBase64 && department.google_drive_draft_folder_id) {
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          console.log(`Uploading PDF to Google Drive for invoice ${newInvoice.id}...`);
+
+          const userIdsToTry = [
+            userId,
+            invoiceOwner,
+            ksefInvoice.fetched_by,
+            department.manager_id,
+            department.director_id,
+          ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+
+          let accessToken: string | null = null;
+
+          for (const uid of userIdsToTry) {
+            try {
+              accessToken = await getGoogleAccessToken(supabase, uid);
+              if (accessToken) {
+                console.log(`Got Google access token for user ${uid}`);
+                break;
+              }
+            } catch (err: any) {
+              console.warn(`Could not get token for user ${uid}: ${err.message}`);
+            }
+          }
+
+          if (!accessToken) {
+            console.error("No Google access token available from any user");
+            return;
+          }
+
+          const result = await uploadToDrive(
+            accessToken,
+            `${ksefInvoice.invoice_number}.pdf`,
+            pdfBase64,
+            department.google_drive_draft_folder_id
+          );
+
+          if (result) {
+            console.log(`PDF uploaded to Google Drive: ${result.fileId}`);
+            await supabase
+              .from("invoices")
+              .update({
+                google_drive_id: result.fileId,
+                user_drive_file_id: result.fileId,
+                file_url: `https://drive.google.com/file/d/${result.fileId}/view`,
+              })
+              .eq("id", newInvoice.id);
+            console.log(`Invoice updated with Drive file ID: ${result.fileId}`);
+          } else {
+            console.error("Drive upload returned no result");
+          }
+        } catch (driveError: any) {
+          console.error("Background Drive upload error:", driveError.message);
+        }
+      })());
     }
 
-    // 10. If Drive upload failed but PDF is available, retry via auto-upload function
-    if (pdfBase64 && !googleDriveId && department.google_drive_draft_folder_id) {
-      console.log("🔁 Retrying Google Drive upload via auto-upload-ksef-pdfs...");
-      try {
-        const retryResponse = await fetch(
-          `${supabaseUrl}/functions/v1/auto-upload-ksef-pdfs`,
-          {
+    // 10. Run OCR on the transferred invoice
+    if (pdfBase64) {
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          console.log("Running OCR for KSEF invoice...");
+          const ocrResponse = await fetch(`${supabaseUrl}/functions/v1/process-invoice-ocr`, {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${supabaseServiceKey}`,
+              "Authorization": `Bearer ${supabaseAnonKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ invoiceId: newInvoice.id }),
+            body: JSON.stringify({
+              pdfBase64: pdfBase64,
+              invoiceId: newInvoice.id,
+            }),
+          });
+
+          if (ocrResponse.ok) {
+            console.log("OCR completed successfully");
+          } else {
+            const ocrError = await ocrResponse.json();
+            console.error("OCR failed:", ocrError);
           }
-        );
-        if (retryResponse.ok) {
-          const retryResult = await retryResponse.json();
-          console.log(`✓ Retry upload result:`, retryResult);
-        } else {
-          const retryError = await retryResponse.text();
-          console.error(`❌ Retry upload failed: ${retryError}`);
+        } catch (ocrError: any) {
+          console.error("OCR error:", ocrError.message);
         }
-      } catch (retryError: any) {
-        console.error("❌ Retry upload error (non-blocking):", retryError.message);
-      }
-    }
-
-    // 11. Run OCR on the transferred invoice (only if PDF is available)
-    if (pdfBase64) {
-      try {
-        console.log("🔍 === URUCHAMIANIE OCR DLA FAKTURY KSEF ===");
-        const ocrResponse = await fetch(`${supabaseUrl}/functions/v1/process-invoice-ocr`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${supabaseAnonKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            pdfBase64: pdfBase64,
-            invoiceId: newInvoice.id,
-          }),
-        });
-
-        if (ocrResponse.ok) {
-          console.log("✓ OCR zakończone pomyślnie");
-        } else {
-          const ocrError = await ocrResponse.json();
-          console.error("❌ OCR nie powiodło się:", ocrError);
-        }
-      } catch (ocrError) {
-        console.error("OCR error (non-blocking):", ocrError);
-      }
+      })());
     }
 
     return new Response(
