@@ -1589,57 +1589,22 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      if (currentInvoice.google_drive_id) {
-        try {
-          const { data: { session: driveSession } } = await supabase.auth.getSession();
-          const deleteResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${driveSession?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                fileId: currentInvoice.google_drive_id,
-              }),
-            }
-          );
-
-          if (!deleteResponse.ok) {
-            console.error('Failed to delete from Google Drive:', await deleteResponse.text());
-          } else {
-            console.log('✓ File deleted from Google Drive');
-          }
-        } catch (driveError) {
-          console.error('Error deleting from Google Drive:', driveError);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/revert-ksef-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ksefInvoiceId }),
         }
-      }
+      );
 
-      const { error: updateKsefError } = await supabase
-        .from('ksef_invoices')
-        .update({
-          transferred_to_invoice_id: null,
-          transferred_to_department_id: null,
-          transferred_at: null,
-        })
-        .eq('id', ksefInvoiceId);
-
-      if (updateKsefError) throw updateKsefError;
-
-      const { data: checkInvoice } = await supabase
-        .from('invoices')
-        .select('id')
-        .eq('id', currentInvoice.id)
-        .maybeSingle();
-
-      if (checkInvoice) {
-        const { error: deleteInvoiceError } = await supabase
-          .from('invoices')
-          .delete()
-          .eq('id', currentInvoice.id);
-
-        if (deleteInvoiceError) throw deleteInvoiceError;
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Nie udało się cofnąć przypisania faktury');
       }
 
       alert('Faktura została cofnięta z obiegu. Znajdziesz ją ponownie w sekcji KSEF.');
