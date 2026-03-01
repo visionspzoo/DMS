@@ -439,9 +439,15 @@ Deno.serve(async (req: Request) => {
             accessToken
           );
 
+          const supplierName = (ksefInvoice.supplier_name || '').replace(/[<>:"/\\|?*]/g, '').trim();
+          const invoiceNum = (ksefInvoice.invoice_number || '').replace(/\//g, '_').replace(/[<>:"|?*]/g, '').trim();
+          const driveFileName = supplierName
+            ? `${invoiceNum} - ${supplierName}.pdf`
+            : `${invoiceNum}.pdf`;
+
           const result = await uploadToDrive(
             accessToken,
-            `${ksefInvoice.invoice_number}.pdf`,
+            driveFileName,
             pdfBase64,
             targetFolderId
           );
