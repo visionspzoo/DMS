@@ -58,17 +58,7 @@ async function refreshOAuthToken(supabase: any, config: OAuthConfig): Promise<st
   return tokens.access_token;
 }
 
-async function getGoogleAccessToken(supabase: any): Promise<string | null> {
-  const { data: configs } = await supabase
-    .from("user_email_configs")
-    .select("*")
-    .eq("is_active", true)
-    .eq("provider", "google_workspace")
-    .limit(1);
-
-  if (!configs || configs.length === 0) return null;
-
-  const config = configs[0] as OAuthConfig;
+async function getValidToken(supabase: any, config: OAuthConfig): Promise<string> {
   const expiryTime = config.oauth_token_expiry ? new Date(config.oauth_token_expiry).getTime() : 0;
   if (Date.now() >= expiryTime - 5 * 60 * 1000) {
     return await refreshOAuthToken(supabase, config);
@@ -76,23 +66,73 @@ async function getGoogleAccessToken(supabase: any): Promise<string | null> {
   return config.oauth_access_token;
 }
 
-async function deleteFromDrive(fileId: string, accessToken: string): Promise<void> {
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}`,
-    {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${accessToken}` },
+async function getGoogleAccessToken(supabase: any, preferredUserId?: string | null): Promise<string | null> {
+  const { data: configs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("provider", "google_workspace");
+
+  if (!configs || configs.length === 0) return null;
+
+  if (preferredUserId) {
+    const preferred = (configs as OAuthConfig[]).find((c) => c.user_id === preferredUserId);
+    if (preferred) {
+      return await getValidToken(supabase, preferred);
     }
-  );
-  if (response.status === 404) {
-    console.warn(`File ${fileId} not found in Drive, skipping`);
+  }
+
+  return await getValidToken(supabase, configs[0] as OAuthConfig);
+}
+
+async function deleteFromDriveWithFallback(
+  fileId: string,
+  supabase: any,
+  preferredUserId?: string | null
+): Promise<void> {
+  const { data: configs } = await supabase
+    .from("user_email_configs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("provider", "google_workspace");
+
+  if (!configs || configs.length === 0) {
+    console.warn("No Google configs available");
     return;
   }
-  if (!response.ok) {
+
+  const ordered: OAuthConfig[] = preferredUserId
+    ? [
+        ...((configs as OAuthConfig[]).filter((c) => c.user_id === preferredUserId)),
+        ...((configs as OAuthConfig[]).filter((c) => c.user_id !== preferredUserId)),
+      ]
+    : (configs as OAuthConfig[]);
+
+  for (const config of ordered) {
+    const token = await getValidToken(supabase, config);
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    if (response.status === 204 || response.status === 200) {
+      console.log(`Deleted Drive file ${fileId} using user ${config.user_id}`);
+      return;
+    }
+    if (response.status === 404) {
+      console.warn(`File ${fileId} not found in Drive`);
+      return;
+    }
+    if (response.status === 403) {
+      console.warn(`User ${config.user_id} lacks permission for file ${fileId}, trying next`);
+      continue;
+    }
     const err = await response.text();
-    console.error(`Drive delete failed for ${fileId}: ${response.status} - ${err}`);
+    console.error(`Drive delete failed for ${fileId} (user ${config.user_id}): ${response.status} - ${err}`);
   }
+  console.warn(`Could not delete Drive file ${fileId} with any available account`);
 }
+
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -137,27 +177,22 @@ Deno.serve(async (req: Request) => {
 
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
-      .select("id, google_drive_id, user_drive_file_id")
+      .select("id, google_drive_id, user_drive_file_id, drive_owner_user_id, uploaded_by")
       .eq("id", invoiceId)
       .maybeSingle();
 
     if (invoiceError) throw invoiceError;
 
-    console.log(`Invoice ${invoiceId}: google_drive_id=${invoice?.google_drive_id}, user_drive_file_id=${invoice?.user_drive_file_id}`);
+    console.log(`Invoice ${invoiceId}: google_drive_id=${invoice?.google_drive_id}, user_drive_file_id=${invoice?.user_drive_file_id}, drive_owner=${invoice?.drive_owner_user_id}, uploaded_by=${invoice?.uploaded_by}`);
 
     if (invoice?.google_drive_id || invoice?.user_drive_file_id) {
-      const accessToken = await getGoogleAccessToken(supabase);
-
-      if (accessToken) {
-        const fileIdsToDelete = [...new Set([invoice.google_drive_id, invoice.user_drive_file_id].filter(Boolean))];
-        for (const fileId of fileIdsToDelete) {
-          console.log(`Deleting Drive file: ${fileId}`);
-          await deleteFromDrive(fileId, accessToken);
-        }
-        console.log("Drive files deleted");
-      } else {
-        console.warn("No Google access token available, skipping Drive deletion");
+      const preferredUserId = invoice.drive_owner_user_id || invoice.uploaded_by || null;
+      const fileIdsToDelete = [...new Set([invoice.google_drive_id, invoice.user_drive_file_id].filter(Boolean))];
+      for (const fileId of fileIdsToDelete) {
+        console.log(`Deleting Drive file: ${fileId}`);
+        await deleteFromDriveWithFallback(fileId, supabase, preferredUserId);
       }
+      console.log("Drive files deletion attempted");
     } else {
       console.log("No Drive file IDs found on invoice, skipping Drive deletion");
     }
