@@ -893,6 +893,55 @@ export function InvoiceList() {
 
     setBulkActionLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const selectedInvs = filteredInvoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+
+      for (const inv of selectedInvs) {
+        if (inv.google_drive_id && session) {
+          try {
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ fileId: inv.google_drive_id }),
+              }
+            );
+          } catch { }
+        }
+
+        if (inv.user_drive_file_id && inv.user_drive_file_id !== inv.google_drive_id && session) {
+          try {
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId: inv.user_drive_file_id,
+                  ownerUserId: (inv as any).drive_owner_user_id ?? undefined,
+                }),
+              }
+            );
+          } catch { }
+        }
+
+        if (inv.file_url) {
+          try {
+            const filePath = inv.file_url.split('/').pop();
+            if (filePath) {
+              await supabase.storage.from('documents').remove([`invoices/${filePath}`]);
+            }
+          } catch { }
+        }
+      }
+
       const { error } = await supabase
         .from('invoices')
         .delete()
