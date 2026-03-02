@@ -96,75 +96,38 @@ export function TransferInvoiceModal({
 
   async function loadDepartmentUsers(departmentId: string) {
     try {
-      const [primaryResult, membersResult, departmentResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, full_name, email, role')
-          .eq('department_id', departmentId)
-          .order('full_name'),
-        supabase
-          .from('department_members')
-          .select(`
-            user_id,
-            profiles:user_id (
-              id,
-              full_name,
-              email,
-              role
-            )
-          `)
-          .eq('department_id', departmentId),
-        supabase
-          .from('departments')
-          .select('manager_id, director_id')
-          .eq('id', departmentId)
-          .single()
-      ]);
+      const { data, error } = await supabase.rpc('get_department_users', {
+        p_department_id: departmentId,
+      });
 
-      if (primaryResult.error) throw primaryResult.error;
+      if (error) throw error;
 
-      const users: DepartmentUser[] = [...(primaryResult.data || [])];
+      const users: DepartmentUser[] = (data || []).map((u: any) => ({
+        id: u.id,
+        full_name: u.full_name,
+        email: u.email,
+        role: u.role,
+      }));
 
-      if (!membersResult.error && membersResult.data) {
-        membersResult.data.forEach((member: any) => {
-          if (member.profiles && !users.find(u => u.id === member.profiles.id)) {
-            users.push(member.profiles);
-          }
-        });
-      }
+      users.sort((a, b) => {
+        const aIsManager = (data || []).find((u: any) => u.id === a.id)?.is_manager;
+        const aIsDirector = (data || []).find((u: any) => u.id === a.id)?.is_director;
+        const bIsManager = (data || []).find((u: any) => u.id === b.id)?.is_manager;
+        const bIsDirector = (data || []).find((u: any) => u.id === b.id)?.is_director;
+        if (aIsManager && !bIsManager) return -1;
+        if (!aIsManager && bIsManager) return 1;
+        if (aIsDirector && !bIsDirector) return -1;
+        if (!aIsDirector && bIsDirector) return 1;
+        return a.full_name.localeCompare(b.full_name);
+      });
 
-      // Dodaj kierownika i dyrektora jeśli nie są już na liście
-      if (departmentResult.data?.manager_id) {
-        const { data: manager } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, role')
-          .eq('id', departmentResult.data.manager_id)
-          .single();
+      const managerEntry = (data || []).find((u: any) => u.is_manager);
+      const directorEntry = (data || []).find((u: any) => u.is_director);
 
-        if (manager && !users.find(u => u.id === manager.id)) {
-          users.push(manager);
-        }
-      }
-
-      if (departmentResult.data?.director_id) {
-        const { data: director } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, role')
-          .eq('id', departmentResult.data.director_id)
-          .single();
-
-        if (director && !users.find(u => u.id === director.id)) {
-          users.push(director);
-        }
-      }
-
-      users.sort((a, b) => a.full_name.localeCompare(b.full_name));
-
-      // Domyślnie wybierz kierownika, potem dyrektora, potem pierwszego użytkownika
-      if (departmentResult.data?.manager_id) {
-        setSelectedUser(departmentResult.data.manager_id);
-      } else if (departmentResult.data?.director_id) {
-        setSelectedUser(departmentResult.data.director_id);
+      if (managerEntry) {
+        setSelectedUser(managerEntry.id);
+      } else if (directorEntry) {
+        setSelectedUser(directorEntry.id);
       } else if (users.length > 0) {
         setSelectedUser(users[0].id);
       }
