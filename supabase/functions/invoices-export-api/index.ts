@@ -248,7 +248,6 @@ Deno.serve(async (req: Request) => {
 
     const mpkCodes = [...new Set(
       (invoices || [])
-        .filter((inv: any) => !bezMpkUserIds.has(inv.uploaded_by))
         .map((inv: any) => inv.department?.mpk_code)
         .filter(Boolean)
     )];
