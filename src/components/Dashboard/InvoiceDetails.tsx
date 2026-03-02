@@ -566,7 +566,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   }, [currentInvoice.id, refreshInvoiceData]);
 
   const hasMpk = () => {
-    return !!(currentInvoice as any).bez_mpk || !!(currentInvoice as any).cost_center_id;
+    return !!(currentInvoice as any).cost_center_id;
   };
 
   const handleApprove = async (action: 'approved' | 'rejected', overrideComment?: string) => {
@@ -824,7 +824,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           paid_at: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
           paid_by: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
           description: editedInvoice.description,
-          cost_center_id: (editedInvoice as any).bez_mpk ? null : (editedInvoice.cost_center_id || null),
+          cost_center_id: editedInvoice.cost_center_id || null,
           bez_mpk: !!(editedInvoice as any).bez_mpk,
           pz_number: (editedInvoice as any).pz_number || null,
           internal_comment: (editedInvoice as any).internal_comment || null,
@@ -3020,7 +3020,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         ) : (
                           <p className="text-sm text-text-primary-light dark:text-text-primary-dark mt-1">
                             {(() => {
-                              if ((currentInvoice as any).bez_mpk) return 'BEZ MPK';
                               const cc = costCenters.find(c => c.id === (currentInvoice as any).cost_center_id);
                               return cc ? `${cc.code} - ${cc.description}` : '—';
                             })()}
@@ -3058,13 +3057,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         const checked = e.target.checked;
                         setEditedInvoice({
                           ...editedInvoice,
-                          cost_center_id: checked ? null : editedInvoice.cost_center_id,
                           ...(checked ? { bez_mpk: true } : { bez_mpk: false }),
                         } as any);
-                        if (checked) {
-                          setCostCenterSearch('');
-                          setShowCostCenterDropdown(false);
-                        }
                       }}
                       className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-brand-primary focus:ring-brand-primary"
                     />
@@ -3073,7 +3067,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         Przypisz do kosztów BEZ MPK
                       </span>
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-                        Faktura zostanie wyeksportowana z kodem działu i nazwą działu "BEZ MPK"
+                        Dodatkowa flaga informacyjna przekazywana w API. Konto MPK nadal jest przypisane i widoczne.
                       </p>
                     </div>
                   </label>

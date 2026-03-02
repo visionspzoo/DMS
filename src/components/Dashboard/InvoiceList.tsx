@@ -196,12 +196,13 @@ export function InvoiceList({
                 </div>
                 <div className="flex items-center gap-1 text-[10px]">
                   <CreditCard className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0" />
-                  {(invoice as any).bez_mpk ? (
-                    <span className="text-text-secondary-light dark:text-text-secondary-dark">BEZ MPK</span>
-                  ) : invoice.cost_center ? (
+                  {invoice.cost_center ? (
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark truncate max-w-[160px]">
                       {invoice.cost_center.code} – {invoice.cost_center.description}
+                      {(invoice as any).bez_mpk && <span className="ml-1 text-[9px] text-amber-500 font-semibold uppercase">(bez MPK)</span>}
                     </span>
+                  ) : (invoice as any).bez_mpk ? (
+                    <span className="text-amber-500 font-semibold">BEZ MPK</span>
                   ) : (
                     <span className="font-bold text-red-500 dark:text-red-400">—</span>
                   )}
