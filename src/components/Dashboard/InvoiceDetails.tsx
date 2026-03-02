@@ -2861,9 +2861,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           ))}
                         </select>
                       ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {currentInvoice.department?.name || '—'}
-                        </p>
+                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                          <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+                            {currentInvoice.department?.name || '—'}
+                          </p>
+                          {(currentInvoice as any).bez_mpk && (
+                            <span className="px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold rounded-full uppercase tracking-wide">
+                              bez MPK
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div>
