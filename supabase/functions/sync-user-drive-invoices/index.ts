@@ -7,6 +7,140 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const POLISH_MONTHS: Record<number, string> = {
+  1: "01 - Styczen",
+  2: "02 - Luty",
+  3: "03 - Marzec",
+  4: "04 - Kwiecien",
+  5: "05 - Maj",
+  6: "06 - Czerwiec",
+  7: "07 - Lipiec",
+  8: "08 - Sierpien",
+  9: "09 - Wrzesien",
+  10: "10 - Pazdziernik",
+  11: "11 - Listopad",
+  12: "12 - Grudzien",
+};
+
+async function findOrCreateFolder(folderName: string, parentFolderId: string, accessToken: string): Promise<string> {
+  const escapedName = folderName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const query = `name='${escapedName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+  const searchResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (searchResponse.ok) {
+    const searchData = await searchResponse.json();
+    if (searchData.files && searchData.files.length > 0) {
+      return searchData.files[0].id;
+    }
+  }
+
+  const createResponse = await fetch(
+    "https://www.googleapis.com/drive/v3/files",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentFolderId],
+      }),
+    }
+  );
+
+  if (!createResponse.ok) {
+    throw new Error(`Failed to create folder '${folderName}': ${createResponse.status}`);
+  }
+
+  const createData = await createResponse.json();
+  return createData.id;
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, "_").trim();
+}
+
+function buildInvoiceFileName(
+  invoiceNumber: string | null | undefined,
+  supplierName: string | null | undefined,
+  originalFileName: string
+): string {
+  const parts: string[] = [];
+
+  if (invoiceNumber && String(invoiceNumber).trim().length > 0 && invoiceNumber !== "null") {
+    parts.push(sanitizeFileName(String(invoiceNumber).trim()));
+  }
+
+  if (supplierName && String(supplierName).trim().length > 0 && supplierName !== "null") {
+    parts.push(sanitizeFileName(String(supplierName).trim()));
+  }
+
+  if (parts.length === 0) {
+    return originalFileName.endsWith(".pdf") ? originalFileName : originalFileName + ".pdf";
+  }
+
+  return parts.join(" - ") + ".pdf";
+}
+
+async function uploadFileToDriveFolder(
+  fileBytes: Uint8Array,
+  fileName: string,
+  targetFolderId: string,
+  issueDate: string | null | undefined,
+  invoiceNumber: string | null | undefined,
+  supplierName: string | null | undefined,
+  accessToken: string
+): Promise<string | null> {
+  let folderId = targetFolderId;
+
+  if (issueDate) {
+    const date = new Date(issueDate);
+    if (!isNaN(date.getTime())) {
+      const year = String(date.getFullYear());
+      const month = date.getMonth() + 1;
+      const monthLabel = POLISH_MONTHS[month];
+      const yearFolderId = await findOrCreateFolder(year, folderId, accessToken);
+      folderId = await findOrCreateFolder(monthLabel, yearFolderId, accessToken);
+    }
+  }
+
+  const finalFileName = buildInvoiceFileName(invoiceNumber, supplierName, fileName);
+
+  const metadata = {
+    name: finalFileName,
+    mimeType: "application/pdf",
+    parents: [folderId],
+  };
+
+  const fileBlob = new Blob([fileBytes], { type: "application/pdf" });
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", fileBlob);
+
+  const uploadResponse = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const errText = await uploadResponse.text();
+    throw new Error(`Drive upload failed: ${uploadResponse.status} - ${errText}`);
+  }
+
+  const uploadData = await uploadResponse.json();
+  return uploadData.id;
+}
+
 interface EmailConfig {
   id: string;
   user_id: string;
@@ -566,40 +700,24 @@ Deno.serve(async (req: Request) => {
 
                 if (targetFolder) {
                   try {
-                    const uploadPayload: any = {
-                      fileUrl: publicUrl || undefined,
-                      fileBase64: !publicUrl ? base64 : undefined,
-                      fileName: file.name,
-                      invoiceId: invoiceData.id,
-                      folderId: targetFolder,
-                      mimeType: "application/pdf",
-                      originalMimeType: "application/pdf",
-                      userId: userId,
-                    };
-
-                    if (updatedInvoice?.issue_date) {
-                      uploadPayload.issueDate = updatedInvoice.issue_date;
-                    }
-
-                    const uploadResp = await fetch(
-                      `${supabaseUrl}/functions/v1/upload-to-google-drive`,
-                      {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${supabaseServiceKey}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify(uploadPayload),
-                      }
+                    const newFileId = await uploadFileToDriveFolder(
+                      fileBytes,
+                      file.name,
+                      targetFolder,
+                      updatedInvoice?.issue_date,
+                      updatedInvoice?.invoice_number,
+                      updatedInvoice?.supplier_name,
+                      accessToken
                     );
 
-                    if (uploadResp.ok) {
-                      const uploadResult = await uploadResp.json();
-                      console.log(`✓ Uploaded ${file.name} to department folder (with year/month subfolders): ${dept?.name}, new file ID: ${uploadResult.fileId}`);
+                    if (newFileId) {
+                      await supabase
+                        .from("invoices")
+                        .update({ user_drive_file_id: newFileId })
+                        .eq("id", invoiceData.id);
+
+                      console.log(`✓ Uploaded ${file.name} to department folder (with year/month subfolders): ${dept?.name}, new file ID: ${newFileId}`);
                       movedToDeptFolder = true;
-                    } else {
-                      const uploadErrBody = await uploadResp.text();
-                      console.warn(`Upload to department folder failed for ${file.name}: ${uploadResp.status} - ${uploadErrBody}`);
                     }
                   } catch (uploadErr: any) {
                     console.warn(`Upload to department folder failed for ${file.name}:`, uploadErr.message);
