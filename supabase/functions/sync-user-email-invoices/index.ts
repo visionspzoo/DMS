@@ -868,7 +868,7 @@ async function syncEmailAccount(
 
             if (targetFolderId) {
               const uploadPayload: any = {
-                fileBase64: base64Content,
+                fileUrl: publicUrl,
                 fileName: part.filename,
                 folderId: targetFolderId,
                 mimeType: "application/pdf",
@@ -879,7 +879,7 @@ async function syncEmailAccount(
               if (issueDate) {
                 uploadPayload.issueDate = issueDate;
               }
-              if (deptName && !deptId) {
+              if (deptName && deptId) {
                 uploadPayload.department = deptName;
               }
 
