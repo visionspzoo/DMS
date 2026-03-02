@@ -760,127 +760,132 @@ async function syncEmailAccount(
 
           if (!isRealInvoice) continue;
 
-          // Upload to Google Drive
-          try {
-            // Wait briefly for DB triggers (auto_assign, OCR side effects) to settle
-            await new Promise((r) => setTimeout(r, 2000));
+          invoiceCount++;
+          syncedCount++;
 
-            // Retry fetching the invoice up to 3 times to get department_id assigned by triggers
-            let refreshedInvoice: any = null;
-            for (let attempt = 0; attempt < 3; attempt++) {
-              const { data } = await supabase
-                .from("invoices")
-                .select("id, department_id, status, issue_date")
-                .eq("id", invoiceData.id)
-                .maybeSingle();
-              refreshedInvoice = data;
-              if (refreshedInvoice?.department_id) break;
-              if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
-            }
+          // Schedule Drive upload asynchronously so it doesn't block the main loop
+          const invoiceIdForDrive = invoiceData.id;
+          const fileUrlForDrive = publicUrl;
+          const fileNameForDrive = part.filename;
+          const userIdForDrive = userId;
 
-            const deptId = refreshedInvoice?.department_id;
-            const issueDate = refreshedInvoice?.issue_date || null;
+          EdgeRuntime.waitUntil((async () => {
+            try {
+              // Wait for DB triggers (auto_assign, OCR side effects) to settle
+              await new Promise((r) => setTimeout(r, 3000));
 
-            let targetFolderId: string | null = null;
-            let driveSource = "none";
-            let deptName: string | null = null;
-
-            if (deptId) {
-              // Fetch department name for subfolder creation
-              const { data: deptInfo } = await supabase
-                .from("departments")
-                .select("name, google_drive_draft_folder_id")
-                .eq("id", deptId)
-                .maybeSingle();
-              deptName = deptInfo?.name || null;
-
-              // 1. Check user's folder mapping for this specific department
-              const { data: deptMapping } = await supabase
-                .from("user_drive_folder_mappings")
-                .select("google_drive_folder_id, google_drive_folder_url")
-                .eq("user_id", userId)
-                .eq("department_id", deptId)
-                .eq("is_active", true)
-                .maybeSingle();
-              if (deptMapping?.google_drive_folder_id) {
-                targetFolderId = deptMapping.google_drive_folder_id;
-                driveSource = "dept_folder_mapping";
-              } else if (deptMapping?.google_drive_folder_url) {
-                const urlMatch = deptMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-                if (urlMatch) {
-                  targetFolderId = urlMatch[1];
-                  driveSource = "dept_folder_mapping_url";
-                }
+              // Retry fetching the invoice up to 3 times to get department_id
+              let refreshedInvoice: any = null;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                const { data } = await supabase
+                  .from("invoices")
+                  .select("id, department_id, status, issue_date")
+                  .eq("id", invoiceIdForDrive)
+                  .maybeSingle();
+                refreshedInvoice = data;
+                if (refreshedInvoice?.department_id) break;
+                if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
               }
 
-              // 2. Fallback to department's draft folder
-              if (!targetFolderId && deptInfo?.google_drive_draft_folder_id) {
-                targetFolderId = deptInfo.google_drive_draft_folder_id;
-                driveSource = "dept_draft_folder";
-              }
-            }
+              const deptId = refreshedInvoice?.department_id;
+              const issueDate = refreshedInvoice?.issue_date || null;
 
-            // 3. Fallback to user's main drive config
-            if (!targetFolderId) {
-              const { data: userDriveConfig } = await supabase
-                .from("user_drive_configs")
-                .select("google_drive_folder_id, google_drive_folder_url")
-                .eq("user_id", userId)
-                .eq("is_active", true)
-                .maybeSingle();
-              if (userDriveConfig?.google_drive_folder_id) {
-                targetFolderId = userDriveConfig.google_drive_folder_id;
-                driveSource = "user_drive_config";
-              } else if (userDriveConfig?.google_drive_folder_url) {
-                const urlMatch = userDriveConfig.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-                if (urlMatch) {
-                  targetFolderId = urlMatch[1];
-                  driveSource = "user_drive_config_url";
-                }
-              }
-            }
+              let targetFolderId: string | null = null;
+              let driveSource = "none";
+              let deptName: string | null = null;
 
-            // 4. Fallback to any active folder mapping
-            if (!targetFolderId) {
-              const { data: folderMappings } = await supabase
-                .from("user_drive_folder_mappings")
-                .select("google_drive_folder_id, google_drive_folder_url, department_id")
-                .eq("user_id", userId)
-                .eq("is_active", true)
-                .order("created_at", { ascending: false });
+              if (deptId) {
+                const { data: deptInfo } = await supabase
+                  .from("departments")
+                  .select("name, google_drive_draft_folder_id")
+                  .eq("id", deptId)
+                  .maybeSingle();
+                deptName = deptInfo?.name || null;
 
-              if (folderMappings && folderMappings.length > 0) {
-                const mapping = folderMappings[0];
-                if (mapping.google_drive_folder_id) {
-                  targetFolderId = mapping.google_drive_folder_id;
-                  driveSource = "folder_mapping_fallback";
-                } else if (mapping.google_drive_folder_url) {
-                  const urlMatch = mapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                const { data: deptMapping } = await supabase
+                  .from("user_drive_folder_mappings")
+                  .select("google_drive_folder_id, google_drive_folder_url")
+                  .eq("user_id", userIdForDrive)
+                  .eq("department_id", deptId)
+                  .eq("is_active", true)
+                  .maybeSingle();
+                if (deptMapping?.google_drive_folder_id) {
+                  targetFolderId = deptMapping.google_drive_folder_id;
+                  driveSource = "dept_folder_mapping";
+                } else if (deptMapping?.google_drive_folder_url) {
+                  const urlMatch = deptMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
                   if (urlMatch) {
                     targetFolderId = urlMatch[1];
-                    driveSource = "folder_mapping_url_fallback";
+                    driveSource = "dept_folder_mapping_url";
+                  }
+                }
+
+                if (!targetFolderId && deptInfo?.google_drive_draft_folder_id) {
+                  targetFolderId = deptInfo.google_drive_draft_folder_id;
+                  driveSource = "dept_draft_folder";
+                }
+              }
+
+              if (!targetFolderId) {
+                const { data: userDriveConfig } = await supabase
+                  .from("user_drive_configs")
+                  .select("google_drive_folder_id, google_drive_folder_url")
+                  .eq("user_id", userIdForDrive)
+                  .eq("is_active", true)
+                  .maybeSingle();
+                if (userDriveConfig?.google_drive_folder_id) {
+                  targetFolderId = userDriveConfig.google_drive_folder_id;
+                  driveSource = "user_drive_config";
+                } else if (userDriveConfig?.google_drive_folder_url) {
+                  const urlMatch = userDriveConfig.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                  if (urlMatch) {
+                    targetFolderId = urlMatch[1];
+                    driveSource = "user_drive_config_url";
                   }
                 }
               }
-            }
 
-            console.log(`[email-sync] Drive folder search result: source=${driveSource}, folderId=${targetFolderId}, deptId=${deptId}, deptName=${deptName}`);
+              if (!targetFolderId) {
+                const { data: folderMappings } = await supabase
+                  .from("user_drive_folder_mappings")
+                  .select("google_drive_folder_id, google_drive_folder_url, department_id")
+                  .eq("user_id", userIdForDrive)
+                  .eq("is_active", true)
+                  .order("created_at", { ascending: false });
 
-            if (targetFolderId) {
+                if (folderMappings && folderMappings.length > 0) {
+                  const mapping = folderMappings[0];
+                  if (mapping.google_drive_folder_id) {
+                    targetFolderId = mapping.google_drive_folder_id;
+                    driveSource = "folder_mapping_fallback";
+                  } else if (mapping.google_drive_folder_url) {
+                    const urlMatch = mapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                    if (urlMatch) {
+                      targetFolderId = urlMatch[1];
+                      driveSource = "folder_mapping_url_fallback";
+                    }
+                  }
+                }
+              }
+
+              console.log(`[email-sync] Drive folder: source=${driveSource}, folderId=${targetFolderId}, deptId=${deptId}`);
+
+              if (!targetFolderId) {
+                console.log(`[email-sync] No Drive folder configured for user ${userIdForDrive}, skipping`);
+                return;
+              }
+
               const uploadPayload: any = {
-                fileUrl: publicUrl,
-                fileName: part.filename,
+                fileUrl: fileUrlForDrive,
+                fileName: fileNameForDrive,
                 folderId: targetFolderId,
                 mimeType: "application/pdf",
                 originalMimeType: "application/pdf",
-                userId: userId,
-                invoiceId: invoiceData.id,
+                userId: userIdForDrive,
+                invoiceId: invoiceIdForDrive,
               };
               if (issueDate) {
                 uploadPayload.issueDate = issueDate;
-              }
-              if (deptName && deptId) {
-                uploadPayload.department = deptName;
               }
 
               const uploadResp = await fetch(
@@ -896,20 +901,15 @@ async function syncEmailAccount(
               );
               if (uploadResp.ok) {
                 const uploadResult = await uploadResp.json();
-                console.log(`[email-sync] Uploaded ${part.filename} to Drive (fileId=${uploadResult.fileId})${issueDate ? ` date=${issueDate}` : ""}`);
+                console.log(`[email-sync] Drive upload ok: ${fileNameForDrive} -> fileId=${uploadResult.fileId}`);
               } else {
                 const errText = await uploadResp.text();
                 console.warn(`[email-sync] Drive upload failed (${uploadResp.status}): ${errText}`);
               }
-            } else {
-              console.log(`[email-sync] No Drive folder configured for user ${userId}, skipping Drive upload`);
+            } catch (driveErr) {
+              console.error("[email-sync] Drive upload error:", driveErr);
             }
-          } catch (driveErr) {
-            console.error("[email-sync] Error uploading to Drive:", driveErr);
-          }
-
-          invoiceCount++;
-          syncedCount++;
+          })());
       }
 
       if (!forceReimport) {
