@@ -548,7 +548,7 @@ Deno.serve(async (req: Request) => {
             try {
               const { data: updatedInvoice } = await supabase
                 .from("invoices")
-                .select("department_id, invoice_number")
+                .select("department_id, invoice_number, supplier_name, issue_date")
                 .eq("id", invoiceData.id)
                 .maybeSingle();
 
@@ -565,43 +565,44 @@ Deno.serve(async (req: Request) => {
                 const targetFolder = dept?.google_drive_draft_folder_id;
 
                 if (targetFolder) {
-                  const driveFileName = updatedInvoice?.invoice_number
-                    ? `${updatedInvoice.invoice_number}.pdf`
-                    : file.name;
-
-                  // Move file by copying to department folder then deleting from private folder
                   try {
-                    const copyResp = await fetch(
-                      `https://www.googleapis.com/drive/v3/files/${file.id}/copy`,
+                    const uploadPayload: any = {
+                      fileUrl: publicUrl || undefined,
+                      fileBase64: !publicUrl ? base64 : undefined,
+                      fileName: file.name,
+                      invoiceId: invoiceData.id,
+                      folderId: targetFolder,
+                      mimeType: "application/pdf",
+                      originalMimeType: "application/pdf",
+                      userId: userId,
+                    };
+
+                    if (updatedInvoice?.issue_date) {
+                      uploadPayload.issueDate = updatedInvoice.issue_date;
+                    }
+
+                    const uploadResp = await fetch(
+                      `${supabaseUrl}/functions/v1/upload-to-google-drive`,
                       {
                         method: "POST",
                         headers: {
-                          Authorization: `Bearer ${accessToken}`,
+                          Authorization: `Bearer ${supabaseServiceKey}`,
                           "Content-Type": "application/json",
                         },
-                        body: JSON.stringify({
-                          name: driveFileName,
-                          parents: [targetFolder],
-                        }),
+                        body: JSON.stringify(uploadPayload),
                       }
                     );
 
-                    if (copyResp.ok) {
-                      const copyData = await copyResp.json();
-                      console.log(`✓ Copied ${file.name} to department folder: ${dept?.name}, new file ID: ${copyData.id}`);
-
-                      await supabase
-                        .from("invoices")
-                        .update({ user_drive_file_id: copyData.id })
-                        .eq("id", invoiceData.id);
-
+                    if (uploadResp.ok) {
+                      const uploadResult = await uploadResp.json();
+                      console.log(`✓ Uploaded ${file.name} to department folder (with year/month subfolders): ${dept?.name}, new file ID: ${uploadResult.fileId}`);
                       movedToDeptFolder = true;
                     } else {
-                      const copyErrBody = await copyResp.text();
-                      console.warn(`Copy to department folder failed for ${file.name}: ${copyResp.status} - ${copyErrBody}`);
+                      const uploadErrBody = await uploadResp.text();
+                      console.warn(`Upload to department folder failed for ${file.name}: ${uploadResp.status} - ${uploadErrBody}`);
                     }
-                  } catch (copyErr: any) {
-                    console.warn(`Copy to department folder failed for ${file.name}:`, copyErr.message);
+                  } catch (uploadErr: any) {
+                    console.warn(`Upload to department folder failed for ${file.name}:`, uploadErr.message);
                   }
                 }
               }
