@@ -134,128 +134,6 @@ export async function uploadInvoiceFile(
 
   const finalInvoiceData = refreshedInvoice || invoiceData;
 
-  onProgress('Google Drive...');
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const deptId = finalInvoiceData.department_id;
-      let targetFolderId: string | null = null;
-      let driveSource = 'none';
-
-      if (deptId) {
-        const { data: deptInfo } = await supabase
-          .from('departments')
-          .select('name, google_drive_draft_folder_id')
-          .eq('id', deptId)
-          .maybeSingle();
-
-        const { data: deptMapping } = await supabase
-          .from('user_drive_folder_mappings')
-          .select('google_drive_folder_id, google_drive_folder_url')
-          .eq('user_id', userId)
-          .eq('department_id', deptId)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (deptMapping?.google_drive_folder_id) {
-          targetFolderId = deptMapping.google_drive_folder_id;
-          driveSource = 'dept_folder_mapping';
-        } else if (deptMapping?.google_drive_folder_url) {
-          const urlMatch = deptMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-          if (urlMatch) {
-            targetFolderId = urlMatch[1];
-            driveSource = 'dept_folder_mapping_url';
-          }
-        }
-
-        if (!targetFolderId && deptInfo?.google_drive_draft_folder_id) {
-          targetFolderId = deptInfo.google_drive_draft_folder_id;
-          driveSource = 'dept_draft_folder';
-        }
-      }
-
-      if (!targetFolderId) {
-        const { data: userDriveConfig } = await supabase
-          .from('user_drive_configs')
-          .select('google_drive_folder_id, google_drive_folder_url')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (userDriveConfig?.google_drive_folder_id) {
-          targetFolderId = userDriveConfig.google_drive_folder_id;
-          driveSource = 'user_drive_config';
-        } else if (userDriveConfig?.google_drive_folder_url) {
-          const urlMatch = userDriveConfig.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-          if (urlMatch) {
-            targetFolderId = urlMatch[1];
-            driveSource = 'user_drive_config_url';
-          }
-        }
-      }
-
-      if (!targetFolderId) {
-        const { data: folderMappings } = await supabase
-          .from('user_drive_folder_mappings')
-          .select('google_drive_folder_id, google_drive_folder_url')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false });
-
-        if (folderMappings && folderMappings.length > 0) {
-          const mapping = folderMappings[0];
-          if (mapping.google_drive_folder_id) {
-            targetFolderId = mapping.google_drive_folder_id;
-            driveSource = 'folder_mapping_fallback';
-          } else if (mapping.google_drive_folder_url) {
-            const urlMatch = mapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-            if (urlMatch) {
-              targetFolderId = urlMatch[1];
-              driveSource = 'folder_mapping_url_fallback';
-            }
-          }
-        }
-      }
-
-      console.log('[Upload] Drive folder: source=' + driveSource + ', folderId=' + targetFolderId + ', deptId=' + deptId);
-
-      if (targetFolderId) {
-        const uploadResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileBase64: pdfBase64,
-              fileName: file.name,
-              folderId: targetFolderId,
-              mimeType: file.type,
-              originalMimeType: file.type,
-              userId: userId,
-              invoiceId: finalInvoiceData.id,
-              issueDate: finalInvoiceData.issue_date || null,
-            }),
-          }
-        );
-
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text();
-          console.error('[Upload] Failed to upload to Google Drive:', errorText);
-        } else {
-          const result = await uploadResponse.json();
-          console.log('[Upload] Uploaded to Google Drive:', result);
-        }
-      } else {
-        console.warn('[Upload] No Google Drive folder configured, skipping Drive upload');
-      }
-    }
-  } catch (err) {
-    console.error('[Upload] Google Drive upload error:', err);
-  }
-
   onProgress('OCR...');
   try {
     const ocrResponse = await fetch(
@@ -290,6 +168,83 @@ export async function uploadInvoiceFile(
     }
   } catch {
     // OCR is optional
+  }
+
+  onProgress('Google Drive...');
+  try {
+    const { data: invoiceAfterOcr } = await supabase
+      .from('invoices')
+      .select('id, department_id, issue_date, invoice_number, supplier_name')
+      .eq('id', finalInvoiceData.id)
+      .maybeSingle();
+
+    const invoiceForDrive = invoiceAfterOcr || finalInvoiceData;
+    const deptId = invoiceForDrive.department_id;
+    let targetFolderId: string | null = null;
+
+    if (deptId) {
+      const { data: deptInfo } = await supabase
+        .from('departments')
+        .select('google_drive_draft_folder_id')
+        .eq('id', deptId)
+        .maybeSingle();
+
+      if (deptInfo?.google_drive_draft_folder_id) {
+        targetFolderId = deptInfo.google_drive_draft_folder_id;
+      }
+    }
+
+    if (!targetFolderId) {
+      const { data: anyMapping } = await supabase
+        .from('user_drive_folder_mappings')
+        .select('google_drive_folder_id, google_drive_folder_url')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyMapping?.google_drive_folder_id) {
+        targetFolderId = anyMapping.google_drive_folder_id;
+      } else if (anyMapping?.google_drive_folder_url) {
+        const urlMatch = anyMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+        if (urlMatch) targetFolderId = urlMatch[1];
+      }
+    }
+
+    if (targetFolderId) {
+      const uploadResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileBase64: pdfBase64,
+            fileName: file.name,
+            folderId: targetFolderId,
+            mimeType: file.type,
+            originalMimeType: file.type,
+            userId: userId,
+            invoiceId: invoiceForDrive.id,
+            issueDate: invoiceForDrive.issue_date || null,
+          }),
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('[Upload] Failed to upload to Google Drive:', errorText);
+      } else {
+        const result = await uploadResponse.json();
+        console.log('[Upload] Uploaded to Google Drive:', result);
+      }
+    } else {
+      console.warn('[Upload] No Google Drive folder configured, skipping Drive upload');
+    }
+  } catch (err) {
+    console.error('[Upload] Google Drive upload error:', err);
   }
 
   onProgress('ML tagi...');
