@@ -194,6 +194,11 @@ Deno.serve(async (req: Request) => {
           name,
           mpk_code
         ),
+        cost_center:cost_center_id (
+          id,
+          code,
+          description
+        ),
         invoice_attachments (
           id,
           file_name,
@@ -294,6 +299,8 @@ Deno.serve(async (req: Request) => {
         description: inv.description || null,
         internal_comment: inv.internal_comment || null,
         mpk_description: mpkDescription,
+        cost_center_code: inv.cost_center?.code || null,
+        cost_center_name: inv.cost_center ? `${inv.cost_center.code} - ${inv.cost_center.description}` : null,
         bez_mpk: inv.bez_mpk || false,
         net_amount: inv.net_amount,
         tax_amount: inv.tax_amount,
