@@ -263,10 +263,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = (invoices || []).map((inv: any) => {
-      const isBezMpk = inv.bez_mpk === true || bezMpkUserIds.has(inv.uploaded_by);
-      const mpkCode = isBezMpk ? 'BEZ MPK' : (inv.department?.mpk_code || null);
-      const departmentName = isBezMpk ? 'BEZ MPK' : (inv.department?.name || null);
-      const mpkDescription = isBezMpk ? (inv.description || null) : (mpkCode ? (costCentersMap[mpkCode] || null) : null);
+      const isBezMpk = inv.bez_mpk === true;
+      const uploaderHasBezMpkOverride = bezMpkUserIds.has(inv.uploaded_by);
+      const realDeptName = inv.department?.name || null;
+      const realMpkCode = inv.department?.mpk_code || null;
+      const mpkCode = isBezMpk ? 'BEZ MPK' : (realMpkCode || (uploaderHasBezMpkOverride ? 'BEZ MPK' : null));
+      const departmentName = isBezMpk ? 'BEZ MPK' : (realDeptName || (uploaderHasBezMpkOverride ? 'BEZ MPK' : null));
+      const mpkDescription = (isBezMpk || (!realMpkCode && uploaderHasBezMpkOverride)) ? (inv.description || null) : (realMpkCode ? (costCentersMap[realMpkCode] || null) : null);
 
       const attachments = (inv.invoice_attachments || []).map((a: any) => ({
         id: a.id,
