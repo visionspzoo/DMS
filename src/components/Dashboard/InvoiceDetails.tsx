@@ -798,44 +798,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    // Admin może zawsze
-    if (profile.is_admin) {
-      return true;
-    }
-
-    // Uploader może transferować swoje faktury draft lub odrzucone
-    if ((currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && currentInvoice.uploaded_by === profile.id) {
-      return true;
-    }
-
-    // Current approver może transferować faktury
-    if (currentInvoice.current_approver_id === profile.id) {
-      return true;
-    }
-
-    // Dyrektor może transferować faktury draft lub odrzucone z działów, których jest dyrektorem
-    if (profile.role === 'Dyrektor' && (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && invoiceDepartmentInfo) {
-      if (invoiceDepartmentInfo.director_id === profile.id) {
-        return true;
-      }
-    }
-
-    // Kierownik może transferować faktury draft lub odrzucone Specjalistów ze swojego działu
-    if (profile.role === 'Kierownik' && (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') && invoiceDepartmentInfo) {
-      if (
-        currentInvoice.department_id === profile.department_id &&
-        invoiceDepartmentInfo.uploader_role === 'Specjalista'
-      ) {
-        return true;
-      }
-    }
-
-    // Accepted invoices - anyone can transfer (including the uploader)
-    if (currentInvoice.status === 'accepted') {
-      return true;
-    }
-
-    return false;
+    return true;
   };
 
   const handleSaveEdit = async () => {
