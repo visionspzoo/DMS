@@ -19,6 +19,7 @@ interface MergeInvoicesModalProps {
   invoices: Invoice[];
   onClose: () => void;
   onMergeComplete: () => void;
+  onGroupMerged?: () => void;
 }
 
 const INVOICE_FIELDS = `
@@ -185,7 +186,7 @@ function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
     });
 }
 
-export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: MergeInvoicesModalProps) {
+export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroupMerged }: MergeInvoicesModalProps) {
   const [merging, setMerging] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
   const [mergeResults, setMergeResults] = useState<{ key: string; success: boolean; error?: string }[]>([]);
@@ -346,6 +347,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
     try {
       await mergeGroup(group, winnerId);
       setMergedKeys(prev => new Set(prev).add(group.key));
+      onGroupMerged?.();
     } catch (err: any) {
       alert(`Błąd scalania: ${err.message}`);
     } finally {

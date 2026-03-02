@@ -1696,6 +1696,7 @@ export function InvoiceList() {
             setShowMergeModal(false);
             loadInvoices();
           }}
+          onGroupMerged={() => loadInvoices()}
         />
       )}
 
