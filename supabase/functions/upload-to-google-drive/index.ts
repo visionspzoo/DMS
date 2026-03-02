@@ -203,14 +203,17 @@ async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string
   return config.oauth_access_token;
 }
 
-async function getAccessToken(supabase: any, targetUserId: string): Promise<string> {
-  const serviceToken = await getServiceAccountToken();
-  if (serviceToken) {
-    console.log("[Auth] Using Google Service Account");
-    return serviceToken;
+async function getAccessToken(supabase: any, targetUserId: string, preferOAuth = false): Promise<string> {
+  if (!preferOAuth) {
+    const serviceToken = await getServiceAccountToken();
+    if (serviceToken) {
+      console.log("[Auth] Using Google Service Account");
+      return serviceToken;
+    }
+    console.log("[Auth] Service Account not configured, falling back to OAuth");
+  } else {
+    console.log("[Auth] preferOAuth=true, skipping Service Account");
   }
-
-  console.log("[Auth] Service Account not configured, falling back to OAuth");
 
   const { data: userConfigs } = await supabase
     .from("user_email_configs")
@@ -231,6 +234,13 @@ async function getAccessToken(supabase: any, targetUserId: string): Promise<stri
     .limit(1);
 
   if (anyConfigError || !anyConfigs || anyConfigs.length === 0) {
+    if (preferOAuth) {
+      const serviceToken = await getServiceAccountToken();
+      if (serviceToken) {
+        console.log("[Auth] No OAuth found, falling back to Service Account");
+        return serviceToken;
+      }
+    }
     throw new Error("No active Google account connected. Please connect a Google account in Configuration or configure a Service Account.");
   }
 
@@ -320,7 +330,8 @@ Deno.serve(async (req: Request) => {
       targetUserId = user.id;
     }
 
-    const accessToken = await getAccessToken(supabase, targetUserId);
+    const preferOAuth = !!folderId;
+    const accessToken = await getAccessToken(supabase, targetUserId, preferOAuth);
 
     let targetFolderId: string;
 
