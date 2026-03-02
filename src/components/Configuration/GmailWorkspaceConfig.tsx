@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle, Calendar, RotateCcw, Upload } from 'lucide-react';
+import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, CreditCard as Edit2, X, AlertCircle, Calendar, RotateCcw, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
@@ -1095,23 +1095,6 @@ export default function GmailWorkspaceConfig() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleCheckOAuthStatus}
-              disabled={checkingStatus}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
-            >
-              {checkingStatus ? (
-                <>
-                  <Loader className="w-3 h-3 animate-spin" />
-                  Sprawdzanie...
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-3 h-3" />
-                  Sprawdz Status
-                </>
-              )}
-            </button>
             {emailConfigs.length > 0 && (
               <>
                 <button
@@ -1123,28 +1106,11 @@ export default function GmailWorkspaceConfig() {
                   {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
                 </button>
                 <button
-                  onClick={handleRetryDriveUpload}
-                  disabled={retryingDrive}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
-                  title="Prześlij na Google Drive faktury z emaila/Drive, które nie zostały tam jeszcze dodane"
-                >
-                  <Upload className={`w-3 h-3 ${retryingDrive ? 'animate-pulse' : ''}`} />
-                  {retryingDrive ? 'Przesyłanie...' : 'Wyślij na Drive'}
-                </button>
-                <button
                   onClick={() => { setShowReimportPanel(!showReimportPanel); setReimportMessage(null); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors font-medium text-xs ${showReimportPanel ? 'bg-slate-600 hover:bg-slate-700' : 'bg-slate-500 hover:bg-slate-600'} text-white`}
                 >
                   <RotateCcw className="w-3 h-3" />
                   Ponowny import
-                </button>
-                <button
-                  onClick={handleDiagnoseEmails}
-                  disabled={diagnosing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
-                >
-                  <AlertCircle className={`w-3 h-3 ${diagnosing ? 'animate-pulse' : ''}`} />
-                  {diagnosing ? 'Diagnostyka...' : 'Diagnoza'}
                 </button>
               </>
             )}
@@ -1377,7 +1343,7 @@ export default function GmailWorkspaceConfig() {
                     onChange={(e) => setReimportDateFrom(e.target.value)}
                     className="w-full px-3 py-2 pl-8 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
-                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500 dark:text-slate-300 pointer-events-none" />
                 </div>
               </div>
               <div>
@@ -1391,7 +1357,7 @@ export default function GmailWorkspaceConfig() {
                     onChange={(e) => setReimportDateTo(e.target.value)}
                     className="w-full px-3 py-2 pl-8 bg-light-surface dark:bg-dark-surface border border-slate-300 dark:border-slate-600 rounded-lg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
-                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                  <Calendar className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500 dark:text-slate-300 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -1841,14 +1807,6 @@ export default function GmailWorkspaceConfig() {
 
         {emailConfigs.length > 0 && (
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
-            <button
-              onClick={handleDebugDrive}
-              disabled={debuggingDrive}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
-            >
-              <AlertCircle className={`w-4 h-4 ${debuggingDrive ? 'animate-spin' : ''}`} />
-              {debuggingDrive ? 'Sprawdzanie...' : 'Diagnostyka folderu'}
-            </button>
             {(folderMappings.length > 0 || driveConfig) && (
               <button
                 onClick={handleSyncDrive}
