@@ -17,7 +17,7 @@ interface ApiToken {
 }
 
 const BASE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/invoices-export-api';
-const PAID_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/mark-invoice-paid';
+const PAID_URL = BASE_URL + '/invoices/{invoice_number}/mark-paid';
 
 export default function APISettings() {
   const { profile } = useAuth();
@@ -130,6 +130,8 @@ export default function APISettings() {
       "invoice_number": "FV/2024/001",
       "supplier_name": "Przykładowa Sp. z o.o.",
       "supplier_nip": "1234567890",
+      "buyer_name": "Kupujacy Sp. z o.o.",
+      "buyer_nip": "9876543210",
       "issue_date": "2024-01-15",
       "due_date": "2024-02-14",
       "mpk_code": "MPK-001",
@@ -138,6 +140,8 @@ export default function APISettings() {
       "description": "Usługi marketingowe",
       "internal_comment": "Do weryfikacji z księgowością",
       "mpk_description": "Marketing i reklama",
+      "cost_center_code": "CC-001",
+      "cost_center_name": "CC-001 - Centrum kosztow marketingu",
       "bez_mpk": false,
       "net_amount": 1000.00,
       "tax_amount": 230.00,
@@ -148,7 +152,17 @@ export default function APISettings() {
       "paid_at": "2024-01-20T12:00:00Z",
       "payment_method": "Przelew",
       "updated_at": "2024-01-20T12:00:00Z",
-      "pz_number": "PZ/2024/001"
+      "pz_number": "PZ/2024/001",
+      "attachments": [
+        {
+          "id": "uuid-zalacznika",
+          "file_name": "zalacznik.pdf",
+          "url": "https://drive.google.com/...",
+          "mime_type": "application/pdf",
+          "file_size": 102400,
+          "created_at": "2024-01-16T08:00:00Z"
+        }
+      ]
     }
   ],
   "meta": {
@@ -500,24 +514,30 @@ export default function APISettings() {
                         { field: 'invoice_number', desc: 'Numer faktury' },
                         { field: 'supplier_name', desc: 'Nazwa dostawcy' },
                         { field: 'supplier_nip', desc: 'NIP dostawcy' },
+                        { field: 'buyer_name', desc: 'Nazwa nabywcy (null jesli brak)' },
+                        { field: 'buyer_nip', desc: 'NIP nabywcy (null jesli brak)' },
                         { field: 'issue_date', desc: 'Data wystawienia (YYYY-MM-DD)' },
                         { field: 'due_date', desc: 'Termin platnosci (YYYY-MM-DD)' },
-                        { field: 'mpk_code', desc: 'Numer MPK przypisanego dzialu (zawsze zwracany, niezaleznie od flagi bez_mpk)' },
-                        { field: 'department_name', desc: 'Nazwa dzialu (zawsze zwracana, niezaleznie od flagi bez_mpk)' },
+                        { field: 'mpk_code', desc: 'Numer MPK przypisanego dzialu' },
+                        { field: 'department_name', desc: 'Nazwa dzialu' },
                         { field: 'currency', desc: 'Waluta (np. PLN, EUR, USD)' },
                         { field: 'description', desc: 'Opis / komentarz zewnetrzny faktury' },
-                        { field: 'internal_comment', desc: 'Komentarz wewnetrzny (widoczny tylko dla uzytkownikow systemu)' },
-                        { field: 'mpk_description', desc: 'Opis centrum kosztow (MPK)' },
+                        { field: 'internal_comment', desc: 'Komentarz wewnetrzny' },
+                        { field: 'mpk_description', desc: 'Opis centrum kosztow pobrany z tabeli cost_centers' },
+                        { field: 'cost_center_code', desc: 'Kod centrum kosztow przypisanego do faktury (null jesli brak)' },
+                        { field: 'cost_center_name', desc: 'Kod i opis centrum kosztow w formacie "KOD - Opis" (null jesli brak)' },
+                        { field: 'bez_mpk', desc: 'true jesli faktura oznaczona jako "Bez MPK"' },
                         { field: 'net_amount', desc: 'Kwota netto' },
                         { field: 'tax_amount', desc: 'Kwota VAT' },
-                        { field: 'gross_amount', desc: 'Kwota brutto' },
+                        { field: 'gross_amount', desc: 'Kwota brutto w walucie faktury' },
                         { field: 'pln_gross_amount', desc: 'Kwota brutto w PLN (po przeliczeniu kursu)' },
-                        { field: 'exchange_rate', desc: 'Kurs waluty do PLN' },
-                        { field: 'bez_mpk', desc: 'Flaga informacyjna: true jesli faktura oznaczona jako "Bez MPK". MPK i dzial sa nadal przypisane i widoczne.' },
-                        { field: 'status', desc: 'Status faktury (paid / accepted)' },
-                        { field: 'paid_at', desc: 'Data i czas oznaczenia jako oplacona' },
-                        { field: 'payment_method', desc: 'Metoda platnosci wybrana w systemie (np. przelew, gotowka, karta)' },
-                        { field: 'pz_number', desc: 'Numer PZ powiazany z faktura' },
+                        { field: 'exchange_rate', desc: 'Kurs waluty do PLN (1 dla PLN)' },
+                        { field: 'status', desc: 'Status faktury: paid lub accepted' },
+                        { field: 'paid_at', desc: 'Data i czas oznaczenia jako oplacona (null jesli nie oplacona)' },
+                        { field: 'payment_method', desc: 'Metoda platnosci: Gotowka, Przelew lub Karta (null jesli nie podano)' },
+                        { field: 'updated_at', desc: 'Data i czas ostatniej aktualizacji faktury' },
+                        { field: 'pz_number', desc: 'Numer PZ powiazany z faktura (null jesli brak)' },
+                        { field: 'attachments', desc: 'Lista zalacznikow: id, file_name, url (Google Drive), mime_type, file_size, created_at' },
                         { field: 'pdf_base64', desc: 'PDF faktury zakodowany w Base64 (tylko przy include_pdf=true)' },
                       ].map(row => (
                         <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
@@ -557,6 +577,9 @@ export default function APISettings() {
                     {copied === 'paid-url' ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
+                  Numer faktury podawany jest w URL-u. Znaki specjalne nalezy zakodowac (np. <code className="font-mono">FV%2F2024%2F001</code>).
+                </p>
               </div>
 
               <div>
@@ -572,7 +595,7 @@ export default function APISettings() {
 
               <div>
                 <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
-                  Body (JSON)
+                  Body (JSON, opcjonalne)
                 </p>
                 <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
@@ -585,9 +608,6 @@ export default function APISettings() {
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
                       {[
-                        { field: 'invoice_number', required: 'tak*', desc: 'Numer faktury (wymagane jesli brak invoice_id)' },
-                        { field: 'invoice_id', required: 'tak*', desc: 'UUID faktury (wymagane jesli brak invoice_number)' },
-                        { field: 'paid_at', required: 'nie', desc: 'Data i czas oplacenia (ISO 8601). Domyslnie: czas wywolania' },
                         { field: 'payment_method', required: 'nie', desc: 'Metoda platnosci: "Gotowka", "Przelew" lub "Karta". Zapisywana na fakturze.' },
                       ].map(row => (
                         <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
@@ -602,7 +622,7 @@ export default function APISettings() {
                   </table>
                 </div>
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
-                  * Wymagane jest podanie co najmniej jednego: <code className="font-mono">invoice_number</code> lub <code className="font-mono">invoice_id</code>
+                  Body moze byc calkowicie pominiete — data oplacenia ustawiana jest automatycznie na czas wywolania API.
                 </p>
               </div>
 
@@ -612,7 +632,7 @@ export default function APISettings() {
                 </p>
                 <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
                   <button
-                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z", "payment_method": "Przelew"}' \\\n  "${PAID_URL}"`, 'paid-curl')}
+                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"payment_method": "Przelew"}' \\\n  "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invoices-export-api/invoices/FV%2F2024%2F001/mark-paid"`, 'paid-curl')}
                     className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
                   >
                     {copied === 'paid-curl' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
@@ -621,8 +641,8 @@ export default function APISettings() {
 {`curl -X POST \\
   -H "Authorization: Bearer aurs_..." \\
   -H "Content-Type: application/json" \\
-  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z", "payment_method": "Przelew"}' \\
-  "${PAID_URL}"`}
+  -d '{"payment_method": "Przelew"}' \\
+  "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invoices-export-api/invoices/FV%2F2024%2F001/mark-paid"`}
                   </pre>
                 </div>
               </div>
@@ -636,19 +656,51 @@ export default function APISettings() {
 {`{
   "success": true,
   "data": {
-    "invoice_id": "uuid-faktury",
     "invoice_number": "FV/2024/001",
     "status": "paid",
-    "paid_at": "2024-02-01T10:00:00.000Z"
+    "paid_at": "2024-02-01T10:00:00.000Z",
+    "payment_method": "Przelew"
   }
 }`}
                   </pre>
                 </div>
               </div>
 
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">
+                  Kody odpowiedzi
+                </p>
+                <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-light-surface-variant dark:bg-dark-surface-variant">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Kod</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                      {[
+                        { code: '200', desc: 'Sukces — faktura oznaczona jako oplacona' },
+                        { code: '400', desc: 'Nieprawidlowa metoda platnosci (dozwolone: Gotowka, Przelew, Karta)' },
+                        { code: '401', desc: 'Brak lub nieprawidlowy token API' },
+                        { code: '404', desc: 'Faktura o podanym numerze nie istnieje' },
+                        { code: '422', desc: 'Faktura istnieje, ale ma inny status niz "accepted" — nie mozna oznaczyc jako oplacona' },
+                      ].map(row => (
+                        <tr key={row.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-2">
+                            <code className="text-xs font-mono text-brand-primary">{row.code}</code>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                 <p className="text-xs text-amber-800 dark:text-amber-300">
-                  Endpoint zmienia status tylko faktur z aktualnym statusem <code className="font-mono font-semibold">accepted</code>. Faktury w innym statusie zwroca blad 404.
+                  Tylko faktury ze statusem <code className="font-mono font-semibold">accepted</code> moga zostac oznaczone jako oplacone. Proba zmiany faktury z innym statusem zwroci blad <code className="font-mono font-semibold">422</code>.
                 </p>
               </div>
             </div>
