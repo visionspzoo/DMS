@@ -136,6 +136,7 @@ export default function APISettings() {
       "department_name": "Ecommerce",
       "currency": "PLN",
       "description": "Usługi marketingowe",
+      "internal_comment": "Do weryfikacji z księgowością",
       "mpk_description": "Marketing i reklama",
       "net_amount": 1000.00,
       "tax_amount": 230.00,
@@ -144,6 +145,7 @@ export default function APISettings() {
       "exchange_rate": 1,
       "status": "paid",
       "paid_at": "2024-01-20T12:00:00Z",
+      "payment_method": "przelew",
       "updated_at": "2024-01-20T12:00:00Z",
       "pz_number": "PZ/2024/001"
     }
@@ -502,7 +504,8 @@ export default function APISettings() {
                         { field: 'mpk_code', desc: 'Numer MPK przypisanego dzialu' },
                         { field: 'department_name', desc: 'Nazwa dzialu' },
                         { field: 'currency', desc: 'Waluta (np. PLN, EUR, USD)' },
-                        { field: 'description', desc: 'Opis faktury' },
+                        { field: 'description', desc: 'Opis / komentarz zewnetrzny faktury' },
+                        { field: 'internal_comment', desc: 'Komentarz wewnetrzny (widoczny tylko dla uzytkownikow systemu)' },
                         { field: 'mpk_description', desc: 'Opis centrum kosztow (MPK)' },
                         { field: 'net_amount', desc: 'Kwota netto' },
                         { field: 'tax_amount', desc: 'Kwota VAT' },
@@ -511,6 +514,7 @@ export default function APISettings() {
                         { field: 'exchange_rate', desc: 'Kurs waluty do PLN' },
                         { field: 'status', desc: 'Status faktury (paid / accepted)' },
                         { field: 'paid_at', desc: 'Data i czas oznaczenia jako oplacona' },
+                        { field: 'payment_method', desc: 'Metoda platnosci wybrana w systemie (np. przelew, gotowka, karta)' },
                         { field: 'pz_number', desc: 'Numer PZ powiazany z faktura' },
                         { field: 'pdf_base64', desc: 'PDF faktury zakodowany w Base64 (tylko przy include_pdf=true)' },
                       ].map(row => (
@@ -582,6 +586,7 @@ export default function APISettings() {
                         { field: 'invoice_number', required: 'tak*', desc: 'Numer faktury (wymagane jesli brak invoice_id)' },
                         { field: 'invoice_id', required: 'tak*', desc: 'UUID faktury (wymagane jesli brak invoice_number)' },
                         { field: 'paid_at', required: 'nie', desc: 'Data i czas oplacenia (ISO 8601). Domyslnie: czas wywolania' },
+                        { field: 'payment_method', required: 'nie', desc: 'Metoda platnosci: "Gotowka", "Przelew" lub "Karta". Zapisywana na fakturze.' },
                       ].map(row => (
                         <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                           <td className="px-3 py-2">
@@ -605,7 +610,7 @@ export default function APISettings() {
                 </p>
                 <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
                   <button
-                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z"}' \\\n  "${PAID_URL}"`, 'paid-curl')}
+                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z", "payment_method": "Przelew"}' \\\n  "${PAID_URL}"`, 'paid-curl')}
                     className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
                   >
                     {copied === 'paid-curl' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
@@ -614,7 +619,7 @@ export default function APISettings() {
 {`curl -X POST \\
   -H "Authorization: Bearer aurs_..." \\
   -H "Content-Type: application/json" \\
-  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z"}' \\
+  -d '{"invoice_number": "FV/2024/001", "paid_at": "2024-02-01T10:00:00Z", "payment_method": "Przelew"}' \\
   "${PAID_URL}"`}
                   </pre>
                 </div>
