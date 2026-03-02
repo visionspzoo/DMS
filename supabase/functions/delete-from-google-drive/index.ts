@@ -98,6 +98,42 @@ async function getServiceAccountToken(): Promise<string | null> {
   }
 }
 
+async function getGlobalRefreshToken(): Promise<string | null> {
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const googleRefreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+  if (!googleClientId || !googleClientSecret || !googleRefreshToken) {
+    return null;
+  }
+
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        refresh_token: googleRefreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const err = await tokenResponse.text();
+      console.error("[GlobalRefreshToken] Token error:", err);
+      return null;
+    }
+
+    const tokenData = await tokenResponse.json();
+    console.log("[Auth] Using global GOOGLE_REFRESH_TOKEN");
+    return tokenData.access_token;
+  } catch (e) {
+    console.error("[GlobalRefreshToken] Failed:", e);
+    return null;
+  }
+}
+
 async function refreshAccessToken(
   supabase: any,
   config: EmailConfig
@@ -170,7 +206,12 @@ async function getAccessToken(supabase: any, preferredUserId?: string): Promise<
     return serviceToken;
   }
 
-  console.log("[Auth] Service Account not configured, falling back to OAuth");
+  const globalToken = await getGlobalRefreshToken();
+  if (globalToken) {
+    return globalToken;
+  }
+
+  console.log("[Auth] No global auth, falling back to per-user OAuth");
 
   if (preferredUserId) {
     const { data: userConfigs } = await supabase
@@ -181,6 +222,7 @@ async function getAccessToken(supabase: any, preferredUserId?: string): Promise<
       .eq("provider", "google_workspace");
 
     if (userConfigs && userConfigs.length > 0) {
+      console.log("[Auth] Using per-user OAuth for", preferredUserId);
       return await getValidAccessToken(supabase, userConfigs[0] as EmailConfig);
     }
     console.log(`No OAuth for user ${preferredUserId}, trying any active config`);
@@ -197,6 +239,7 @@ async function getAccessToken(supabase: any, preferredUserId?: string): Promise<
     throw new Error("No active Google account connected. Please connect a Google account in Configuration.");
   }
 
+  console.log("[Auth] Using any available OAuth as fallback");
   return await getValidAccessToken(supabase, anyConfigs[0] as EmailConfig);
 }
 
@@ -223,7 +266,7 @@ async function deleteFileFromGoogleDrive(fileId: string, accessToken: string): P
     throw new Error(`Failed to delete file from Google Drive: ${deleteResponse.status} - ${errorText}`);
   }
 
-  console.log("✓ File deleted successfully from Google Drive");
+  console.log("File deleted successfully from Google Drive");
 }
 
 Deno.serve(async (req: Request) => {
@@ -235,8 +278,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    console.log("=== DELETE FROM GOOGLE DRIVE STARTED ===");
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -263,8 +304,6 @@ Deno.serve(async (req: Request) => {
 
     await deleteFileFromGoogleDrive(fileId, accessToken);
 
-    console.log("=== DELETE FROM GOOGLE DRIVE COMPLETED ===");
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -279,8 +318,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error: any) {
-    console.error("=== DELETE FROM GOOGLE DRIVE FAILED ===");
-    console.error("Error:", error);
+    console.error("Delete from Google Drive failed:", error);
 
     return new Response(
       JSON.stringify({

@@ -266,6 +266,41 @@ async function moveFile(accessToken: string, fileId: string, targetFolderId: str
   return await moveResponse.json();
 }
 
+async function getGlobalRefreshToken(_supabase: any): Promise<string | null> {
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const googleRefreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+  if (!googleClientId || !googleClientSecret || !googleRefreshToken) {
+    return null;
+  }
+
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        refresh_token: googleRefreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error("[GlobalRefreshToken] Token error:", await tokenResponse.text());
+      return null;
+    }
+
+    const tokenData = await tokenResponse.json();
+    console.log("[Auth] Using global GOOGLE_REFRESH_TOKEN");
+    return tokenData.access_token;
+  } catch (e) {
+    console.error("[GlobalRefreshToken] Failed:", e);
+    return null;
+  }
+}
+
 async function getAnyActiveOAuthToken(supabase: any): Promise<string | null> {
   const { data: configs } = await supabase
     .from("user_email_configs")
@@ -332,25 +367,33 @@ Deno.serve(async (req: Request) => {
     let accessToken: string | null = null;
     let authMethod = 'none';
 
-    const { data: emailConfigs } = await supabase
-      .from("user_email_configs")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .eq("provider", "google_workspace");
+    accessToken = await getServiceAccountToken();
+    if (accessToken) authMethod = 'service_account';
 
-    if (emailConfigs && emailConfigs.length > 0) {
-      try {
-        accessToken = await getValidAccessToken(supabase, emailConfigs[0] as EmailConfig);
-        authMethod = 'user_oauth';
-      } catch (e) {
-        console.warn("[MoveFile] User OAuth failed:", e);
+    if (!accessToken) {
+      const globalToken = await getGlobalRefreshToken(supabase);
+      if (globalToken) {
+        accessToken = globalToken;
+        authMethod = 'global_refresh_token';
       }
     }
 
     if (!accessToken) {
-      accessToken = await getServiceAccountToken();
-      if (accessToken) authMethod = 'service_account';
+      const { data: emailConfigs } = await supabase
+        .from("user_email_configs")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .eq("provider", "google_workspace");
+
+      if (emailConfigs && emailConfigs.length > 0) {
+        try {
+          accessToken = await getValidAccessToken(supabase, emailConfigs[0] as EmailConfig);
+          authMethod = 'user_oauth';
+        } catch (e) {
+          console.warn("[MoveFile] User OAuth failed:", e);
+        }
+      }
     }
 
     if (!accessToken) {

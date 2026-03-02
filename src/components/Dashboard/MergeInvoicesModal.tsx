@@ -322,6 +322,16 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete }: Merge
         await deleteFromDrive(loser.user_drive_file_id, (loser as any).drive_owner_user_id);
       }
 
+      if (loser.file_url) {
+        try {
+          const filePath = loser.file_url.split('/').pop();
+          if (filePath) {
+            await supabase.storage.from('documents').remove([`invoices/${filePath}`]);
+          }
+        } catch {
+        }
+      }
+
       const { error } = await supabase
         .from('invoices')
         .delete()
