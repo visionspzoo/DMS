@@ -752,48 +752,88 @@ async function syncEmailAccount(
 
           if (!isRealInvoice) continue;
 
-          // Upload to department Google Drive
+          // Upload to Google Drive
           try {
             const { data: refreshedInvoice } = await supabase
               .from("invoices")
-              .select("id, department_id, status")
+              .select("id, department_id, status, issue_date")
               .eq("id", invoiceData.id)
               .maybeSingle();
 
             const deptId = refreshedInvoice?.department_id;
+            const issueDate = refreshedInvoice?.issue_date || null;
+
+            let targetFolderId: string | null = null;
+
             if (deptId) {
               const { data: deptData } = await supabase
                 .from("departments")
                 .select("google_drive_draft_folder_id")
                 .eq("id", deptId)
                 .maybeSingle();
-
               if (deptData?.google_drive_draft_folder_id) {
-                const uploadResp = await fetch(
-                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/upload-to-google-drive`,
-                  {
-                    method: "POST",
-                    headers: {
-                      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      fileBase64: base64Content,
-                      fileName: part.filename,
-                      folderId: deptData.google_drive_draft_folder_id,
-                      mimeType: "application/pdf",
-                      originalMimeType: "application/pdf",
-                      userId: userId,
-                      invoiceId: invoiceData.id,
-                    }),
-                  }
-                );
-                if (uploadResp.ok) {
-                  console.log(`[email-sync] Uploaded ${part.filename} to department Drive folder`);
-                } else {
-                  console.warn(`[email-sync] Drive upload failed: ${await uploadResp.text()}`);
-                }
+                targetFolderId = deptData.google_drive_draft_folder_id;
               }
+            }
+
+            if (!targetFolderId) {
+              const { data: userDriveConfig } = await supabase
+                .from("user_drive_configs")
+                .select("google_drive_folder_id")
+                .eq("user_id", userId)
+                .eq("is_active", true)
+                .maybeSingle();
+              if (userDriveConfig?.google_drive_folder_id) {
+                targetFolderId = userDriveConfig.google_drive_folder_id;
+              }
+            }
+
+            if (!targetFolderId) {
+              const { data: folderMapping } = await supabase
+                .from("user_drive_folder_mappings")
+                .select("google_drive_folder_id")
+                .eq("user_id", userId)
+                .eq("is_active", true)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (folderMapping?.google_drive_folder_id) {
+                targetFolderId = folderMapping.google_drive_folder_id;
+              }
+            }
+
+            if (targetFolderId) {
+              const uploadPayload: any = {
+                fileBase64: base64Content,
+                fileName: part.filename,
+                folderId: targetFolderId,
+                mimeType: "application/pdf",
+                originalMimeType: "application/pdf",
+                userId: userId,
+                invoiceId: invoiceData.id,
+              };
+              if (issueDate) {
+                uploadPayload.issueDate = issueDate;
+              }
+
+              const uploadResp = await fetch(
+                `${Deno.env.get("SUPABASE_URL")}/functions/v1/upload-to-google-drive`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(uploadPayload),
+                }
+              );
+              if (uploadResp.ok) {
+                console.log(`[email-sync] Uploaded ${part.filename} to Drive folder${issueDate ? ` (${issueDate})` : ""}`);
+              } else {
+                console.warn(`[email-sync] Drive upload failed: ${await uploadResp.text()}`);
+              }
+            } else {
+              console.log(`[email-sync] No Drive folder configured for user ${userId}, skipping Drive upload`);
             }
           } catch (driveErr) {
             console.error("[email-sync] Error uploading to Drive:", driveErr);
