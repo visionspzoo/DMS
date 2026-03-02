@@ -227,25 +227,6 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'Failed to fetch invoices' }, 500);
     }
 
-    const uploaderIds = [...new Set(
-      (invoices || []).map((inv: any) => inv.uploaded_by).filter(Boolean)
-    )];
-
-    let bezMpkUserIds = new Set<string>();
-    if (uploaderIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, mpk_override_bez_mpk')
-        .in('id', uploaderIds)
-        .eq('mpk_override_bez_mpk', true);
-
-      if (profiles) {
-        for (const p of profiles) {
-          bezMpkUserIds.add(p.id);
-        }
-      }
-    }
-
     const mpkCodes = [...new Set(
       (invoices || [])
         .map((inv: any) => inv.department?.mpk_code)
@@ -267,7 +248,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = (invoices || []).map((inv: any) => {
-      const isBezMpk = inv.bez_mpk === true;
       const realDeptName = inv.department?.name || null;
       const realMpkCode = inv.department?.mpk_code || null;
       const mpkCode = realMpkCode || null;
