@@ -80,6 +80,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'Gotówka' | 'Przelew' | 'Karta' | ''>('');
   const [isFromKSEF, setIsFromKSEF] = useState(false);
   const [ksefInvoiceId, setKsefInvoiceId] = useState<string | null>(null);
   const [showUnassignKSEFConfirm, setShowUnassignKSEFConfirm] = useState(false);
@@ -1034,6 +1035,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return;
     }
 
+    if (!selectedPaymentMethod) {
+      alert('Proszę wybrać metodę płatności.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -1042,6 +1048,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           paid_at: new Date().toISOString(),
           paid_by: profile.id,
           status: 'paid',
+          payment_method: selectedPaymentMethod,
         })
         .eq('id', currentInvoice.id)
         .select('id, status, paid_at, paid_by')
@@ -2660,9 +2667,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                           <option value="paid">Opłacona</option>
                         </select>
                       ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {statusLabels[getUserSpecificStatus(currentInvoice, profile?.id || '')] || currentInvoice.status}
-                        </p>
+                        <div className="mt-1">
+                          <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+                            {statusLabels[getUserSpecificStatus(currentInvoice, profile?.id || '')] || currentInvoice.status}
+                          </p>
+                          {currentInvoice.status === 'paid' && currentInvoice.payment_method && (
+                            <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-xs font-medium rounded-full">
+                              <CreditCard className="w-3 h-3" />
+                              {currentInvoice.payment_method}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -3481,14 +3496,36 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               </div>
             </div>
 
-            <p className="text-slate-700 dark:text-slate-300 mb-6">
+            <p className="text-slate-700 dark:text-slate-300 mb-5">
               Oznaczając fakturę jako opłaconą, pomijasz proces akceptacji dokumentu i płatności
               przekazując fakturę bezpośrednio do systemu OCR Administracji.
             </p>
 
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                Metoda płatności <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Gotówka', 'Przelew', 'Karta'] as const).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod(method)}
+                    className={`px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition ${
+                      selectedPaymentMethod === method
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                        : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500'
+                    }`}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-3">
               <button
-                onClick={() => setShowPaidConfirm(false)}
+                onClick={() => { setShowPaidConfirm(false); setSelectedPaymentMethod(''); }}
                 disabled={loading}
                 className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium disabled:opacity-50"
               >
@@ -3496,8 +3533,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               </button>
               <button
                 onClick={handleMarkAsPaid}
-                disabled={loading}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                disabled={loading || !selectedPaymentMethod}
+                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>

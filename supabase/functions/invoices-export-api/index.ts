@@ -93,11 +93,24 @@ Deno.serve(async (req: Request) => {
         }, 422);
       }
 
+      let body: any = {};
+      try { body = await req.json(); } catch { /* no body is fine */ }
+
+      const { payment_method } = body;
+      const validPaymentMethods = ['Gotówka', 'Przelew', 'Karta'];
+      if (payment_method && !validPaymentMethods.includes(payment_method)) {
+        return json({ success: false, error: `Invalid payment_method. Allowed values: ${validPaymentMethods.join(', ')}` }, 400);
+      }
+
       const paidAt = new Date().toISOString();
+      const updatePayload: Record<string, unknown> = { status: 'paid', paid_at: paidAt, updated_at: paidAt };
+      if (payment_method) {
+        updatePayload.payment_method = payment_method;
+      }
 
       const { error: updateError } = await supabase
         .from('invoices')
-        .update({ status: 'paid', paid_at: paidAt, updated_at: paidAt })
+        .update(updatePayload)
         .eq('id', invoice.id);
 
       if (updateError) {
@@ -105,11 +118,15 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, error: 'Failed to update invoice status' }, 500);
       }
 
+      const auditDesc = payment_method
+        ? `Status zmieniony z "accepted" na "paid" przez zewnętrzny system (API) (metoda płatności: ${payment_method})`
+        : `Status zmieniony z "accepted" na "paid" przez zewnętrzny system (API)`;
+
       await supabase.from('audit_logs').insert({
         invoice_id: invoice.id,
         action: 'status_changed',
         performed_by: tokenRow.user_id,
-        description: `Status zmieniony z "accepted" na "paid" przez zewnętrzny system (API)`,
+        description: auditDesc,
       });
 
       return json({
@@ -118,6 +135,7 @@ Deno.serve(async (req: Request) => {
           invoice_number: invoiceNumber,
           status: 'paid',
           paid_at: paidAt,
+          payment_method: payment_method || null,
         },
       });
     }
@@ -165,6 +183,7 @@ Deno.serve(async (req: Request) => {
         exchange_rate,
         status,
         paid_at,
+        payment_method,
         created_at,
         updated_at,
         pdf_base64,
@@ -280,6 +299,7 @@ Deno.serve(async (req: Request) => {
         exchange_rate: inv.exchange_rate,
         status: inv.status,
         paid_at: inv.paid_at,
+        payment_method: inv.payment_method || null,
         updated_at: inv.updated_at,
         pz_number: inv.pz_number || null,
         attachments,

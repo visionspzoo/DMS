@@ -94,6 +94,7 @@ export interface Database {
           rejected_at: string | null;
           paid_at: string | null;
           paid_by: string | null;
+          payment_method: string | null;
           description: string | null;
           source: InvoiceSource;
           current_approver_id: string | null;
@@ -131,6 +132,7 @@ export interface Database {
           rejected_at?: string | null;
           paid_at?: string | null;
           paid_by?: string | null;
+          payment_method?: string | null;
           description?: string | null;
           source?: InvoiceSource;
           current_approver_id?: string | null;
@@ -175,6 +177,7 @@ export interface Database {
           buyer_nip?: string | null;
           paid_at?: string | null;
           paid_by?: string | null;
+          payment_method?: string | null;
           description?: string | null;
           source?: InvoiceSource;
         };

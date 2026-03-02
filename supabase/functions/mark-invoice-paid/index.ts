@@ -71,10 +71,15 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'Invalid JSON body' }, 400);
     }
 
-    const { invoice_number, invoice_id, paid_at } = body;
+    const { invoice_number, invoice_id, paid_at, payment_method } = body;
 
     if (!invoice_number && !invoice_id) {
       return json({ success: false, error: 'Required: invoice_number or invoice_id' }, 400);
+    }
+
+    const validPaymentMethods = ['Gotówka', 'Przelew', 'Karta'];
+    if (payment_method && !validPaymentMethods.includes(payment_method)) {
+      return json({ success: false, error: `Invalid payment_method. Allowed values: ${validPaymentMethods.join(', ')}` }, 400);
     }
 
     let query = supabase
@@ -106,9 +111,14 @@ Deno.serve(async (req: Request) => {
 
     const paidAt = paid_at ? new Date(paid_at).toISOString() : new Date().toISOString();
 
+    const updatePayload: Record<string, unknown> = { status: 'paid', paid_at: paidAt };
+    if (payment_method) {
+      updatePayload.payment_method = payment_method;
+    }
+
     const { error: updateError } = await supabase
       .from('invoices')
-      .update({ status: 'paid', paid_at: paidAt })
+      .update(updatePayload)
       .eq('id', invoice.id);
 
     if (updateError) {
@@ -116,11 +126,15 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'Failed to update invoice status' }, 500);
     }
 
+    const auditDesc = payment_method
+      ? `Status zmieniony z "accepted" na "paid" przez API (metoda płatności: ${payment_method})`
+      : `Status zmieniony z "accepted" na "paid" przez API`;
+
     await supabase.from('audit_logs').insert({
       invoice_id: invoice.id,
       user_id: tokenRow.user_id,
       action: 'status_changed',
-      description: `Status zmieniony z "accepted" na "paid" przez API`,
+      description: auditDesc,
     });
 
     return json({
@@ -130,6 +144,7 @@ Deno.serve(async (req: Request) => {
         invoice_number: invoice.invoice_number,
         status: 'paid',
         paid_at: paidAt,
+        payment_method: payment_method || null,
       },
     });
   } catch (error: any) {
