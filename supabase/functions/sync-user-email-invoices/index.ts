@@ -450,9 +450,13 @@ async function syncEmailAccount(
   let beforeDate: number | null = null;
 
   if (forceReimport && dateFrom) {
-    afterDate = Math.floor(dateFrom.getTime() / 1000);
+    const adjustedFrom = new Date(dateFrom);
+    adjustedFrom.setDate(adjustedFrom.getDate() - 1);
+    afterDate = Math.floor(adjustedFrom.getTime() / 1000);
     if (dateTo) {
-      beforeDate = Math.floor(dateTo.getTime() / 1000);
+      const adjustedTo = new Date(dateTo);
+      adjustedTo.setDate(adjustedTo.getDate() + 1);
+      beforeDate = Math.floor(adjustedTo.getTime() / 1000);
     }
   } else {
     const fourteenDaysAgo = new Date();
