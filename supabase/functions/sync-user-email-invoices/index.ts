@@ -96,6 +96,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const forceReimport = bodyData.force_reimport === true;
+    const allowDuplicates = forceReimport;
     const dateFrom = bodyData.date_from ? new Date(bodyData.date_from) : null;
     const dateTo = bodyData.date_to ? new Date(bodyData.date_to) : null;
 
@@ -266,7 +267,7 @@ Deno.serve(async (req: Request) => {
               await send({ type: "account_start", email: config.email_address });
               const synced = await syncEmailAccount(
                 supabase, config, userId, warnings, send,
-                forceReimport, dateFrom, dateTo
+                forceReimport, dateFrom, dateTo, allowDuplicates
               );
               totalSynced += synced;
 
@@ -313,7 +314,7 @@ Deno.serve(async (req: Request) => {
       try {
         const synced = await syncEmailAccount(
           supabase, config, userId, warnings, undefined,
-          forceReimport, dateFrom, dateTo
+          forceReimport, dateFrom, dateTo, allowDuplicates
         );
         totalSynced += synced;
 
@@ -438,7 +439,8 @@ async function syncEmailAccount(
   send?: (data: object) => Promise<void>,
   forceReimport = false,
   dateFrom: Date | null = null,
-  dateTo: Date | null = null
+  dateTo: Date | null = null,
+  allowDuplicates = false
 ): Promise<number> {
   console.log(`Connecting to Gmail for ${config.email_address}... forceReimport=${forceReimport}`);
 
@@ -621,21 +623,23 @@ async function syncEmailAccount(
 
           const fileHash = await computeFileHash(pdfData);
 
-          const { data: existingInvoice } = await supabase
-            .from("invoices")
-            .select("id, invoice_number")
-            .eq("file_hash", fileHash)
-            .eq("uploaded_by", userId)
-            .maybeSingle();
+          if (!allowDuplicates) {
+            const { data: existingInvoice } = await supabase
+              .from("invoices")
+              .select("id, invoice_number")
+              .eq("file_hash", fileHash)
+              .eq("uploaded_by", userId)
+              .maybeSingle();
 
-          if (existingInvoice) {
-            console.log(
-              `Duplicate detected for ${part.filename} (hash: ${fileHash.substring(0, 12)}..., existing invoice: ${existingInvoice.id}), skipping`
-            );
-            if (send) {
-              await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+            if (existingInvoice) {
+              console.log(
+                `Duplicate detected for ${part.filename} (hash: ${fileHash.substring(0, 12)}..., existing invoice: ${existingInvoice.id}), skipping`
+              );
+              if (send) {
+                await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+              }
+              continue;
             }
-            continue;
           }
 
           const sanitizedFilename = part.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -672,7 +676,7 @@ async function syncEmailAccount(
               pdf_base64: base64Content,
               uploaded_by: userId,
               source: 'email',
-              file_hash: fileHash,
+              file_hash: allowDuplicates ? null : fileHash,
             })
             .select()
             .single();
