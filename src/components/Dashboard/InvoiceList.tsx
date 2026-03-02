@@ -199,12 +199,12 @@ export function InvoiceList({
                   {invoice.cost_center ? (
                     <span className="font-medium text-text-primary-light dark:text-text-primary-dark truncate max-w-[160px]">
                       {invoice.cost_center.code} – {invoice.cost_center.description}
-                      {(invoice as any).bez_mpk && <span className="ml-1 text-[9px] text-amber-500 font-semibold uppercase">(bez MPK)</span>}
                     </span>
-                  ) : (invoice as any).bez_mpk ? (
-                    <span className="text-amber-500 font-semibold">BEZ MPK</span>
                   ) : (
                     <span className="font-bold text-red-500 dark:text-red-400">—</span>
+                  )}
+                  {(invoice as any).bez_mpk && (
+                    <span className="ml-1 px-1 py-0.5 text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold rounded uppercase tracking-wide">bez MPK</span>
                   )}
                 </div>
                 {invoice.invoice_tags && invoice.invoice_tags.length > 0 && (
