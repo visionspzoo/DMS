@@ -762,22 +762,42 @@ async function syncEmailAccount(
 
           // Upload to Google Drive
           try {
-            const { data: refreshedInvoice } = await supabase
-              .from("invoices")
-              .select("id, department_id, status, issue_date")
-              .eq("id", invoiceData.id)
-              .maybeSingle();
+            // Wait briefly for DB triggers (auto_assign, OCR side effects) to settle
+            await new Promise((r) => setTimeout(r, 2000));
+
+            // Retry fetching the invoice up to 3 times to get department_id assigned by triggers
+            let refreshedInvoice: any = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const { data } = await supabase
+                .from("invoices")
+                .select("id, department_id, status, issue_date")
+                .eq("id", invoiceData.id)
+                .maybeSingle();
+              refreshedInvoice = data;
+              if (refreshedInvoice?.department_id) break;
+              if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+            }
 
             const deptId = refreshedInvoice?.department_id;
             const issueDate = refreshedInvoice?.issue_date || null;
 
             let targetFolderId: string | null = null;
             let driveSource = "none";
+            let deptName: string | null = null;
 
             if (deptId) {
+              // Fetch department name for subfolder creation
+              const { data: deptInfo } = await supabase
+                .from("departments")
+                .select("name, google_drive_draft_folder_id")
+                .eq("id", deptId)
+                .maybeSingle();
+              deptName = deptInfo?.name || null;
+
+              // 1. Check user's folder mapping for this specific department
               const { data: deptMapping } = await supabase
                 .from("user_drive_folder_mappings")
-                .select("google_drive_folder_id")
+                .select("google_drive_folder_id, google_drive_folder_url")
                 .eq("user_id", userId)
                 .eq("department_id", deptId)
                 .eq("is_active", true)
@@ -785,21 +805,22 @@ async function syncEmailAccount(
               if (deptMapping?.google_drive_folder_id) {
                 targetFolderId = deptMapping.google_drive_folder_id;
                 driveSource = "dept_folder_mapping";
+              } else if (deptMapping?.google_drive_folder_url) {
+                const urlMatch = deptMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                if (urlMatch) {
+                  targetFolderId = urlMatch[1];
+                  driveSource = "dept_folder_mapping_url";
+                }
               }
-            }
 
-            if (!targetFolderId && deptId) {
-              const { data: deptData } = await supabase
-                .from("departments")
-                .select("google_drive_draft_folder_id")
-                .eq("id", deptId)
-                .maybeSingle();
-              if (deptData?.google_drive_draft_folder_id) {
-                targetFolderId = deptData.google_drive_draft_folder_id;
+              // 2. Fallback to department's draft folder
+              if (!targetFolderId && deptInfo?.google_drive_draft_folder_id) {
+                targetFolderId = deptInfo.google_drive_draft_folder_id;
                 driveSource = "dept_draft_folder";
               }
             }
 
+            // 3. Fallback to user's main drive config
             if (!targetFolderId) {
               const { data: userDriveConfig } = await supabase
                 .from("user_drive_configs")
@@ -819,6 +840,7 @@ async function syncEmailAccount(
               }
             }
 
+            // 4. Fallback to any active folder mapping
             if (!targetFolderId) {
               const { data: folderMappings } = await supabase
                 .from("user_drive_folder_mappings")
@@ -842,7 +864,7 @@ async function syncEmailAccount(
               }
             }
 
-            console.log(`[email-sync] Drive folder search result: source=${driveSource}, folderId=${targetFolderId}, deptId=${deptId}`);
+            console.log(`[email-sync] Drive folder search result: source=${driveSource}, folderId=${targetFolderId}, deptId=${deptId}, deptName=${deptName}`);
 
             if (targetFolderId) {
               const uploadPayload: any = {
@@ -857,6 +879,9 @@ async function syncEmailAccount(
               if (issueDate) {
                 uploadPayload.issueDate = issueDate;
               }
+              if (deptName && !deptId) {
+                uploadPayload.department = deptName;
+              }
 
               const uploadResp = await fetch(
                 `${Deno.env.get("SUPABASE_URL")}/functions/v1/upload-to-google-drive`,
@@ -870,9 +895,11 @@ async function syncEmailAccount(
                 }
               );
               if (uploadResp.ok) {
-                console.log(`[email-sync] Uploaded ${part.filename} to Drive folder${issueDate ? ` (${issueDate})` : ""}`);
+                const uploadResult = await uploadResp.json();
+                console.log(`[email-sync] Uploaded ${part.filename} to Drive (fileId=${uploadResult.fileId})${issueDate ? ` date=${issueDate}` : ""}`);
               } else {
-                console.warn(`[email-sync] Drive upload failed: ${await uploadResp.text()}`);
+                const errText = await uploadResp.text();
+                console.warn(`[email-sync] Drive upload failed (${uploadResp.status}): ${errText}`);
               }
             } else {
               console.log(`[email-sync] No Drive folder configured for user ${userId}, skipping Drive upload`);
