@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle, Calendar, RotateCcw } from 'lucide-react';
+import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, Edit2, X, AlertCircle, Calendar, RotateCcw, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
@@ -76,6 +76,10 @@ export default function GmailWorkspaceConfig() {
   const [reimporting, setReimporting] = useState(false);
   const [reimportProgress, setReimportProgress] = useState<{ status: string; current: number; total: number; filename?: string } | null>(null);
   const [reimportMessage, setReimportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [retryingDrive, setRetryingDrive] = useState(false);
+  const [retryDriveProgress, setRetryDriveProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+  const [retryDriveMessage, setRetryDriveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [driveConfig, setDriveConfig] = useState<DriveConfig | null>(null);
   const [driveLoading, setDriveLoading] = useState(true);
@@ -468,6 +472,90 @@ export default function GmailWorkspaceConfig() {
     } finally {
       setSyncing(false);
       setSyncProgress(null);
+    }
+  };
+
+  const handleRetryDriveUpload = async () => {
+    setRetryingDrive(true);
+    setRetryDriveMessage(null);
+    setRetryDriveProgress({ current: 0, total: 0, status: 'Łączenie...' });
+
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error('Nie udało się odświeżyć sesji. Wyloguj się i zaloguj ponownie.');
+      }
+
+      const finalSession = refreshData.session;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/retry-drive-upload`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${finalSession.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ stream: true }),
+        }
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || `Serwer zwrócił błąd ${response.status}`);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'start') {
+              setRetryDriveProgress({ current: 0, total: event.total, status: `Znaleziono ${event.total} faktur bez Drive` });
+            } else if (event.type === 'progress') {
+              setRetryDriveProgress(prev => ({ ...prev!, current: event.current, total: event.total, status: 'Przesyłanie...' }));
+            } else if (event.type === 'uploaded') {
+              setRetryDriveProgress(prev => ({ ...prev!, status: 'Przesłano' }));
+            } else if (event.type === 'skipped') {
+              setRetryDriveProgress(prev => ({ ...prev!, status: 'Pominięto (brak folderu)' }));
+            } else if (event.type === 'failed') {
+              setRetryDriveProgress(prev => ({ ...prev!, status: 'Błąd przesyłania' }));
+            } else if (event.type === 'done') {
+              finalResult = event;
+            }
+          } catch {}
+        }
+      }
+
+      if (finalResult) {
+        const parts = [];
+        if (finalResult.uploaded > 0) parts.push(`Przesłano ${finalResult.uploaded} faktur`);
+        if (finalResult.skipped > 0) parts.push(`Pominięto ${finalResult.skipped} (brak folderu)`);
+        if (finalResult.failed > 0) parts.push(`Błąd: ${finalResult.failed}`);
+        setRetryDriveMessage({
+          type: finalResult.failed > 0 ? 'error' : 'success',
+          text: parts.length > 0 ? parts.join(', ') : 'Wszystkie faktury już są na Drive',
+        });
+      }
+    } catch (error: any) {
+      console.error('Error retrying Drive upload:', error);
+      setRetryDriveMessage({ type: 'error', text: 'Błąd: ' + error.message });
+    } finally {
+      setRetryingDrive(false);
+      setRetryDriveProgress(null);
     }
   };
 
@@ -1035,6 +1123,15 @@ export default function GmailWorkspaceConfig() {
                   {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
                 </button>
                 <button
+                  onClick={handleRetryDriveUpload}
+                  disabled={retryingDrive}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors font-medium text-xs disabled:opacity-50"
+                  title="Prześlij na Google Drive faktury z emaila/Drive, które nie zostały tam jeszcze dodane"
+                >
+                  <Upload className={`w-3 h-3 ${retryingDrive ? 'animate-pulse' : ''}`} />
+                  {retryingDrive ? 'Przesyłanie...' : 'Wyślij na Drive'}
+                </button>
+                <button
                   onClick={() => { setShowReimportPanel(!showReimportPanel); setReimportMessage(null); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors font-medium text-xs ${showReimportPanel ? 'bg-slate-600 hover:bg-slate-700' : 'bg-slate-500 hover:bg-slate-600'} text-white`}
                 >
@@ -1134,6 +1231,51 @@ export default function GmailWorkspaceConfig() {
             >
               {emailMessage.text}
             </p>
+          </div>
+        )}
+
+        {retryDriveProgress && (
+          <div className="mb-4 p-3 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Loader className="w-3 h-3 text-sky-600 dark:text-sky-400 animate-spin flex-shrink-0" />
+              <span className="text-xs font-medium text-sky-800 dark:text-sky-300">{retryDriveProgress.status}</span>
+            </div>
+            {retryDriveProgress.total > 0 && (
+              <div className="pl-5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-sky-600 dark:text-sky-400">Faktura {retryDriveProgress.current} z {retryDriveProgress.total}</span>
+                  <span className="text-[10px] text-sky-600 dark:text-sky-400">{Math.round((retryDriveProgress.current / retryDriveProgress.total) * 100)}%</span>
+                </div>
+                <div className="w-full bg-sky-200 dark:bg-sky-800 rounded-full h-1.5">
+                  <div
+                    className="bg-sky-600 dark:bg-sky-400 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((retryDriveProgress.current / retryDriveProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {retryDriveMessage && (
+          <div
+            className={`mb-4 p-2 rounded-lg border flex items-start gap-2 ${
+              retryDriveMessage.type === 'success'
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            }`}
+          >
+            {retryDriveMessage.type === 'success' ? (
+              <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            )}
+            <p className={`text-[10px] flex-1 ${retryDriveMessage.type === 'success' ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+              Drive: {retryDriveMessage.text}
+            </p>
+            <button onClick={() => setRetryDriveMessage(null)}>
+              <X className="w-3 h-3 text-slate-400 hover:text-slate-600" />
+            </button>
           </div>
         )}
 
