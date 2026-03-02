@@ -62,6 +62,33 @@ function extractFolderIdFromUrl(input: string): string {
   return input;
 }
 
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, "_").trim();
+}
+
+function buildInvoiceFileName(
+  invoiceNumber: string | null | undefined,
+  supplierName: string | null | undefined,
+  originalFileName: string
+): string {
+  const ext = ".pdf";
+  const parts: string[] = [];
+
+  if (invoiceNumber && String(invoiceNumber).trim().length > 0 && invoiceNumber !== "null") {
+    parts.push(sanitizeFileName(String(invoiceNumber).trim()));
+  }
+
+  if (supplierName && String(supplierName).trim().length > 0 && supplierName !== "null") {
+    parts.push(sanitizeFileName(String(supplierName).trim()));
+  }
+
+  if (parts.length === 0) {
+    return originalFileName.endsWith(".pdf") ? originalFileName : originalFileName + ext;
+  }
+
+  return parts.join(" - ") + ext;
+}
+
 async function getServiceAccountToken(): Promise<string | null> {
   const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
   if (!serviceAccountJson) return null;
@@ -141,6 +168,42 @@ async function getServiceAccountToken(): Promise<string | null> {
   }
 }
 
+async function getGlobalRefreshToken(): Promise<string | null> {
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const googleRefreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+  if (!googleClientId || !googleClientSecret || !googleRefreshToken) {
+    return null;
+  }
+
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        refresh_token: googleRefreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const err = await tokenResponse.text();
+      console.error("[GlobalRefreshToken] Token error:", err);
+      return null;
+    }
+
+    const tokenData = await tokenResponse.json();
+    console.log("[Auth] Using global GOOGLE_REFRESH_TOKEN");
+    return tokenData.access_token;
+  } catch (e) {
+    console.error("[GlobalRefreshToken] Failed:", e);
+    return null;
+  }
+}
+
 async function refreshOAuthToken(
   supabase: any,
   config: OAuthConfig
@@ -203,27 +266,32 @@ async function getOAuthToken(supabase: any, config: OAuthConfig): Promise<string
   return config.oauth_access_token;
 }
 
-async function getAccessToken(supabase: any, targetUserId: string, preferOAuth = false): Promise<string> {
-  if (!preferOAuth) {
-    const serviceToken = await getServiceAccountToken();
-    if (serviceToken) {
-      console.log("[Auth] Using Google Service Account");
-      return serviceToken;
-    }
-    console.log("[Auth] Service Account not configured, falling back to OAuth");
-  } else {
-    console.log("[Auth] preferOAuth=true, skipping Service Account");
+async function getAccessToken(supabase: any, targetUserId: string): Promise<string> {
+  const serviceToken = await getServiceAccountToken();
+  if (serviceToken) {
+    console.log("[Auth] Using Google Service Account");
+    return serviceToken;
   }
 
-  const { data: userConfigs } = await supabase
-    .from("user_email_configs")
-    .select("*")
-    .eq("user_id", targetUserId)
-    .eq("is_active", true)
-    .eq("provider", "google_workspace");
+  const globalToken = await getGlobalRefreshToken();
+  if (globalToken) {
+    return globalToken;
+  }
 
-  if (userConfigs && userConfigs.length > 0) {
-    return await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
+  console.log("[Auth] No global auth, falling back to per-user OAuth");
+
+  if (targetUserId) {
+    const { data: userConfigs } = await supabase
+      .from("user_email_configs")
+      .select("*")
+      .eq("user_id", targetUserId)
+      .eq("is_active", true)
+      .eq("provider", "google_workspace");
+
+    if (userConfigs && userConfigs.length > 0) {
+      console.log("[Auth] Using per-user OAuth for", targetUserId);
+      return await getOAuthToken(supabase, userConfigs[0] as OAuthConfig);
+    }
   }
 
   const { data: anyConfigs, error: anyConfigError } = await supabase
@@ -234,16 +302,10 @@ async function getAccessToken(supabase: any, targetUserId: string, preferOAuth =
     .limit(1);
 
   if (anyConfigError || !anyConfigs || anyConfigs.length === 0) {
-    if (preferOAuth) {
-      const serviceToken = await getServiceAccountToken();
-      if (serviceToken) {
-        console.log("[Auth] No OAuth found, falling back to Service Account");
-        return serviceToken;
-      }
-    }
     throw new Error("No active Google account connected. Please connect a Google account in Configuration or configure a Service Account.");
   }
 
+  console.log("[Auth] Using any available OAuth as fallback");
   return await getOAuthToken(supabase, anyConfigs[0] as OAuthConfig);
 }
 
@@ -330,8 +392,7 @@ Deno.serve(async (req: Request) => {
       targetUserId = user.id;
     }
 
-    const preferOAuth = !!folderId;
-    const accessToken = await getAccessToken(supabase, targetUserId, preferOAuth);
+    const accessToken = await getAccessToken(supabase, targetUserId);
 
     let targetFolderId: string;
 
@@ -364,6 +425,25 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    let finalFileName = fileName;
+
+    if (invoiceId) {
+      const { data: invoiceData } = await supabase
+        .from("invoices")
+        .select("invoice_number, supplier_name")
+        .eq("id", invoiceId)
+        .maybeSingle();
+
+      if (invoiceData) {
+        finalFileName = buildInvoiceFileName(
+          invoiceData.invoice_number,
+          invoiceData.supplier_name,
+          fileName
+        );
+        console.log(`[Drive Upload] Renaming file to: ${finalFileName}`);
+      }
+    }
+
     let fileBlob: Blob;
 
     if (fileBase64) {
@@ -384,7 +464,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const metadata = {
-      name: fileName,
+      name: finalFileName,
       mimeType: mimeType || fileBlob.type,
       parents: [targetFolderId],
     };
@@ -431,6 +511,7 @@ Deno.serve(async (req: Request) => {
         fileId: uploadData.id,
         driveFileId: uploadData.id,
         webViewLink: uploadData.webViewLink,
+        fileName: finalFileName,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
