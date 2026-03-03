@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download, ShieldAlert } from 'lucide-react';
+import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, CreditCard as Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download, ShieldAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
