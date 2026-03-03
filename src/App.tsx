@@ -13,7 +13,7 @@ import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog, BookOpen, ShoppingCart } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart } from 'lucide-react';
 
 type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'configuration' | 'instructions';
 

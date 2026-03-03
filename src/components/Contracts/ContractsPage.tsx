@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox, Send, FileSignature, ThumbsUp, X } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, PenTool, Eye, Inbox, Send, Ligature as FileSignature, ThumbsUp, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UploadContract } from './UploadContract';
