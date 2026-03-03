@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   Plus, Trash2, Edit2, Save, X, AlertCircle, Search,
   Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb,
-  Building2, Hash
+  Building2, Hash, User
 } from 'lucide-react';
 
 interface CostCenter {
@@ -25,6 +25,13 @@ interface Department {
   name: string;
 }
 
+interface UserProfile {
+  id: string;
+  full_name: string | null;
+  email: string;
+  role: string | null;
+}
+
 interface AutomationRule {
   id: string;
   supplier_nip: string | null;
@@ -33,12 +40,14 @@ interface AutomationRule {
   auto_bez_mpk: boolean;
   cost_center_id: string | null;
   department_id: string | null;
+  assignee_id: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
   cost_center?: CostCenter | null;
   department?: Department | null;
+  assignee?: UserProfile | null;
   tags: TagType[];
 }
 
@@ -56,6 +65,7 @@ export default function NipAutomationRules() {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [accessibleDepartments, setAccessibleDepartments] = useState<Department[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,10 +81,12 @@ export default function NipAutomationRules() {
   const [formAutoBezMpk, setFormAutoBezMpk] = useState(false);
   const [formCostCenterId, setFormCostCenterId] = useState('');
   const [formDepartmentId, setFormDepartmentId] = useState('');
+  const [formAssigneeId, setFormAssigneeId] = useState('');
   const [formSelectedTags, setFormSelectedTags] = useState<TagType[]>([]);
   const [formTagSearch, setFormTagSearch] = useState('');
   const [formCostCenterSearch, setFormCostCenterSearch] = useState('');
   const [formDepartmentSearch, setFormDepartmentSearch] = useState('');
+  const [formAssigneeSearch, setFormAssigneeSearch] = useState('');
 
   const isAdmin = profile?.is_admin;
   const userRole = profile?.role;
@@ -160,6 +172,16 @@ export default function NipAutomationRules() {
           department = dept;
         }
 
+        let assignee = null;
+        if (rule.assignee_id) {
+          const { data: assigneeData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, role')
+            .eq('id', rule.assignee_id)
+            .maybeSingle();
+          assignee = assigneeData;
+        }
+
         const { data: tagLinks } = await supabase
           .from('nip_automation_rule_tags')
           .select('tag_id')
@@ -177,7 +199,7 @@ export default function NipAutomationRules() {
           }
         }
 
-        rulesWithDetails.push({ ...rule, cost_center: costCenter, department, tags });
+        rulesWithDetails.push({ ...rule, cost_center: costCenter, department, assignee, tags });
       }
 
       setRules(rulesWithDetails);
@@ -204,6 +226,14 @@ export default function NipAutomationRules() {
       .select('id, name, color')
       .order('name');
     setAllTags(data || []);
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .order('full_name');
+    setAllUsers(data || []);
   }, []);
 
   const loadSuggestions = useCallback(async () => {
@@ -298,9 +328,10 @@ export default function NipAutomationRules() {
     loadRules();
     loadCostCenters();
     loadTags();
+    loadUsers();
     loadAccessibleDepartments();
     loadSuggestions();
-  }, [loadRules, loadCostCenters, loadTags, loadAccessibleDepartments, loadSuggestions]);
+  }, [loadRules, loadCostCenters, loadTags, loadUsers, loadAccessibleDepartments, loadSuggestions]);
 
   const resetForm = () => {
     setFormNip('');
@@ -309,10 +340,12 @@ export default function NipAutomationRules() {
     setFormAutoBezMpk(false);
     setFormCostCenterId('');
     setFormDepartmentId('');
+    setFormAssigneeId('');
     setFormSelectedTags([]);
     setFormTagSearch('');
     setFormCostCenterSearch('');
     setFormDepartmentSearch('');
+    setFormAssigneeSearch('');
     setEditingId(null);
     setShowForm(false);
   };
@@ -325,6 +358,7 @@ export default function NipAutomationRules() {
     setFormAutoBezMpk(rule.auto_bez_mpk);
     setFormCostCenterId(rule.cost_center_id || '');
     setFormDepartmentId(rule.department_id || '');
+    setFormAssigneeId(rule.assignee_id || '');
     setFormSelectedTags(rule.tags);
     setEditingId(rule.id);
     setShowForm(true);
@@ -371,6 +405,7 @@ export default function NipAutomationRules() {
         auto_bez_mpk: formAutoBezMpk,
         cost_center_id: formCostCenterId || null,
         department_id: formDepartmentId || null,
+        assignee_id: formAssigneeId || null,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -496,8 +531,17 @@ export default function NipAutomationRules() {
     d => d.name.toLowerCase().includes(formDepartmentSearch.toLowerCase())
   );
 
+  const filteredUsers = allUsers.filter(u => {
+    const q = formAssigneeSearch.toLowerCase();
+    return (
+      (u.full_name || '').toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q)
+    );
+  });
+
   const selectedCostCenter = costCenters.find(cc => cc.id === formCostCenterId);
   const selectedDepartment = accessibleDepartments.find(d => d.id === formDepartmentId);
+  const selectedAssignee = allUsers.find(u => u.id === formAssigneeId);
 
   if (loading) {
     return (
@@ -535,15 +579,19 @@ export default function NipAutomationRules() {
         formAutoBezMpk={formAutoBezMpk}
         formCostCenterId={formCostCenterId}
         formDepartmentId={formDepartmentId}
+        formAssigneeId={formAssigneeId}
         formSelectedTags={formSelectedTags}
         formTagSearch={formTagSearch}
         formCostCenterSearch={formCostCenterSearch}
         formDepartmentSearch={formDepartmentSearch}
+        formAssigneeSearch={formAssigneeSearch}
         selectedCostCenter={selectedCostCenter}
         selectedDepartment={selectedDepartment}
+        selectedAssignee={selectedAssignee}
         filteredTags={filteredTags}
         filteredCostCenters={filteredCostCenters}
         filteredDepartments={filteredDepartments}
+        filteredUsers={filteredUsers}
         saving={saving}
         onNipChange={setFormNip}
         onNameChange={setFormName}
@@ -553,6 +601,8 @@ export default function NipAutomationRules() {
         onCostCenterSearchChange={setFormCostCenterSearch}
         onDepartmentChange={setFormDepartmentId}
         onDepartmentSearchChange={setFormDepartmentSearch}
+        onAssigneeChange={setFormAssigneeId}
+        onAssigneeSearchChange={setFormAssigneeSearch}
         onTagSearchChange={setFormTagSearch}
         onAddTag={addTagToForm}
         onRemoveTag={removeTagFromForm}
@@ -650,28 +700,30 @@ function SuggestionsPanel({
 
 function RuleForm({
   show, editing, formNip, formName, formAutoAccept, formAutoBezMpk, formCostCenterId, formDepartmentId,
-  formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
-  selectedCostCenter, selectedDepartment, filteredTags, filteredCostCenters, filteredDepartments,
+  formAssigneeId, formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch, formAssigneeSearch,
+  selectedCostCenter, selectedDepartment, selectedAssignee, filteredTags, filteredCostCenters, filteredDepartments, filteredUsers,
   saving, onNipChange, onNameChange, onAutoAcceptChange, onAutoBezMpkChange, onCostCenterChange, onCostCenterSearchChange,
-  onDepartmentChange, onDepartmentSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
+  onDepartmentChange, onDepartmentSearchChange, onAssigneeChange, onAssigneeSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
   onSave, onCancel, onShow,
 }: {
   show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean; formAutoBezMpk: boolean;
-  formCostCenterId: string; formDepartmentId: string; formSelectedTags: TagType[];
-  formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string;
-  selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined;
-  filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[];
+  formCostCenterId: string; formDepartmentId: string; formAssigneeId: string; formSelectedTags: TagType[];
+  formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string; formAssigneeSearch: string;
+  selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined; selectedAssignee: UserProfile | undefined;
+  filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[]; filteredUsers: UserProfile[];
   saving: boolean;
   onNipChange: (v: string) => void; onNameChange: (v: string) => void;
   onAutoAcceptChange: (v: boolean) => void; onAutoBezMpkChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
   onCostCenterSearchChange: (v: string) => void; onDepartmentChange: (v: string) => void;
-  onDepartmentSearchChange: (v: string) => void; onTagSearchChange: (v: string) => void;
+  onDepartmentSearchChange: (v: string) => void; onAssigneeChange: (v: string) => void; onAssigneeSearchChange: (v: string) => void;
+  onTagSearchChange: (v: string) => void;
   onAddTag: (tag: TagType) => void; onRemoveTag: (id: string) => void;
   onSave: () => void; onCancel: () => void; onShow: () => void;
 }) {
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
+  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
 
   if (!show) {
     return (
@@ -824,6 +876,75 @@ function RuleForm({
             </p>
           </div>
 
+          <div className="relative">
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+              <User className="w-3.5 h-3.5 inline mr-1" />
+              Przypisz do osoby
+            </label>
+            {selectedAssignee ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
+                <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                  <User className="w-3.5 h-3.5 text-brand-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark block truncate">
+                    {selectedAssignee.full_name || selectedAssignee.email}
+                  </span>
+                  {selectedAssignee.role && (
+                    <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{selectedAssignee.role}</span>
+                  )}
+                </div>
+                <button onClick={() => onAssigneeChange('')} className="p-0.5 text-slate-400 hover:text-red-500 transition flex-shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formAssigneeSearch}
+                  onChange={(e) => { onAssigneeSearchChange(e.target.value); setShowAssigneeDropdown(true); }}
+                  onFocus={() => setShowAssigneeDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowAssigneeDropdown(false), 200)}
+                  placeholder="Szukaj osoby po imieniu lub email..."
+                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                />
+                {showAssigneeDropdown && filteredUsers.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+                    {filteredUsers.slice(0, 10).map(user => (
+                      <button
+                        key={user.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { onAssigneeChange(user.id); onAssigneeSearchChange(''); setShowAssigneeDropdown(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2.5 transition"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                          <User className="w-3.5 h-3.5 text-brand-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-text-primary-light dark:text-text-primary-dark font-medium truncate">
+                            {user.full_name || user.email}
+                          </div>
+                          {user.full_name && (
+                            <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark truncate">{user.email}</div>
+                          )}
+                        </div>
+                        {user.role && (
+                          <span className="ml-auto text-xs text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">{user.role}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+              Faktura bedzie przypisana do tej osoby jako wlasciciel
+            </p>
+          </div>
+        </div>
+
+        <div>
           <div className="relative">
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
               <Hash className="w-3.5 h-3.5 inline mr-1" />
@@ -1026,6 +1147,12 @@ function RulesList({
                         Dzial: {rule.department.name}
                       </span>
                     )}
+                    {rule.assignee && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800/30">
+                        <User className="w-3 h-3" />
+                        {rule.assignee.full_name || rule.assignee.email}
+                      </span>
+                    )}
                     {rule.cost_center && (
                       <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">
                         <Hash className="w-3 h-3" />
@@ -1041,7 +1168,7 @@ function RulesList({
                         {tag.name}
                       </span>
                     ))}
-                    {!rule.auto_accept && !rule.auto_bez_mpk && !rule.department && !rule.cost_center && rule.tags.length === 0 && (
+                    {!rule.auto_accept && !rule.auto_bez_mpk && !rule.department && !rule.assignee && !rule.cost_center && rule.tags.length === 0 && (
                       <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
                         Brak przypisanych akcji
                       </span>
