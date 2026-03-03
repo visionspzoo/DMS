@@ -13,9 +13,9 @@ import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
 
-type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'configuration' | 'instructions';
+type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'my-purchase-requests' | 'configuration' | 'instructions';
 
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
@@ -29,6 +29,7 @@ function AppContent() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [purchaseMenuOpen, setPurchaseMenuOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.theme_preference) {
@@ -85,7 +86,6 @@ function AppContent() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'invoices', label: 'Moje Faktury', icon: FileText },
     { id: 'ksef', label: 'Faktury KSEF', icon: Download },
-    { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
@@ -95,6 +95,13 @@ function AppContent() {
   if (profile.is_admin) {
     menuItems.push({ id: 'settings', label: 'Ustawienia', icon: Settings });
   }
+
+  const purchaseSubItems = [
+    { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
+    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList },
+  ];
+
+  const isPurchaseActive = appView === 'purchase-request' || appView === 'my-purchase-requests';
 
   return (
     <div className={`h-screen ${darkMode ? 'dark' : ''}`}>
@@ -116,7 +123,75 @@ function AppContent() {
 
         {/* Menu Items */}
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => {
+          {menuItems.slice(0, 3).map((item) => {
+            const Icon = item.icon;
+            const isActive = appView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setAppView(item.id as AppView)}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${
+                  isActive
+                    ? 'bg-brand-primary text-white shadow-md'
+                    : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                }`}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {sidebarOpen && <span className="font-medium">{item.label}</span>}
+              </button>
+            );
+          })}
+
+          {/* Purchase Request Group */}
+          <div>
+            <button
+              onClick={() => {
+                setPurchaseMenuOpen(o => !o);
+                if (!isPurchaseActive) setAppView('purchase-request');
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${
+                isPurchaseActive
+                  ? 'bg-brand-primary text-white shadow-md'
+                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4 flex-shrink-0" />
+              {sidebarOpen && (
+                <>
+                  <span className="font-medium flex-1 text-left">Zakupy</span>
+                  {(purchaseMenuOpen || isPurchaseActive)
+                    ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
+                    : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
+                  }
+                </>
+              )}
+            </button>
+
+            {sidebarOpen && (purchaseMenuOpen || isPurchaseActive) && (
+              <div className="mt-1 ml-3 pl-3 border-l border-slate-200 dark:border-slate-700/50 space-y-0.5">
+                {purchaseSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = appView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setAppView(item.id as AppView)}
+                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-sm ${
+                        isActive
+                          ? 'bg-brand-primary/15 dark:bg-brand-primary/20 text-brand-primary dark:text-brand-primary font-semibold'
+                          : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="font-medium">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {menuItems.slice(3).map((item) => {
             const Icon = item.icon;
             const isActive = appView === item.id;
             return (
@@ -195,6 +270,7 @@ function AppContent() {
               }}
             />
           )}
+          {appView === 'my-purchase-requests' && <MyPurchaseRequestsPage />}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
@@ -226,6 +302,34 @@ function PurchaseRequestPage() {
           </h2>
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
             Ta funkcja jest aktualnie w budowie. Wkrótce będzie można składać wnioski zakupowe bezpośrednio w systemie.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MyPurchaseRequestsPage() {
+  return (
+    <div className="h-full bg-light-bg dark:bg-dark-bg flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
+        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white text-xs font-bold">!</span>
+        </div>
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+          W budowie &mdash; brak pełnej funkcjonalności
+        </p>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
+            <ClipboardList className="w-8 h-8 text-brand-primary" />
+          </div>
+          <h2 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark mb-2">
+            Moje wnioski zakupowe
+          </h2>
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Ta funkcja jest aktualnie w budowie. Wkrótce będzie można przeglądać swoje wnioski zakupowe bezpośrednio w systemie.
           </p>
         </div>
       </div>
