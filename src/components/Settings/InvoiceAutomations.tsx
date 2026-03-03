@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import {
-  Plus, Trash2, Edit2, Save, X, AlertCircle, Search,
-  Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb,
-  Building2, Hash
-} from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit2, Save, X, AlertCircle, Search, Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb, Building2, Hash } from 'lucide-react';
 
 interface CostCenter {
   id: string;
@@ -80,52 +76,24 @@ export default function InvoiceAutomations() {
     try {
       const { data, error: fetchError } = await supabase
         .from('nip_automation_rules')
-        .select('*')
+        .select(`
+          *,
+          cost_center:cost_centers(id, code, description, is_active),
+          department:departments(id, name),
+          nip_automation_rule_tags(tag_id, tags(id, name, color))
+        `)
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
 
-      const rulesWithDetails: AutomationRule[] = [];
-      for (const rule of data || []) {
-        let costCenter = null;
-        if (rule.cost_center_id) {
-          const { data: cc } = await supabase
-            .from('cost_centers')
-            .select('id, code, description, is_active')
-            .eq('id', rule.cost_center_id)
-            .maybeSingle();
-          costCenter = cc;
-        }
-
-        let department = null;
-        if (rule.department_id) {
-          const { data: dept } = await supabase
-            .from('departments')
-            .select('id, name')
-            .eq('id', rule.department_id)
-            .maybeSingle();
-          department = dept;
-        }
-
-        const { data: tagLinks } = await supabase
-          .from('nip_automation_rule_tags')
-          .select('tag_id')
-          .eq('rule_id', rule.id);
-
-        const tags: TagType[] = [];
-        if (tagLinks) {
-          for (const link of tagLinks) {
-            const { data: tag } = await supabase
-              .from('tags')
-              .select('id, name, color')
-              .eq('id', link.tag_id)
-              .maybeSingle();
-            if (tag) tags.push(tag);
-          }
-        }
-
-        rulesWithDetails.push({ ...rule, cost_center: costCenter, department, tags });
-      }
+      const rulesWithDetails: AutomationRule[] = (data || []).map((rule: any) => ({
+        ...rule,
+        cost_center: rule.cost_center ?? null,
+        department: rule.department ?? null,
+        tags: (rule.nip_automation_rule_tags || [])
+          .map((link: any) => link.tags)
+          .filter(Boolean),
+      }));
 
       setRules(rulesWithDetails);
     } catch (err: any) {
@@ -164,21 +132,40 @@ export default function InvoiceAutomations() {
   const loadSuggestions = useCallback(async () => {
     if (!profile?.id) return;
     try {
-      const { data: invoices } = await supabase
-        .from('invoices')
-        .select('supplier_nip, supplier_name, cost_center_id')
-        .not('supplier_nip', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(500);
+      const [
+        { data: invoices },
+        { data: existingRules },
+        { data: tagLearning },
+        { data: allCostCentersData },
+        { data: allTagsData },
+      ] = await Promise.all([
+        supabase
+          .from('invoices')
+          .select('supplier_nip, supplier_name, cost_center_id')
+          .not('supplier_nip', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('nip_automation_rules')
+          .select('supplier_nip')
+          .eq('is_active', true),
+        supabase
+          .from('tag_learning')
+          .select('supplier_nip, tag_id, frequency')
+          .order('frequency', { ascending: false }),
+        supabase
+          .from('cost_centers')
+          .select('id, code, description, is_active'),
+        supabase
+          .from('tags')
+          .select('id, name, color'),
+      ]);
 
       if (!invoices || invoices.length === 0) return;
 
-      const { data: existingRules } = await supabase
-        .from('nip_automation_rules')
-        .select('supplier_nip')
-        .eq('is_active', true);
-
-      const existingNips = new Set((existingRules || []).map(r => r.supplier_nip));
+      const existingNips = new Set((existingRules || []).map((r: any) => r.supplier_nip));
+      const costCenterMap = new Map((allCostCentersData || []).map((cc: CostCenter) => [cc.id, cc]));
+      const tagMap = new Map((allTagsData || []).map((t: TagType) => [t.id, t]));
 
       const nipGroups: Record<string, {
         name: string;
@@ -198,11 +185,6 @@ export default function InvoiceAutomations() {
         }
       }
 
-      const { data: tagLearning } = await supabase
-        .from('tag_learning')
-        .select('supplier_nip, tag_id, frequency')
-        .order('frequency', { ascending: false });
-
       const nipTagMap: Record<string, { tag_id: string; frequency: number }[]> = {};
       for (const tl of tagLearning || []) {
         const nip = tl.supplier_nip;
@@ -216,32 +198,17 @@ export default function InvoiceAutomations() {
         .sort(([, a], [, b]) => b.count - a.count)
         .slice(0, 5);
 
-      const result: Suggestion[] = [];
-      for (const [nip, group] of sorted) {
+      const result: Suggestion[] = sorted.map(([nip, group]) => {
         const topCCId = Object.entries(group.costCenterCounts).sort(([, a], [, b]) => b - a)[0]?.[0] || null;
-        let topCC: CostCenter | null = null;
-        if (topCCId) {
-          const { data: cc } = await supabase
-            .from('cost_centers')
-            .select('id, code, description, is_active')
-            .eq('id', topCCId)
-            .maybeSingle();
-          topCC = cc;
-        }
+        const topCC = topCCId ? (costCenterMap.get(topCCId) ?? null) : null;
 
-        const tagIds = (nipTagMap[nip] || []).slice(0, 3);
-        const tags: TagType[] = [];
-        for (const t of tagIds) {
-          const { data: tag } = await supabase
-            .from('tags')
-            .select('id, name, color')
-            .eq('id', t.tag_id)
-            .maybeSingle();
-          if (tag) tags.push(tag);
-        }
+        const tags = (nipTagMap[nip] || [])
+          .slice(0, 3)
+          .map((t) => tagMap.get(t.tag_id))
+          .filter((t): t is TagType => !!t);
 
-        result.push({ supplier_nip: nip, supplier_name: group.name, invoice_count: group.count, most_used_tags: tags, most_used_cost_center: topCC });
-      }
+        return { supplier_nip: nip, supplier_name: group.name, invoice_count: group.count, most_used_tags: tags, most_used_cost_center: topCC };
+      });
 
       setSuggestions(result);
     } catch (err) {
@@ -250,11 +217,13 @@ export default function InvoiceAutomations() {
   }, [profile?.id]);
 
   useEffect(() => {
-    loadRules();
-    loadCostCenters();
-    loadTags();
-    loadDepartments();
-    loadSuggestions();
+    Promise.all([
+      loadRules(),
+      loadCostCenters(),
+      loadTags(),
+      loadDepartments(),
+      loadSuggestions(),
+    ]);
   }, [loadRules, loadCostCenters, loadTags, loadDepartments, loadSuggestions]);
 
   const resetForm = () => {
