@@ -359,7 +359,16 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
   };
 
   return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg p-4 overflow-auto">
+    <div className="h-full bg-light-bg dark:bg-dark-bg flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
+        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white text-xs font-bold">!</span>
+        </div>
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+          W budowie &mdash; brak pełnej funkcjonalności
+        </p>
+      </div>
+      <div className="flex-1 overflow-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Obieg umow</h1>
@@ -538,6 +547,7 @@ export function ContractsPage({ onOpenContract }: ContractsPageProps) {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

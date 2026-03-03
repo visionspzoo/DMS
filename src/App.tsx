@@ -13,9 +13,9 @@ import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog, BookOpen } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, FileSignature, Download, Cog, BookOpen, ShoppingCart } from 'lucide-react';
 
-type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'configuration' | 'instructions';
+type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'configuration' | 'instructions';
 
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
@@ -85,6 +85,7 @@ function AppContent() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'invoices', label: 'Moje Faktury', icon: FileText },
     { id: 'ksef', label: 'Faktury KSEF', icon: Download },
+    { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
@@ -176,6 +177,7 @@ function AppContent() {
           {appView === 'dashboard' && <Dashboard />}
           {appView === 'invoices' && <InvoiceList />}
           {appView === 'ksef' && <KSEFInvoicesPage />}
+          {appView === 'purchase-request' && <PurchaseRequestPage />}
           {appView === 'contracts' && (
             <ContractsPage
               onOpenContract={(id: string) => {
@@ -198,6 +200,34 @@ function AppContent() {
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
           {appView === 'instructions' && <InstructionsPage />}
         </main>
+      </div>
+    </div>
+  );
+}
+
+function PurchaseRequestPage() {
+  return (
+    <div className="h-full bg-light-bg dark:bg-dark-bg flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
+        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white text-xs font-bold">!</span>
+        </div>
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+          W budowie &mdash; brak pełnej funkcjonalności
+        </p>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
+            <ShoppingCart className="w-8 h-8 text-brand-primary" />
+          </div>
+          <h2 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark mb-2">
+            Wniosek zakupowy
+          </h2>
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Ta funkcja jest aktualnie w budowie. Wkrótce będzie można składać wnioski zakupowe bezpośrednio w systemie.
+          </p>
+        </div>
       </div>
     </div>
   );

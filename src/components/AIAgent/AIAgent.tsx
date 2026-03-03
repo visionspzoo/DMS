@@ -138,7 +138,16 @@ export default function AIAgent() {
   if (!user) return null;
 
   return (
-    <div className="h-full flex bg-light-bg dark:bg-dark-bg">
+    <div className="h-full flex flex-col bg-light-bg dark:bg-dark-bg">
+      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
+        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white text-xs font-bold">!</span>
+        </div>
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+          W budowie &mdash; brak pełnej funkcjonalności
+        </p>
+      </div>
+      <div className="flex-1 flex overflow-hidden">
       <AIAgentSidebar
         conversations={conversations}
         agents={agents}
@@ -170,6 +179,7 @@ export default function AIAgent() {
           onSaved={loadAgents}
         />
       )}
+      </div>
     </div>
   );
 }
