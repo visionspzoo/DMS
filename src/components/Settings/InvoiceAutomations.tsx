@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, Trash2, CreditCard as Edit2, Save, X, AlertCircle, Search, Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb, Building2, Hash } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit2, Save, X, AlertCircle, Search, Zap, Tag, CheckCircle, ToggleLeft, ToggleRight, Lightbulb, Building2, Hash, User } from 'lucide-react';
 
 interface CostCenter {
   id: string;
@@ -21,6 +21,15 @@ interface Department {
   name: string;
 }
 
+interface DepartmentUser {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  is_manager: boolean;
+  is_director: boolean;
+}
+
 interface AutomationRule {
   id: string;
   supplier_nip: string | null;
@@ -29,12 +38,14 @@ interface AutomationRule {
   auto_bez_mpk: boolean;
   cost_center_id: string | null;
   department_id: string | null;
+  assignee_id: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
   cost_center?: CostCenter | null;
   department?: Department | null;
+  assignee?: { id: string; full_name: string } | null;
   tags: TagType[];
 }
 
@@ -67,10 +78,13 @@ export default function InvoiceAutomations() {
   const [formAutoBezMpk, setFormAutoBezMpk] = useState(false);
   const [formCostCenterId, setFormCostCenterId] = useState('');
   const [formDepartmentId, setFormDepartmentId] = useState('');
+  const [formAssigneeId, setFormAssigneeId] = useState('');
   const [formSelectedTags, setFormSelectedTags] = useState<TagType[]>([]);
   const [formTagSearch, setFormTagSearch] = useState('');
   const [formCostCenterSearch, setFormCostCenterSearch] = useState('');
   const [formDepartmentSearch, setFormDepartmentSearch] = useState('');
+  const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
+  const [loadingDeptUsers, setLoadingDeptUsers] = useState(false);
 
   const loadRules = useCallback(async () => {
     try {
@@ -80,6 +94,7 @@ export default function InvoiceAutomations() {
           *,
           cost_center:cost_centers(id, code, description, is_active),
           department:departments(id, name),
+          assignee:profiles!nip_automation_rules_assignee_id_fkey(id, full_name),
           nip_automation_rule_tags(tag_id, tags(id, name, color))
         `)
         .order('created_at', { ascending: false });
@@ -90,6 +105,7 @@ export default function InvoiceAutomations() {
         ...rule,
         cost_center: rule.cost_center ?? null,
         department: rule.department ?? null,
+        assignee: rule.assignee ?? null,
         tags: (rule.nip_automation_rule_tags || [])
           .map((link: any) => link.tags)
           .filter(Boolean),
@@ -195,7 +211,7 @@ export default function InvoiceAutomations() {
       const [costCentersData, tagsData, rulesData] = await Promise.all([
         supabase.from('cost_centers').select('id, code, description, is_active').eq('is_active', true).order('display_order'),
         supabase.from('tags').select('id, name, color').order('name'),
-        supabase.from('nip_automation_rules').select(`*, cost_center:cost_centers(id, code, description, is_active), department:departments(id, name), nip_automation_rule_tags(tag_id, tags(id, name, color))`).order('created_at', { ascending: false }),
+        supabase.from('nip_automation_rules').select(`*, cost_center:cost_centers(id, code, description, is_active), department:departments(id, name), assignee:profiles!nip_automation_rules_assignee_id_fkey(id, full_name), nip_automation_rule_tags(tag_id, tags(id, name, color))`).order('created_at', { ascending: false }),
         loadDepartments(),
       ]);
 
@@ -210,6 +226,7 @@ export default function InvoiceAutomations() {
         ...rule,
         cost_center: rule.cost_center ?? null,
         department: rule.department ?? null,
+        assignee: rule.assignee ?? null,
         tags: (rule.nip_automation_rule_tags || []).map((link: any) => link.tags).filter(Boolean),
       }));
       setRules(rulesWithDetails);
@@ -221,6 +238,30 @@ export default function InvoiceAutomations() {
     init();
   }, [loadDepartments, loadSuggestions]);
 
+  const loadDepartmentUsers = useCallback(async (departmentId: string) => {
+    if (!departmentId) {
+      setDepartmentUsers([]);
+      return;
+    }
+    setLoadingDeptUsers(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_department_users', { p_department_id: departmentId });
+      if (rpcError) throw rpcError;
+      setDepartmentUsers(data || []);
+    } catch (err) {
+      console.error('Error loading department users:', err);
+      setDepartmentUsers([]);
+    } finally {
+      setLoadingDeptUsers(false);
+    }
+  }, []);
+
+  const handleDepartmentChange = useCallback((departmentId: string) => {
+    setFormDepartmentId(departmentId);
+    setFormAssigneeId('');
+    loadDepartmentUsers(departmentId);
+  }, [loadDepartmentUsers]);
+
   const resetForm = () => {
     setFormNip('');
     setFormName('');
@@ -228,10 +269,12 @@ export default function InvoiceAutomations() {
     setFormAutoBezMpk(false);
     setFormCostCenterId('');
     setFormDepartmentId('');
+    setFormAssigneeId('');
     setFormSelectedTags([]);
     setFormTagSearch('');
     setFormCostCenterSearch('');
     setFormDepartmentSearch('');
+    setDepartmentUsers([]);
     setEditingId(null);
     setShowForm(false);
   };
@@ -243,9 +286,13 @@ export default function InvoiceAutomations() {
     setFormAutoBezMpk(rule.auto_bez_mpk);
     setFormCostCenterId(rule.cost_center_id || '');
     setFormDepartmentId(rule.department_id || '');
+    setFormAssigneeId(rule.assignee_id || '');
     setFormSelectedTags(rule.tags);
     setEditingId(rule.id);
     setShowForm(true);
+    if (rule.department_id) {
+      loadDepartmentUsers(rule.department_id);
+    }
   };
 
   const startFromSuggestion = (suggestion: Suggestion) => {
@@ -254,7 +301,9 @@ export default function InvoiceAutomations() {
     setFormAutoAccept(false);
     setFormCostCenterId(suggestion.most_used_cost_center?.id || '');
     setFormDepartmentId('');
+    setFormAssigneeId('');
     setFormSelectedTags(suggestion.most_used_tags);
+    setDepartmentUsers([]);
     setEditingId(null);
     setShowForm(true);
   };
@@ -289,6 +338,7 @@ export default function InvoiceAutomations() {
         auto_bez_mpk: formAutoBezMpk,
         cost_center_id: formCostCenterId || null,
         department_id: formDepartmentId || null,
+        assignee_id: formAssigneeId || null,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -445,6 +495,7 @@ export default function InvoiceAutomations() {
         formAutoBezMpk={formAutoBezMpk}
         formCostCenterId={formCostCenterId}
         formDepartmentId={formDepartmentId}
+        formAssigneeId={formAssigneeId}
         formSelectedTags={formSelectedTags}
         formTagSearch={formTagSearch}
         formCostCenterSearch={formCostCenterSearch}
@@ -454,6 +505,8 @@ export default function InvoiceAutomations() {
         filteredTags={filteredTags}
         filteredCostCenters={filteredCostCenters}
         filteredDepartments={filteredDepartments}
+        departmentUsers={departmentUsers}
+        loadingDeptUsers={loadingDeptUsers}
         saving={saving}
         onNipChange={setFormNip}
         onNameChange={setFormName}
@@ -461,8 +514,9 @@ export default function InvoiceAutomations() {
         onAutoBezMpkChange={setFormAutoBezMpk}
         onCostCenterChange={setFormCostCenterId}
         onCostCenterSearchChange={setFormCostCenterSearch}
-        onDepartmentChange={setFormDepartmentId}
+        onDepartmentChange={handleDepartmentChange}
         onDepartmentSearchChange={setFormDepartmentSearch}
+        onAssigneeChange={setFormAssigneeId}
         onTagSearchChange={setFormTagSearch}
         onAddTag={addTagToForm}
         onRemoveTag={removeTagFromForm}
@@ -558,22 +612,24 @@ function SuggestionsPanel({
 
 function RuleForm({
   show, editing, formNip, formName, formAutoAccept, formAutoBezMpk, formCostCenterId, formDepartmentId,
-  formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
+  formAssigneeId, formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
   selectedCostCenter, selectedDepartment, filteredTags, filteredCostCenters, filteredDepartments,
+  departmentUsers, loadingDeptUsers,
   saving, onNipChange, onNameChange, onAutoAcceptChange, onAutoBezMpkChange, onCostCenterChange, onCostCenterSearchChange,
-  onDepartmentChange, onDepartmentSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
+  onDepartmentChange, onDepartmentSearchChange, onAssigneeChange, onTagSearchChange, onAddTag, onRemoveTag,
   onSave, onCancel, onShow,
 }: {
   show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean; formAutoBezMpk: boolean;
-  formCostCenterId: string; formDepartmentId: string; formSelectedTags: TagType[];
+  formCostCenterId: string; formDepartmentId: string; formAssigneeId: string; formSelectedTags: TagType[];
   formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string;
   selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined;
   filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[];
+  departmentUsers: DepartmentUser[]; loadingDeptUsers: boolean;
   saving: boolean;
   onNipChange: (v: string) => void; onNameChange: (v: string) => void;
   onAutoAcceptChange: (v: boolean) => void; onAutoBezMpkChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
   onCostCenterSearchChange: (v: string) => void; onDepartmentChange: (v: string) => void;
-  onDepartmentSearchChange: (v: string) => void; onTagSearchChange: (v: string) => void;
+  onDepartmentSearchChange: (v: string) => void; onAssigneeChange: (v: string) => void; onTagSearchChange: (v: string) => void;
   onAddTag: (tag: TagType) => void; onRemoveTag: (id: string) => void;
   onSave: () => void; onCancel: () => void; onShow: () => void;
 }) {
@@ -592,6 +648,8 @@ function RuleForm({
       </button>
     );
   }
+
+  const selectedAssignee = departmentUsers.find(u => u.id === formAssigneeId);
 
   return (
     <div className="bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-xl">
@@ -695,7 +753,7 @@ function RuleForm({
                 <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark flex-1 truncate">
                   {selectedDepartment.name}
                 </span>
-                <button onClick={() => onDepartmentChange('')} className="p-0.5 text-slate-400 hover:text-red-500 transition">
+                <button onClick={() => { onDepartmentChange(''); onDepartmentSearchChange(''); }} className="p-0.5 text-slate-400 hover:text-red-500 transition">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -778,6 +836,68 @@ function RuleForm({
               </div>
             )}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5">
+            <User className="w-3.5 h-3.5 inline mr-1" />
+            Przypisz do osoby
+          </label>
+          {!formDepartmentId ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+              <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                Najpierw wybierz dzial, aby zobaczyc dostepne osoby
+              </span>
+            </div>
+          ) : loadingDeptUsers ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+              <div className="w-3.5 h-3.5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Ladowanie uzytkownikow...</span>
+            </div>
+          ) : departmentUsers.length === 0 ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+              <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                Brak uzytkownikow w wybranym dziale
+              </span>
+            </div>
+          ) : selectedAssignee ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
+              <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="w-3.5 h-3.5 text-brand-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate block">
+                  {selectedAssignee.full_name}
+                </span>
+                {(selectedAssignee.is_manager || selectedAssignee.is_director) && (
+                  <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                    {selectedAssignee.is_director ? 'Dyrektor' : 'Kierownik'}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => onAssigneeChange('')} className="p-0.5 text-slate-400 hover:text-red-500 transition flex-shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <select
+              value={formAssigneeId}
+              onChange={(e) => onAssigneeChange(e.target.value)}
+              className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+            >
+              <option value="">-- Nie przypisuj do konkretnej osoby --</option>
+              {departmentUsers.map(user => (
+                <option key={user.id} value={user.id}>
+                  {user.full_name}{user.is_director ? ' (Dyrektor)' : user.is_manager ? ' (Kierownik)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+            Faktura zostanie przypisana do tej osoby jako opiekun
+          </p>
         </div>
 
         <div>
@@ -930,6 +1050,12 @@ function RulesList({
                       Dzial: {rule.department.name}
                     </span>
                   )}
+                  {rule.assignee && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800/30">
+                      <User className="w-3 h-3" />
+                      {rule.assignee.full_name}
+                    </span>
+                  )}
                   {rule.cost_center && (
                     <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/30">
                       <Hash className="w-3 h-3" />
@@ -945,7 +1071,7 @@ function RulesList({
                       {tag.name}
                     </span>
                   ))}
-                  {!rule.auto_accept && !rule.auto_bez_mpk && !rule.department && !rule.cost_center && rule.tags.length === 0 && (
+                  {!rule.auto_accept && !rule.auto_bez_mpk && !rule.department && !rule.assignee && !rule.cost_center && rule.tags.length === 0 && (
                     <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark italic">
                       Brak przypisanych akcji
                     </span>
