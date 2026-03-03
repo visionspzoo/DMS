@@ -13,7 +13,7 @@ import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart, ClipboardList } from 'lucide-react';
 
 type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'my-purchase-requests' | 'configuration' | 'instructions';
 
@@ -29,7 +29,6 @@ function AppContent() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
-  const [purchaseMenuOpen, setPurchaseMenuOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.theme_preference) {
@@ -87,6 +86,8 @@ function AppContent() {
     { id: 'invoices', label: 'Moje Faktury', icon: FileText },
     { id: 'ksef', label: 'Faktury KSEF', icon: Download },
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
+    { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
+    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
     { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
@@ -95,13 +96,6 @@ function AppContent() {
   if (profile.is_admin) {
     menuItems.push({ id: 'settings', label: 'Ustawienia', icon: Settings });
   }
-
-  const purchaseSubItems = [
-    { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
-    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList },
-  ];
-
-  const isPurchaseActive = appView === 'purchase-request' || appView === 'my-purchase-requests';
 
   return (
     <div className={`h-screen ${darkMode ? 'dark' : ''}`}>
@@ -123,75 +117,7 @@ function AppContent() {
 
         {/* Menu Items */}
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {menuItems.slice(0, 3).map((item) => {
-            const Icon = item.icon;
-            const isActive = appView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setAppView(item.id as AppView)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${
-                  isActive
-                    ? 'bg-brand-primary text-white shadow-md'
-                    : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
-                }`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {sidebarOpen && <span className="font-medium">{item.label}</span>}
-              </button>
-            );
-          })}
-
-          {/* Purchase Request Group */}
-          <div>
-            <button
-              onClick={() => {
-                setPurchaseMenuOpen(o => !o);
-                if (!isPurchaseActive) setAppView('purchase-request');
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${
-                isPurchaseActive
-                  ? 'bg-brand-primary text-white shadow-md'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4 flex-shrink-0" />
-              {sidebarOpen && (
-                <>
-                  <span className="font-medium flex-1 text-left">Zakupy</span>
-                  {(purchaseMenuOpen || isPurchaseActive)
-                    ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
-                    : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
-                  }
-                </>
-              )}
-            </button>
-
-            {sidebarOpen && (purchaseMenuOpen || isPurchaseActive) && (
-              <div className="mt-1 ml-3 pl-3 border-l border-slate-200 dark:border-slate-700/50 space-y-0.5">
-                {purchaseSubItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = appView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setAppView(item.id as AppView)}
-                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-sm ${
-                        isActive
-                          ? 'bg-brand-primary/15 dark:bg-brand-primary/20 text-brand-primary dark:text-brand-primary font-semibold'
-                          : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant hover:text-text-primary-light dark:hover:text-text-primary-dark'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="font-medium">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {menuItems.slice(3).map((item) => {
+          {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = appView === item.id;
             return (
