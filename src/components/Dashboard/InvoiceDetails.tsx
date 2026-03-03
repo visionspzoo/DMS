@@ -908,7 +908,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       const { data: refreshed } = await supabase
         .from('invoices')
-        .select('*')
+        .select('*, department:departments!department_id(id, name, parent_department_id), cost_center:cost_centers!cost_center_id(id, code, description, is_active)')
         .eq('id', currentInvoice.id)
         .maybeSingle();
       if (refreshed) {
