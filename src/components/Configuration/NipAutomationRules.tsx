@@ -21,11 +21,13 @@ interface Department {
   name: string;
 }
 
-interface UserProfile {
+interface DepartmentUser {
   id: string;
-  full_name: string | null;
+  full_name: string;
   email: string;
-  role: string | null;
+  role: string;
+  is_manager: boolean;
+  is_director: boolean;
 }
 
 interface AutomationRule {
@@ -43,7 +45,7 @@ interface AutomationRule {
   updated_at: string;
   cost_center?: CostCenter | null;
   department?: Department | null;
-  assignee?: UserProfile | null;
+  assignee?: { id: string; full_name: string | null } | null;
   tags: TagType[];
 }
 
@@ -61,7 +63,8 @@ export default function NipAutomationRules() {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [accessibleDepartments, setAccessibleDepartments] = useState<Department[]>([]);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
+  const [loadingDeptUsers, setLoadingDeptUsers] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -82,7 +85,6 @@ export default function NipAutomationRules() {
   const [formTagSearch, setFormTagSearch] = useState('');
   const [formCostCenterSearch, setFormCostCenterSearch] = useState('');
   const [formDepartmentSearch, setFormDepartmentSearch] = useState('');
-  const [formAssigneeSearch, setFormAssigneeSearch] = useState('');
 
   const isAdmin = profile?.is_admin;
   const userRole = profile?.role;
@@ -224,12 +226,22 @@ export default function NipAutomationRules() {
     setAllTags(data || []);
   }, []);
 
-  const loadUsers = useCallback(async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, role')
-      .order('full_name');
-    setAllUsers(data || []);
+  const loadDepartmentUsers = useCallback(async (departmentId: string) => {
+    if (!departmentId) {
+      setDepartmentUsers([]);
+      return;
+    }
+    setLoadingDeptUsers(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_department_users', { p_department_id: departmentId });
+      if (rpcError) throw rpcError;
+      setDepartmentUsers(data || []);
+    } catch (err) {
+      console.error('Error loading department users:', err);
+      setDepartmentUsers([]);
+    } finally {
+      setLoadingDeptUsers(false);
+    }
   }, []);
 
   const loadSuggestions = useCallback(async () => {
@@ -324,10 +336,9 @@ export default function NipAutomationRules() {
     loadRules();
     loadCostCenters();
     loadTags();
-    loadUsers();
     loadAccessibleDepartments();
     loadSuggestions();
-  }, [loadRules, loadCostCenters, loadTags, loadUsers, loadAccessibleDepartments, loadSuggestions]);
+  }, [loadRules, loadCostCenters, loadTags, loadAccessibleDepartments, loadSuggestions]);
 
   const resetForm = () => {
     setFormNip('');
@@ -341,9 +352,15 @@ export default function NipAutomationRules() {
     setFormTagSearch('');
     setFormCostCenterSearch('');
     setFormDepartmentSearch('');
-    setFormAssigneeSearch('');
+    setDepartmentUsers([]);
     setEditingId(null);
     setShowForm(false);
+  };
+
+  const handleDepartmentChange = (departmentId: string) => {
+    setFormDepartmentId(departmentId);
+    setFormAssigneeId('');
+    loadDepartmentUsers(departmentId);
   };
 
   const startEdit = (rule: AutomationRule) => {
@@ -358,6 +375,9 @@ export default function NipAutomationRules() {
     setFormSelectedTags(rule.tags);
     setEditingId(rule.id);
     setShowForm(true);
+    if (rule.department_id) {
+      loadDepartmentUsers(rule.department_id);
+    }
   };
 
   const startFromSuggestion = (suggestion: Suggestion) => {
@@ -366,7 +386,9 @@ export default function NipAutomationRules() {
     setFormAutoAccept(false);
     setFormCostCenterId(suggestion.most_used_cost_center?.id || '');
     setFormDepartmentId('');
+    setFormAssigneeId('');
     setFormSelectedTags(suggestion.most_used_tags);
+    setDepartmentUsers([]);
     setEditingId(null);
     setShowForm(true);
   };
@@ -527,17 +549,9 @@ export default function NipAutomationRules() {
     d => d.name.toLowerCase().includes(formDepartmentSearch.toLowerCase())
   );
 
-  const filteredUsers = allUsers.filter(u => {
-    const q = formAssigneeSearch.toLowerCase();
-    return (
-      (u.full_name || '').toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q)
-    );
-  });
-
   const selectedCostCenter = costCenters.find(cc => cc.id === formCostCenterId);
   const selectedDepartment = accessibleDepartments.find(d => d.id === formDepartmentId);
-  const selectedAssignee = allUsers.find(u => u.id === formAssigneeId);
+  const selectedAssignee = departmentUsers.find(u => u.id === formAssigneeId);
 
   if (loading) {
     return (
@@ -580,14 +594,14 @@ export default function NipAutomationRules() {
         formTagSearch={formTagSearch}
         formCostCenterSearch={formCostCenterSearch}
         formDepartmentSearch={formDepartmentSearch}
-        formAssigneeSearch={formAssigneeSearch}
         selectedCostCenter={selectedCostCenter}
         selectedDepartment={selectedDepartment}
         selectedAssignee={selectedAssignee}
         filteredTags={filteredTags}
         filteredCostCenters={filteredCostCenters}
         filteredDepartments={filteredDepartments}
-        filteredUsers={filteredUsers}
+        departmentUsers={departmentUsers}
+        loadingDeptUsers={loadingDeptUsers}
         saving={saving}
         onNipChange={setFormNip}
         onNameChange={setFormName}
@@ -595,10 +609,9 @@ export default function NipAutomationRules() {
         onAutoBezMpkChange={setFormAutoBezMpk}
         onCostCenterChange={setFormCostCenterId}
         onCostCenterSearchChange={setFormCostCenterSearch}
-        onDepartmentChange={setFormDepartmentId}
+        onDepartmentChange={handleDepartmentChange}
         onDepartmentSearchChange={setFormDepartmentSearch}
         onAssigneeChange={setFormAssigneeId}
-        onAssigneeSearchChange={setFormAssigneeSearch}
         onTagSearchChange={setFormTagSearch}
         onAddTag={addTagToForm}
         onRemoveTag={removeTagFromForm}
@@ -696,22 +709,25 @@ function SuggestionsPanel({
 
 function RuleForm({
   show, editing, formNip, formName, formAutoAccept, formAutoBezMpk, formCostCenterId, formDepartmentId,
-  formAssigneeId, formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch, formAssigneeSearch,
-  selectedCostCenter, selectedDepartment, selectedAssignee, filteredTags, filteredCostCenters, filteredDepartments, filteredUsers,
+  formAssigneeId, formSelectedTags, formTagSearch, formCostCenterSearch, formDepartmentSearch,
+  selectedCostCenter, selectedDepartment, selectedAssignee, filteredTags, filteredCostCenters, filteredDepartments,
+  departmentUsers, loadingDeptUsers,
   saving, onNipChange, onNameChange, onAutoAcceptChange, onAutoBezMpkChange, onCostCenterChange, onCostCenterSearchChange,
-  onDepartmentChange, onDepartmentSearchChange, onAssigneeChange, onAssigneeSearchChange, onTagSearchChange, onAddTag, onRemoveTag,
+  onDepartmentChange, onDepartmentSearchChange, onAssigneeChange, onTagSearchChange, onAddTag, onRemoveTag,
   onSave, onCancel, onShow,
 }: {
   show: boolean; editing: boolean; formNip: string; formName: string; formAutoAccept: boolean; formAutoBezMpk: boolean;
   formCostCenterId: string; formDepartmentId: string; formAssigneeId: string; formSelectedTags: TagType[];
-  formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string; formAssigneeSearch: string;
-  selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined; selectedAssignee: UserProfile | undefined;
-  filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[]; filteredUsers: UserProfile[];
+  formTagSearch: string; formCostCenterSearch: string; formDepartmentSearch: string;
+  selectedCostCenter: CostCenter | undefined; selectedDepartment: Department | undefined;
+  selectedAssignee: DepartmentUser | undefined;
+  filteredTags: TagType[]; filteredCostCenters: CostCenter[]; filteredDepartments: Department[];
+  departmentUsers: DepartmentUser[]; loadingDeptUsers: boolean;
   saving: boolean;
   onNipChange: (v: string) => void; onNameChange: (v: string) => void;
   onAutoAcceptChange: (v: boolean) => void; onAutoBezMpkChange: (v: boolean) => void; onCostCenterChange: (v: string) => void;
   onCostCenterSearchChange: (v: string) => void; onDepartmentChange: (v: string) => void;
-  onDepartmentSearchChange: (v: string) => void; onAssigneeChange: (v: string) => void; onAssigneeSearchChange: (v: string) => void;
+  onDepartmentSearchChange: (v: string) => void; onAssigneeChange: (v: string) => void;
   onTagSearchChange: (v: string) => void;
   onAddTag: (tag: TagType) => void; onRemoveTag: (id: string) => void;
   onSave: () => void; onCancel: () => void; onShow: () => void;
@@ -719,7 +735,6 @@ function RuleForm({
   const [showCostCenterDropdown, setShowCostCenterDropdown] = useState(false);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
-  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
 
   if (!show) {
     return (
@@ -877,17 +892,38 @@ function RuleForm({
               <User className="w-3.5 h-3.5 inline mr-1" />
               Przypisz do osoby
             </label>
-            {selectedAssignee ? (
+            {!formDepartmentId ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+                <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                  Najpierw wybierz dzial, aby zobaczyc dostepne osoby
+                </span>
+              </div>
+            ) : loadingDeptUsers ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+                <div className="w-3.5 h-3.5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Ladowanie uzytkownikow...</span>
+              </div>
+            ) : departmentUsers.length === 0 ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-lg bg-slate-50 dark:bg-dark-surface-variant">
+                <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark italic">
+                  Brak uzytkownikow w wybranym dziale
+                </span>
+              </div>
+            ) : selectedAssignee ? (
               <div className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface-variant">
                 <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
                   <User className="w-3.5 h-3.5 text-brand-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark block truncate">
-                    {selectedAssignee.full_name || selectedAssignee.email}
+                  <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate block">
+                    {selectedAssignee.full_name}
                   </span>
-                  {selectedAssignee.role && (
-                    <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">{selectedAssignee.role}</span>
+                  {(selectedAssignee.is_manager || selectedAssignee.is_director) && (
+                    <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {selectedAssignee.is_director ? 'Dyrektor' : 'Kierownik'}
+                    </span>
                   )}
                 </div>
                 <button onClick={() => onAssigneeChange('')} className="p-0.5 text-slate-400 hover:text-red-500 transition flex-shrink-0">
@@ -895,44 +931,18 @@ function RuleForm({
                 </button>
               </div>
             ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formAssigneeSearch}
-                  onChange={(e) => { onAssigneeSearchChange(e.target.value); setShowAssigneeDropdown(true); }}
-                  onFocus={() => setShowAssigneeDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowAssigneeDropdown(false), 200)}
-                  placeholder="Szukaj osoby po imieniu lub email..."
-                  className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                />
-                {showAssigneeDropdown && filteredUsers.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-surface border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
-                    {filteredUsers.slice(0, 10).map(user => (
-                      <button
-                        key={user.id}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { onAssigneeChange(user.id); onAssigneeSearchChange(''); setShowAssigneeDropdown(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-dark-surface-variant text-sm flex items-center gap-2.5 transition"
-                      >
-                        <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
-                          <User className="w-3.5 h-3.5 text-brand-primary" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-text-primary-light dark:text-text-primary-dark font-medium truncate">
-                            {user.full_name || user.email}
-                          </div>
-                          {user.full_name && (
-                            <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark truncate">{user.email}</div>
-                          )}
-                        </div>
-                        {user.role && (
-                          <span className="ml-auto text-xs text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">{user.role}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <select
+                value={formAssigneeId}
+                onChange={(e) => onAssigneeChange(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+              >
+                <option value="">-- Nie przypisuj do konkretnej osoby --</option>
+                {departmentUsers.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name}{user.is_director ? ' (Dyrektor)' : user.is_manager ? ' (Kierownik)' : ''}
+                  </option>
+                ))}
+              </select>
             )}
             <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
               Faktura bedzie przypisana do tej osoby jako wlasciciel
