@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Building2, Shield, Key, Clock, Calendar, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import MyDepartmentSection from './MyDepartmentSection';
 
 interface DepartmentAccess {
   id: string;
@@ -330,6 +331,8 @@ export default function AccountInfo() {
           )}
         </div>
       </div>
+
+      <MyDepartmentSection />
 
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex items-start gap-3">
