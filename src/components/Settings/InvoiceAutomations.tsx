@@ -96,29 +96,12 @@ export default function InvoiceAutomations() {
       }));
 
       setRules(rulesWithDetails);
+      return rulesWithDetails;
     } catch (err: any) {
       console.error('Error loading rules:', err);
       setError(err.message);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, []);
-
-  const loadCostCenters = useCallback(async () => {
-    const { data } = await supabase
-      .from('cost_centers')
-      .select('id, code, description, is_active')
-      .eq('is_active', true)
-      .order('display_order');
-    setCostCenters(data || []);
-  }, []);
-
-  const loadTags = useCallback(async () => {
-    const { data } = await supabase
-      .from('tags')
-      .select('id, name, color')
-      .order('name');
-    setAllTags(data || []);
   }, []);
 
   const loadDepartments = useCallback(async () => {
@@ -129,43 +112,34 @@ export default function InvoiceAutomations() {
     setDepartments(data || []);
   }, []);
 
-  const loadSuggestions = useCallback(async () => {
+  const loadSuggestions = useCallback(async (
+    existingCostCenters: CostCenter[],
+    existingTags: TagType[],
+    existingRuleNips: Set<string>
+  ) => {
     if (!profile?.id) return;
     try {
       const [
         { data: invoices },
-        { data: existingRules },
         { data: tagLearning },
-        { data: allCostCentersData },
-        { data: allTagsData },
       ] = await Promise.all([
         supabase
           .from('invoices')
           .select('supplier_nip, supplier_name, cost_center_id')
           .not('supplier_nip', 'is', null)
           .order('created_at', { ascending: false })
-          .limit(500),
-        supabase
-          .from('nip_automation_rules')
-          .select('supplier_nip')
-          .eq('is_active', true),
+          .limit(200),
         supabase
           .from('tag_learning')
           .select('supplier_nip, tag_id, frequency')
-          .order('frequency', { ascending: false }),
-        supabase
-          .from('cost_centers')
-          .select('id, code, description, is_active'),
-        supabase
-          .from('tags')
-          .select('id, name, color'),
+          .order('frequency', { ascending: false })
+          .limit(200),
       ]);
 
       if (!invoices || invoices.length === 0) return;
 
-      const existingNips = new Set((existingRules || []).map((r: any) => r.supplier_nip));
-      const costCenterMap = new Map((allCostCentersData || []).map((cc: CostCenter) => [cc.id, cc]));
-      const tagMap = new Map((allTagsData || []).map((t: TagType) => [t.id, t]));
+      const costCenterMap = new Map(existingCostCenters.map((cc: CostCenter) => [cc.id, cc]));
+      const tagMap = new Map(existingTags.map((t: TagType) => [t.id, t]));
 
       const nipGroups: Record<string, {
         name: string;
@@ -174,7 +148,7 @@ export default function InvoiceAutomations() {
       }> = {};
 
       for (const inv of invoices) {
-        if (!inv.supplier_nip || existingNips.has(inv.supplier_nip)) continue;
+        if (!inv.supplier_nip || existingRuleNips.has(inv.supplier_nip)) continue;
         if (!nipGroups[inv.supplier_nip]) {
           nipGroups[inv.supplier_nip] = { name: inv.supplier_name || '', count: 0, costCenterCounts: {} };
         }
@@ -217,14 +191,35 @@ export default function InvoiceAutomations() {
   }, [profile?.id]);
 
   useEffect(() => {
-    Promise.all([
-      loadRules(),
-      loadCostCenters(),
-      loadTags(),
-      loadDepartments(),
-      loadSuggestions(),
-    ]);
-  }, [loadRules, loadCostCenters, loadTags, loadDepartments, loadSuggestions]);
+    const init = async () => {
+      const [costCentersData, tagsData, rulesData] = await Promise.all([
+        supabase.from('cost_centers').select('id, code, description, is_active').eq('is_active', true).order('display_order'),
+        supabase.from('tags').select('id, name, color').order('name'),
+        supabase.from('nip_automation_rules').select(`*, cost_center:cost_centers(id, code, description, is_active), department:departments(id, name), nip_automation_rule_tags(tag_id, tags(id, name, color))`).order('created_at', { ascending: false }),
+        loadDepartments(),
+      ]);
+
+      const costCenters = costCentersData.data || [];
+      const tags = tagsData.data || [];
+      const rulesRaw = rulesData.data || [];
+
+      setCostCenters(costCenters);
+      setAllTags(tags);
+
+      const rulesWithDetails: AutomationRule[] = rulesRaw.map((rule: any) => ({
+        ...rule,
+        cost_center: rule.cost_center ?? null,
+        department: rule.department ?? null,
+        tags: (rule.nip_automation_rule_tags || []).map((link: any) => link.tags).filter(Boolean),
+      }));
+      setRules(rulesWithDetails);
+      setLoading(false);
+
+      const existingRuleNips = new Set(rulesRaw.map((r: any) => r.supplier_nip).filter(Boolean));
+      loadSuggestions(costCenters, tags, existingRuleNips as Set<string>);
+    };
+    init();
+  }, [loadDepartments, loadSuggestions]);
 
   const resetForm = () => {
     setFormNip('');
@@ -332,8 +327,9 @@ export default function InvoiceAutomations() {
 
       setSuccess(editingId ? 'Zaktualizowano regule' : 'Dodano nowa regule automatyzacji');
       resetForm();
-      await loadRules();
-      await loadSuggestions();
+      const updated = await loadRules();
+      const nips = new Set(updated.map((r) => r.supplier_nip).filter(Boolean)) as Set<string>;
+      loadSuggestions(costCenters, allTags, nips);
       setTimeout(() => setSuccess(''), 4000);
     } catch (err: any) {
       console.error('Error saving rule:', err);
@@ -365,8 +361,9 @@ export default function InvoiceAutomations() {
         .eq('id', id);
       if (delErr) throw delErr;
       setSuccess('Usunieto regule');
-      await loadRules();
-      await loadSuggestions();
+      const updated = await loadRules();
+      const nips = new Set(updated.map((r) => r.supplier_nip).filter(Boolean)) as Set<string>;
+      loadSuggestions(costCenters, allTags, nips);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.message);
