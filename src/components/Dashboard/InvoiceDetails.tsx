@@ -2849,29 +2849,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
                         Dział główny (MPK)
                       </label>
-                      {isEditing ? (
-                        <select
-                          value={editedInvoice.department_id || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, department_id: e.target.value })}
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
-                        >
-                          <option value="">Wybierz dział</option>
-                          {availableDepartments.map(dept => (
-                            <option key={dept.id} value={dept.id}>{dept.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="mt-1 flex items-center gap-2 flex-wrap">
-                          <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
-                            {currentInvoice.department?.name || '—'}
-                          </p>
-                          {(currentInvoice as any).bez_mpk && (
-                            <span className="px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold rounded-full uppercase tracking-wide">
-                              bez MPK
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      <div className="mt-1 flex items-center gap-2 flex-wrap">
+                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+                          {currentInvoice.department?.name || '—'}
+                        </p>
+                        {(currentInvoice as any).bez_mpk && (
+                          <span className="px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold rounded-full uppercase tracking-wide">
+                            bez MPK
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
