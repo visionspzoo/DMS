@@ -83,6 +83,8 @@ export function InvoiceList() {
 
   const [driveLastSync, setDriveLastSync] = useState<string | null>(null);
   const [driveActive, setDriveActive] = useState(false);
+  const [hasAnyDriveConfig, setHasAnyDriveConfig] = useState(false);
+  const [hasAnyEmailConfig, setHasAnyEmailConfig] = useState(false);
   const [emailLastSync, setEmailLastSync] = useState<string | null>(null);
   const [emailActive, setEmailActive] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -150,10 +152,12 @@ export function InvoiceList() {
   const loadSyncConfigs = useCallback(async () => {
     if (!user) return;
     try {
-      const [driveRes, mappingsRes, emailRes] = await Promise.all([
+      const [driveRes, mappingsRes, allMappingsRes, emailRes, allEmailRes] = await Promise.all([
         supabase.from('user_drive_configs').select('is_active, last_sync_at').eq('user_id', user.id).maybeSingle(),
         supabase.from('user_drive_folder_mappings').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true),
+        supabase.from('user_drive_folder_mappings').select('id').eq('user_id', user.id).limit(1),
         supabase.from('user_email_configs').select('is_active, last_sync_at').eq('user_id', user.id).eq('is_active', true).order('last_sync_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('user_email_configs').select('id').eq('user_id', user.id).limit(1),
       ]);
 
       let driveIsActive = false;
@@ -176,10 +180,23 @@ export function InvoiceList() {
       setDriveActive(driveIsActive);
       setDriveLastSync(driveLastSyncDate);
 
+      const hasDrive = driveIsActive ||
+        (!allMappingsRes.error && allMappingsRes.data && allMappingsRes.data.length > 0) ||
+        (!driveRes.error && !!driveRes.data);
+      setHasAnyDriveConfig(hasDrive);
+
+      let emailIsActive = false;
+      let emailLastSyncDate: string | null = null;
       if (!emailRes.error && emailRes.data) {
-        setEmailActive(emailRes.data.is_active);
-        setEmailLastSync(emailRes.data.last_sync_at);
+        emailIsActive = emailRes.data.is_active;
+        emailLastSyncDate = emailRes.data.last_sync_at;
       }
+      setEmailActive(emailIsActive);
+      setEmailLastSync(emailLastSyncDate);
+
+      const hasEmail = emailIsActive ||
+        (!allEmailRes.error && allEmailRes.data && allEmailRes.data.length > 0);
+      setHasAnyEmailConfig(hasEmail);
     } catch (error) {
       console.error('Error loading sync configs:', error);
     }
@@ -207,19 +224,15 @@ export function InvoiceList() {
         'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
       };
 
-      const promises: Promise<Response>[] = [];
-
-      if (driveActive) {
-        promises.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`, { method: 'POST', headers }));
-      }
-      if (emailActive) {
-        promises.push(fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices`, { method: 'POST', headers }));
-      }
-
-      if (promises.length === 0) {
+      if (!hasAnyDriveConfig && !hasAnyEmailConfig) {
         if (manual) setSyncMessage({ type: 'error', text: 'Brak aktywnych zrodel synchronizacji. Skonfiguruj dysk lub email w Konfiguracji.' });
         return;
       }
+
+      const promises: Promise<Response>[] = [
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-drive-invoices`, { method: 'POST', headers }),
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-user-email-invoices`, { method: 'POST', headers }),
+      ];
 
       const results = await Promise.allSettled(promises);
       let totalSynced = 0;
@@ -278,7 +291,7 @@ export function InvoiceList() {
       setSyncing(false);
       setNextSyncIn(SYNC_INTERVAL_MS);
     }
-  }, [syncing, user, driveActive, emailActive, loadSyncConfigs]);
+  }, [syncing, user, hasAnyDriveConfig, hasAnyEmailConfig, loadSyncConfigs]);
 
   useEffect(() => {
     loadFilterPreferences();
@@ -372,7 +385,7 @@ export function InvoiceList() {
   }, [runSync]);
 
   useEffect(() => {
-    if (!driveActive && !emailActive) return;
+    if (!hasAnyDriveConfig && !hasAnyEmailConfig) return;
 
     const latestSync = [driveLastSync, emailLastSync]
       .filter(Boolean)
@@ -412,7 +425,7 @@ export function InvoiceList() {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [driveActive, emailActive, driveLastSync, emailLastSync]);
+  }, [hasAnyDriveConfig, hasAnyEmailConfig, driveLastSync, emailLastSync]);
 
   const loadInvoices = async () => {
     try {
@@ -1127,13 +1140,13 @@ export function InvoiceList() {
         </p>
       </div>
 
-      {(driveActive || emailActive) && (
+      {(hasAnyDriveConfig || hasAnyEmailConfig) && (
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 flex-wrap">
-              {driveActive && (
+              {hasAnyDriveConfig && (
                 <div className="flex items-center gap-1.5">
-                  <HardDrive className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <HardDrive className={`w-3.5 h-3.5 ${driveActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
                     Dysk:
                   </span>
@@ -1142,11 +1155,14 @@ export function InvoiceList() {
                       ? new Date(driveLastSync).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : 'nigdy'}
                   </span>
+                  {!driveActive && (
+                    <span className="text-[10px] text-amber-500 dark:text-amber-400">(nieaktywny)</span>
+                  )}
                 </div>
               )}
-              {emailActive && (
+              {hasAnyEmailConfig && (
                 <div className="flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                  <Mail className={`w-3.5 h-3.5 ${emailActive ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
                     Email:
                   </span>
@@ -1155,6 +1171,9 @@ export function InvoiceList() {
                       ? new Date(emailLastSync).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : 'nigdy'}
                   </span>
+                  {!emailActive && (
+                    <span className="text-[10px] text-amber-500 dark:text-amber-400">(nieaktywny)</span>
+                  )}
                 </div>
               )}
               <div className="flex items-center gap-1.5">
