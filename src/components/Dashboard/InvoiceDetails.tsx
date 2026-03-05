@@ -109,6 +109,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const [rejectComment, setRejectComment] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSyncingVendo, setIsSyncingVendo] = useState(false);
+  const [vendoSyncResult, setVendoSyncResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const isInvalidSupplier = currentInvoice.supplier_nip === AURA_HERBALS_NIP ||
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
@@ -800,6 +802,40 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     }
 
     return true;
+  };
+
+  const handleVendoSync = async () => {
+    setIsSyncingVendo(true);
+    setVendoSyncResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak sesji');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendo-sync-pz`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ invoiceId: currentInvoice.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        setVendoSyncResult({ success: false, message: result.error || 'Błąd synchronizacji' });
+      } else {
+        setVendoSyncResult({ success: true, message: result.message });
+        onUpdate();
+      }
+    } catch (err) {
+      setVendoSyncResult({ success: false, message: err instanceof Error ? err.message : 'Nieznany błąd' });
+    } finally {
+      setIsSyncingVendo(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -2360,14 +2396,18 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 )}
                 {(currentInvoice.status === 'accepted' || currentInvoice.status === 'paid') &&
                   (currentInvoice as any).bez_mpk &&
-                  !(currentInvoice as any).pz_number && (
+                  (currentInvoice as any).pz_number && (
                   <button
-                    onClick={() => {}}
-                    disabled={loading}
+                    onClick={handleVendoSync}
+                    disabled={loading || isSyncingVendo}
                     className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <FileCheck className="w-4 h-4" />
-                    <span>Powiąż z PZ</span>
+                    {isSyncingVendo ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <FileCheck className="w-4 h-4" />
+                    )}
+                    <span>{isSyncingVendo ? 'Synchronizacja...' : 'Synchronizuj z Vendo'}</span>
                   </button>
                 )}
                 {canEdit() && (
@@ -2879,6 +2919,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       )}
                     </div>
                   </div>
+
+                  {vendoSyncResult && (
+                    <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${vendoSyncResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'}`}>
+                      {vendoSyncResult.success ? (
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      )}
+                      <span>{vendoSyncResult.message}</span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
