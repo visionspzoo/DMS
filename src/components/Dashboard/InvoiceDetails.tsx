@@ -116,9 +116,14 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     (currentInvoice.supplier_nip?.includes('[BŁĄD]')) ||
     (currentInvoice.supplier_name?.includes('[BŁĄD'));
 
-  const isInvalidBuyer = currentInvoice.buyer_nip &&
-    currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== AURA_HERBALS_NIP &&
-    currentInvoice.buyer_nip.replace(/[^0-9]/g, '') !== '8222407812';
+  const VALID_NIPS = [AURA_HERBALS_NIP, '8222407812'];
+  const AURA_NAME_VARIANTS = ['aura herbals', 'auraherbals', 'aura herbal'];
+  const buyerNameLower = currentInvoice.buyer_name?.toLowerCase() || '';
+  const isInvalidBuyer = currentInvoice.buyer_nip
+    ? !VALID_NIPS.includes(currentInvoice.buyer_nip.replace(/[^0-9]/g, ''))
+    : currentInvoice.buyer_name
+      ? !AURA_NAME_VARIANTS.some(v => buyerNameLower.includes(v))
+      : false;
 
   const isDuplicate = duplicateInvoices.length > 0;
 
