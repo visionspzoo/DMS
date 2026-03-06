@@ -348,7 +348,9 @@ Deno.serve(async (req: Request) => {
 
     // 7. Create invoice record (without Drive URL yet)
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
-    const invoiceOwner = userId || deptManagerId || deptDirectorId || ksefInvoice.fetched_by;
+    // invoiceOwner should be the department's manager or director, NOT the logged-in user
+    // The logged-in user (uploaderId) might be an admin fetching invoices from a different dept
+    const invoiceOwner = deptManagerId || deptDirectorId || userId || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
@@ -361,12 +363,12 @@ Deno.serve(async (req: Request) => {
       tax_amount: taxAmount,
       currency: ksefInvoice.currency,
       issue_date: ksefInvoice.issue_date,
-      status: "draft",
+      status: "waiting",
       uploaded_by: invoiceOwner,
       department_id: departmentId,
       file_url: null,
       pdf_base64: pdfBase64,
-      description: "Faktura z KSEF - dodana jako wersja robocza",
+      description: "Faktura z KSEF",
       pln_gross_amount: plnGrossAmount,
       exchange_rate: exchangeRate,
       source: "ksef",
