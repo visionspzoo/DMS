@@ -100,8 +100,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     created_at: string;
     department_name: string;
     status?: string;
-    uploaded_by_name?: string;
-    current_approver_name?: string | null;
     accessible: boolean;
   }>>([]);
   const [invoiceDepartmentInfo, setInvoiceDepartmentInfo] = useState<{director_id: string | null, uploader_role: string | null} | null>(null);
@@ -2637,73 +2635,34 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       </p>
                     </div>
                   </div>
-                  <div className="ml-7 space-y-2">
-                    {duplicateInvoices.map((dup, idx) => {
-                      const dupStatusColors: Record<string, string> = {
-                        draft: 'bg-slate-100 text-slate-600 dark:bg-slate-700/50 dark:text-slate-300',
-                        waiting: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-                        in_review: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                        accepted: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                        rejected: 'bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-300',
-                        paid: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-                      };
-                      const dupStatusLabels: Record<string, string> = {
-                        draft: 'Robocze', waiting: 'Oczekujące', in_review: 'W weryfikacji',
-                        accepted: 'Zaakceptowana', rejected: 'Odrzucona', paid: 'Opłacona',
-                      };
-                      return (
-                        <div
-                          key={dup.id || idx}
-                          className="flex flex-col gap-1.5 text-xs bg-red-100/60 dark:bg-red-900/30 rounded-lg px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-red-800 dark:text-red-300 shrink-0">
-                              {dup.department_name}
+                  <div className="ml-7 space-y-1.5">
+                    {duplicateInvoices.map((dup, idx) => (
+                      <div
+                        key={dup.id || idx}
+                        className="flex items-center gap-2 text-xs bg-red-100/60 dark:bg-red-900/30 rounded px-2 py-1.5"
+                      >
+                        <span className="font-medium text-red-800 dark:text-red-300 min-w-0 shrink-0">
+                          {dup.department_name}
+                        </span>
+                        <span className="text-red-600 dark:text-red-500">·</span>
+                        {dup.invoice_date && (
+                          <>
+                            <span className="text-red-700 dark:text-red-400">
+                              Data faktury: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}
                             </span>
-                            {dup.status && (
-                              <span className={`px-1.5 py-0.5 rounded font-medium shrink-0 ${dupStatusColors[dup.status] || 'bg-slate-100 text-slate-600'}`}>
-                                {dupStatusLabels[dup.status] || dup.status}
-                              </span>
-                            )}
-                            {!dup.accessible && (
-                              <span className="ml-auto shrink-0 text-red-500 dark:text-red-400 italic">
-                                brak dostępu
-                              </span>
-                            )}
-                          </div>
-                          {dup.accessible && (
-                            <div className="flex items-center gap-3 flex-wrap text-red-700 dark:text-red-400">
-                              {dup.uploaded_by_name && (
-                                <span className="flex items-center gap-1">
-                                  <User className="w-3 h-3 shrink-0" />
-                                  <span>Właściciel: <span className="font-medium">{dup.uploaded_by_name}</span></span>
-                                </span>
-                              )}
-                              {dup.current_approver_name && (
-                                <span className="flex items-center gap-1">
-                                  <span className="text-red-500 dark:text-red-500">›</span>
-                                  <span>Do akceptacji: <span className="font-medium">{dup.current_approver_name}</span></span>
-                                </span>
-                              )}
-                              {dup.invoice_date && (
-                                <span>Data: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}</span>
-                              )}
-                              <span className="text-red-500 dark:text-red-500">
-                                Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}
-                              </span>
-                            </div>
-                          )}
-                          {!dup.accessible && (dup.invoice_date || dup.status) && (
-                            <div className="flex items-center gap-3 flex-wrap text-red-600 dark:text-red-400">
-                              {dup.invoice_date && (
-                                <span>Data: {new Date(dup.invoice_date).toLocaleDateString('pl-PL')}</span>
-                              )}
-                              <span>Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            <span className="text-red-600 dark:text-red-500">·</span>
+                          </>
+                        )}
+                        <span className="text-red-700 dark:text-red-400">
+                          Dodano: {new Date(dup.created_at).toLocaleDateString('pl-PL')}
+                        </span>
+                        {!dup.accessible && (
+                          <span className="ml-auto shrink-0 text-red-500 dark:text-red-400 italic">
+                            (brak dostępu)
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
