@@ -60,6 +60,7 @@ export function InvoiceList() {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const preservePageRef = useRef(false);
   const PAGE_SIZE = 30;
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const currentDate = new Date();
@@ -310,6 +311,7 @@ export function InvoiceList() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'invoices' }, (payload) => {
         const deletedId = (payload.old as any)?.id;
         if (deletedId) {
+          preservePageRef.current = true;
           setInvoices(prev => prev.filter(inv => inv.id !== deletedId));
         }
       })
@@ -641,15 +643,24 @@ export function InvoiceList() {
     }
 
     setFilteredInvoices(filtered);
-    setCurrentPage(1);
+    if (!preservePageRef.current) {
+      setCurrentPage(1);
+    }
+    preservePageRef.current = false;
   };
+
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const paginatedInvoices = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
     return filteredInvoices.slice(start, start + PAGE_SIZE);
   }, [filteredInvoices, currentPage]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
 
   const { totalAcceptedAmount, totalPaidAmount, currencyBreakdownAccepted, currencyBreakdownPaid } = useMemo(() => {
     const accepted = filteredInvoices.filter(inv => inv.status === 'accepted');
@@ -964,6 +975,7 @@ export function InvoiceList() {
 
       setSelectedInvoiceIds([]);
       setSelectionMode(false);
+      preservePageRef.current = true;
       loadInvoices();
     } catch (error: any) {
       alert('Błąd podczas usuwania faktur: ' + error.message);
