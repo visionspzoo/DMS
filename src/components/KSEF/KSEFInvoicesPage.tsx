@@ -79,6 +79,12 @@ export function KSEFInvoicesPage() {
                                profile?.is_admin === true ||
                                profile?.role === 'CEO';
 
+  useEffect(() => {
+    if (!canAccessKSEFConfig && (invoiceTab === 'assigned' || invoiceTab === 'ignored')) {
+      setInvoiceTab('unassigned');
+    }
+  }, [canAccessKSEFConfig]);
+
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -1185,16 +1191,18 @@ export function KSEFInvoicesPage() {
             >
               Nieprzypisane ({unassignedCount})
             </button>
-            <button
-              onClick={() => setInvoiceTab('assigned')}
-              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
-                invoiceTab === 'assigned'
-                  ? 'bg-brand-primary text-white shadow-sm'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
-              }`}
-            >
-              Przypisane ({assignedCount})
-            </button>
+            {canAccessKSEFConfig && (
+              <button
+                onClick={() => setInvoiceTab('assigned')}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+                  invoiceTab === 'assigned'
+                    ? 'bg-brand-primary text-white shadow-sm'
+                    : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+                }`}
+              >
+                Przypisane ({assignedCount})
+              </button>
+            )}
             {canAccessKSEFConfig && (
               <button
                 onClick={() => setInvoiceTab('ignored')}
