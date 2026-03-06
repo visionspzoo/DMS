@@ -169,8 +169,26 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (ksefError) throw ksefError;
-    if (!ksefInvoice?.transferred_to_invoice_id) {
+    if (!ksefInvoice?.transferred_to_invoice_id && !ksefInvoice?.transferred_to_department_id) {
       throw new Error("Faktura nie jest przypisana do żadnego działu");
+    }
+
+    // Case 1: Only assigned to department (not yet transferred to invoices table)
+    if (!ksefInvoice?.transferred_to_invoice_id) {
+      const { error: clearError } = await supabase
+        .from("ksef_invoices")
+        .update({
+          transferred_to_department_id: null,
+          assigned_to_department_at: null,
+        })
+        .eq("id", ksefInvoiceId);
+
+      if (clearError) throw clearError;
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Przypisanie faktury zostało cofnięte" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const invoiceId = ksefInvoice.transferred_to_invoice_id;
