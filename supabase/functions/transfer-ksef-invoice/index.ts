@@ -321,43 +321,10 @@ Deno.serve(async (req: Request) => {
     // 6. Find appropriate approver for department if userId not provided
     let appropriateApproverId = userId || null;
 
-    // Resolve department manager/director from profiles if not in department record
-    let deptManagerId: string | null = department.manager_id || null;
-    let deptDirectorId: string | null = department.director_id || null;
-
-    if (!deptManagerId) {
-      try {
-        const { data: managerProfile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("department_id", departmentId)
-          .eq("role", "Kierownik")
-          .maybeSingle();
-        if (managerProfile) {
-          deptManagerId = managerProfile.id;
-          console.log("Found department manager from profiles:", deptManagerId);
-        }
-      } catch (err) {
-        console.warn("Could not look up manager from profiles:", err);
-      }
-    }
-
-    if (!deptDirectorId) {
-      try {
-        const { data: directorProfile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("department_id", departmentId)
-          .eq("role", "Dyrektor")
-          .maybeSingle();
-        if (directorProfile) {
-          deptDirectorId = directorProfile.id;
-          console.log("Found department director from profiles:", deptDirectorId);
-        }
-      } catch (err) {
-        console.warn("Could not look up director from profiles:", err);
-      }
-    }
+    // Use manager_id and director_id directly from the departments table (authoritative source)
+    // Directors are assigned to departments via departments.director_id, NOT via profiles.department_id
+    const deptManagerId: string | null = department.manager_id || null;
+    const deptDirectorId: string | null = department.director_id || null;
 
     if (!appropriateApproverId) {
       appropriateApproverId = deptManagerId || deptDirectorId || null;
