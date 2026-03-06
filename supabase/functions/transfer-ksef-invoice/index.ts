@@ -321,24 +321,67 @@ Deno.serve(async (req: Request) => {
     // 6. Find appropriate approver for department if userId not provided
     let appropriateApproverId = userId || null;
 
-    if (!appropriateApproverId) {
+    // Resolve department manager/director from profiles if not in department record
+    let deptManagerId: string | null = department.manager_id || null;
+    let deptDirectorId: string | null = department.director_id || null;
+
+    if (!deptManagerId) {
       try {
-        const { data: approverData } = await supabase.rpc("get_next_approver_in_department", {
-          dept_id: departmentId,
-          user_role: null,
-        });
-        if (approverData) {
-          appropriateApproverId = approverData;
-          console.log("Found appropriate approver:", appropriateApproverId);
+        const { data: managerProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("department_id", departmentId)
+          .eq("role", "Kierownik")
+          .maybeSingle();
+        if (managerProfile) {
+          deptManagerId = managerProfile.id;
+          console.log("Found department manager from profiles:", deptManagerId);
         }
       } catch (err) {
-        console.error("Error finding approver:", err);
+        console.warn("Could not look up manager from profiles:", err);
+      }
+    }
+
+    if (!deptDirectorId) {
+      try {
+        const { data: directorProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("department_id", departmentId)
+          .eq("role", "Dyrektor")
+          .maybeSingle();
+        if (directorProfile) {
+          deptDirectorId = directorProfile.id;
+          console.log("Found department director from profiles:", deptDirectorId);
+        }
+      } catch (err) {
+        console.warn("Could not look up director from profiles:", err);
+      }
+    }
+
+    if (!appropriateApproverId) {
+      appropriateApproverId = deptManagerId || deptDirectorId || null;
+      if (appropriateApproverId) {
+        console.log("Using dept manager/director as approver:", appropriateApproverId);
+      } else {
+        try {
+          const { data: approverData } = await supabase.rpc("get_next_approver_in_department", {
+            dept_id: departmentId,
+            user_role: null,
+          });
+          if (approverData) {
+            appropriateApproverId = approverData;
+            console.log("Found appropriate approver via RPC:", appropriateApproverId);
+          }
+        } catch (err) {
+          console.error("Error finding approver:", err);
+        }
       }
     }
 
     // 7. Create invoice record (without Drive URL yet)
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
-    const invoiceOwner = userId || department.manager_id || department.director_id || ksefInvoice.fetched_by;
+    const invoiceOwner = userId || deptManagerId || deptDirectorId || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
