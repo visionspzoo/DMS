@@ -233,6 +233,26 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
     setSelectedWinners(prev => new Map(prev).set(groupKey, invoiceId));
   };
 
+  const statusLabels: Record<string, string> = {
+    draft: 'Robocze',
+    waiting: 'Oczekujące',
+    pending: 'Oczekujące',
+    in_review: 'W weryfikacji',
+    accepted: 'Zaakceptowana',
+    rejected: 'Odrzucona',
+    paid: 'Opłacona',
+  };
+
+  const statusColors: Record<string, string> = {
+    draft: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400',
+    waiting: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
+    pending: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+    in_review: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+    accepted: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    rejected: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
+    paid: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+  };
+
   const getSourceLabel = (inv: Invoice) => {
     const source = (inv as any).source || '';
     if (source === 'ksef') return 'KSeF';
@@ -541,15 +561,29 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
                                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isKsef ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
                                     {getSourceLabel(inv)}
                                   </span>
+                                  {inv.status && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusColors[inv.status] || statusColors.draft}`}>
+                                      {statusLabels[inv.status] || inv.status}
+                                    </span>
+                                  )}
                                   {hasData && (
                                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
                                       z opisem
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5 truncate">
-                                  {inv.description && inv.description !== 'Faktura z KSEF - wersja robocza' ? inv.description : '—'}
-                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {inv.uploader?.full_name && (
+                                    <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
+                                      Wlasciciel: <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{inv.uploader.full_name}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                {inv.description && inv.description !== 'Faktura z KSEF - wersja robocza' && (
+                                  <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mt-0.5 truncate">
+                                    {inv.description}
+                                  </p>
+                                )}
                               </div>
                               {isWinner && (
                                 <span className="text-[10px] font-semibold text-brand-primary flex-shrink-0">Główna</span>
