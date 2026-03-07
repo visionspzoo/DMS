@@ -12,6 +12,7 @@ interface Department {
   manager_id: string | null;
   director_id: string | null;
   max_invoice_amount: number | null;
+  max_monthly_amount: number | null;
   google_drive_draft_folder_id: string | null;
   google_drive_unpaid_folder_id: string | null;
   google_drive_paid_folder_id: string | null;
@@ -360,6 +361,7 @@ export default function DepartmentManagement() {
           manager_id: editingDept.manager_id || null,
           director_id: editingDept.director_id || null,
           max_invoice_amount: editingDept.max_invoice_amount,
+          max_monthly_amount: editingDept.max_monthly_amount,
           google_drive_draft_folder_id: editingDept.google_drive_draft_folder_id,
           google_drive_unpaid_folder_id: editingDept.google_drive_unpaid_folder_id,
           google_drive_paid_folder_id: editingDept.google_drive_paid_folder_id,
@@ -1002,19 +1004,35 @@ export default function DepartmentManagement() {
                 <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-3">
                   Limit zatwierdzania faktur działu
                 </h4>
-                <div>
-                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                    Max kwota pojedynczej faktury działu (PLN)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editingDept.max_invoice_amount || ''}
-                    onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                    placeholder="np. 5000.00"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                      Max kwota pojedynczej faktury (PLN)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editingDept.max_invoice_amount || ''}
+                      onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="np. 5000.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                      Limit miesięczny działu (PLN)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editingDept.max_monthly_amount || ''}
+                      onChange={(e) => setEditingDept({ ...editingDept, max_monthly_amount: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                      placeholder="np. 50000.00"
+                    />
+                  </div>
                 </div>
               </div>
 
