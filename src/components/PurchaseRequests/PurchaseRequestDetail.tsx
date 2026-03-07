@@ -20,6 +20,7 @@ interface PurchaseRequest {
   current_approver_id: string | null;
   department_id: string | null;
   proforma_filename: string | null;
+  clickup_task_id: string | null;
 }
 
 interface Approval {
@@ -178,6 +179,27 @@ export function PurchaseRequestDetail({
     setLoading(false);
   }
 
+  async function triggerClickUpTask(requestId: string) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-clickup-task`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ purchase_request_id: requestId }),
+        }
+      );
+    } catch (err) {
+      console.error('ClickUp task creation error:', err);
+    }
+  }
+
   async function handleAction(action: 'approved' | 'rejected') {
     if (!request) return;
     setActionLoading(true);
@@ -199,6 +221,17 @@ export function PurchaseRequestDetail({
     setComment('');
     setShowRejectForm(false);
     await loadRequest();
+
+    if (action === 'approved') {
+      const { data: updated } = await supabase
+        .from('purchase_requests')
+        .select('status, clickup_task_id')
+        .eq('id', request.id)
+        .maybeSingle();
+      if (updated?.status === 'approved' && !updated?.clickup_task_id) {
+        triggerClickUpTask(request.id);
+      }
+    }
   }
 
   async function handleWithdraw() {
@@ -269,12 +302,20 @@ export function PurchaseRequestDetail({
                 {status.icon}
                 {status.label}
               </span>
-              {isProforma && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-sky-700 bg-sky-100 dark:bg-sky-900/30 dark:text-sky-300 border border-sky-200 dark:border-sky-700/50">
-                  <FileText className="w-3 h-3" />
-                  Proforma
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {isProforma && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-sky-700 bg-sky-100 dark:bg-sky-900/30 dark:text-sky-300 border border-sky-200 dark:border-sky-700/50">
+                    <FileText className="w-3 h-3" />
+                    Proforma
+                  </span>
+                )}
+                {request.clickup_task_id && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/50">
+                    <CheckCircle className="w-3 h-3" />
+                    Zadanie ClickUp
+                  </span>
+                )}
+              </div>
             </div>
 
             <h1 className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark leading-snug">

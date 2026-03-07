@@ -19,6 +19,7 @@ interface PurchaseRequest {
   approver_comment?: string | null;
   proforma_filename?: string | null;
   department_id?: string | null;
+  clickup_task_id?: string | null;
 }
 
 interface PendingApproval {
@@ -187,6 +188,13 @@ function MyRequestCard({
         {step && (
           <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
             <span>{step}</span>
+          </span>
+        )}
+
+        {request.clickup_task_id && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/50 flex-shrink-0">
+            <CheckCircle className="w-2.5 h-2.5" />
+            ClickUp
           </span>
         )}
       </div>
