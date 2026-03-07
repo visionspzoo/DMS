@@ -80,12 +80,14 @@ function MyRequestCard({
   submitterName,
   submitterEmail,
   approverName,
+  step,
   onClick,
 }: {
   request: PurchaseRequest;
   submitterName?: string | null;
   submitterEmail?: string | null;
   approverName?: string | null;
+  step?: string | null;
   onClick: () => void;
 }) {
   const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
@@ -96,114 +98,76 @@ function MyRequestCard({
   const date = new Date(request.created_at).toLocaleDateString('pl-PL', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
+  const submitter = submitterName || submitterEmail;
+  const waitingOn = request.status === 'pending' && request.current_approver_id && approverName
+    ? approverName
+    : request.status === 'approved'
+    ? 'Płatność'
+    : null;
 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden hover:border-brand-primary dark:hover:border-brand-primary transition-all group"
+      className="w-full text-left bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 hover:border-brand-primary dark:hover:border-brand-primary transition-all group px-3 py-2.5"
     >
-      <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          {isProforma && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-sky-600 bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 flex-shrink-0">
-              <FileText className="w-3 h-3" />
-              Proforma
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {isProforma && (
+              <span className="flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold text-sky-600 bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400">
+                <FileText className="w-3 h-3" />
+                PF
+              </span>
+            )}
+            <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate">
+              {request.description}
             </span>
-          )}
-          <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate">
-            {request.description}
-          </p>
+          </div>
         </div>
+
         <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark whitespace-nowrap">
+            {isProforma ? '—' : `${totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`}
+          </span>
+
+          <span className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${priorityStyle}`}>
+            {priorityLabel}
+          </span>
+
           <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${status.style}`}>
             {status.icon}
-            {status.label}
+            <span className="hidden sm:inline">{status.label}</span>
           </span>
+
           <ChevronRight className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark group-hover:text-brand-primary transition-colors" />
         </div>
       </div>
 
-      <div className="p-4">
-        {(submitterName || submitterEmail) && (
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+      <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+        <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+          <Calendar className="w-3 h-3 flex-shrink-0" />
+          {date}
+        </span>
+
+        {submitter && (
+          <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
             <User className="w-3 h-3 flex-shrink-0" />
-            <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{submitterName || submitterEmail}</span>
-            {submitterEmail && submitterName && <span className="truncate">({submitterEmail})</span>}
-          </div>
+            <span className="truncate max-w-[120px]">{submitter}</span>
+          </span>
         )}
 
-        {isProforma ? (
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-            <FileText className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{request.proforma_filename}</span>
-          </div>
-        ) : request.link ? (
-          <div className="flex items-center gap-1.5 text-xs text-brand-primary mb-3 max-w-sm">
-            <ExternalLink className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{request.link}</span>
-          </div>
-        ) : null}
+        {waitingOn && (
+          <span className={`flex items-center gap-1 text-xs font-medium ${request.status === 'approved' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
+            <Clock className="w-3 h-3 flex-shrink-0" />
+            Oczekuje: {waitingOn}
+          </span>
+        )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Kwota brutto</p>
-            <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark">
-              {isProforma ? 'Z proformy' : `${totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`}
-            </p>
-            {!isProforma && request.quantity > 1 && (
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                {request.gross_amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} × {request.quantity}
-              </p>
-            )}
-          </div>
-
-          {!isProforma && (
-            <div className="flex items-start gap-1.5">
-              <Package className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Ilość</p>
-                <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">{request.quantity} szt.</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-start gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Dostawa</p>
-              <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">{request.delivery_location}</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Priorytet</p>
-              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${priorityStyle}`}>
-                {priorityLabel}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-            <Calendar className="w-3.5 h-3.5" />
-            Złożony {date}
-          </div>
-          {request.status === 'pending' && request.current_approver_id && approverName && (
-            <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
-              <Clock className="w-3 h-3 flex-shrink-0" />
-              Oczekuje na decyzję: {approverName}
-            </span>
-          )}
-          {request.status === 'approved' && (
-            <span className="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 font-medium">
-              <CreditCard className="w-3 h-3 flex-shrink-0" />
-              Oczekuje na płatność
-            </span>
-          )}
-        </div>
+        {step && (
+          <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{step}</span>
+          </span>
+        )}
       </div>
     </button>
   );
