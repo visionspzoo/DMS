@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { PurchaseRequestDetail } from './PurchaseRequestDetail';
 
 interface PurchaseRequest {
   id: string;
@@ -13,7 +14,10 @@ interface PurchaseRequest {
   priority: string;
   status: string;
   created_at: string;
+  current_approver_id?: string | null;
+  approver_comment?: string | null;
   proforma_filename?: string | null;
+  department_id?: string | null;
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -24,10 +28,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
-  niski: 'Niski',
-  normalny: 'Normalny',
-  wysoki: 'Wysoki',
-  pilny: 'Pilny',
+  niski: 'Niski', normalny: 'Normalny', wysoki: 'Wysoki', pilny: 'Pilny',
 };
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; style: string }> = {
@@ -53,20 +54,22 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; styl
   },
 };
 
-function RequestCard({ request }: { request: PurchaseRequest }) {
+function RequestCard({ request, onClick }: { request: PurchaseRequest; onClick: () => void }) {
   const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
   const priorityStyle = PRIORITY_STYLES[request.priority] || PRIORITY_STYLES.normalny;
   const priorityLabel = PRIORITY_LABELS[request.priority] || request.priority;
   const isProforma = !!request.proforma_filename;
+  const totalAmount = request.gross_amount * (request.quantity || 1);
 
   const date = new Date(request.created_at).toLocaleDateString('pl-PL', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
 
-  const totalAmount = request.gross_amount * (request.quantity || 1);
-
   return (
-    <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden hover:border-brand-primary dark:hover:border-brand-primary transition-all group"
+    >
       <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {isProforma && (
@@ -75,41 +78,39 @@ function RequestCard({ request }: { request: PurchaseRequest }) {
               Proforma
             </span>
           )}
-          <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark line-clamp-1">
+          <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate">
             {request.description}
           </p>
         </div>
-        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${status.style}`}>
-          {status.icon}
-          {status.label}
-        </span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${status.style}`}>
+            {status.icon}
+            {status.label}
+          </span>
+          <ChevronRight className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark group-hover:text-brand-primary transition-colors" />
+        </div>
       </div>
 
       <div className="p-4">
         {isProforma ? (
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-4">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
             <FileText className="w-3 h-3 flex-shrink-0" />
             <span className="truncate">{request.proforma_filename}</span>
           </div>
         ) : request.link ? (
-          <a
-            href={request.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-brand-primary hover:underline mb-4 max-w-sm"
-          >
+          <div className="flex items-center gap-1.5 text-xs text-brand-primary mb-3 max-w-sm">
             <ExternalLink className="w-3 h-3 flex-shrink-0" />
             <span className="truncate">{request.link}</span>
-          </a>
+          </div>
         ) : null}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Kwota brutto</p>
             <p className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark">
-              {totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN
+              {isProforma ? 'Z proformy' : `${totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`}
             </p>
-            {request.quantity > 1 && (
+            {!isProforma && request.quantity > 1 && (
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
                 {request.gross_amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} × {request.quantity}
               </p>
@@ -150,7 +151,7 @@ function RequestCard({ request }: { request: PurchaseRequest }) {
           Złożony {date}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -161,6 +162,7 @@ export function MyPurchaseRequests() {
   const [requests, setRequests] = useState<PurchaseRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -176,6 +178,19 @@ export function MyPurchaseRequests() {
 
     if (!error && data) setRequests(data);
     setLoading(false);
+  }
+
+  if (selectedId) {
+    return (
+      <PurchaseRequestDetail
+        requestId={selectedId}
+        onBack={() => {
+          setSelectedId(null);
+          loadRequests();
+        }}
+        isApprover={false}
+      />
+    );
   }
 
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
@@ -233,7 +248,9 @@ export function MyPurchaseRequests() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map(r => <RequestCard key={r.id} request={r} />)}
+            {filtered.map(r => (
+              <RequestCard key={r.id} request={r} onClick={() => setSelectedId(r.id)} />
+            ))}
           </div>
         )}
       </div>

@@ -11,13 +11,15 @@ import { ContractFullPage } from './components/Contracts/ContractFullPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
 import { PurchaseRequestForm } from './components/PurchaseRequests/PurchaseRequestForm';
 import { MyPurchaseRequests } from './components/PurchaseRequests/MyPurchaseRequests';
+import { PurchaseRequestsToApprove } from './components/PurchaseRequests/PurchaseRequestsToApprove';
+import { PurchaseRequestDetail } from './components/PurchaseRequests/PurchaseRequestDetail';
 import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, FileText, Upload, Settings, LogOut, Moon, Sun, Menu, Bot, Ligature as FileSignature, Download, Cog, BookOpen, ShoppingCart, ClipboardList, Inbox } from 'lucide-react';
 
-type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'my-purchase-requests' | 'configuration' | 'instructions';
+type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'my-purchase-requests' | 'purchase-requests-approve' | 'purchase-request-detail' | 'configuration' | 'instructions';
 
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
@@ -31,6 +33,7 @@ function AppContent() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [selectedPurchaseRequestId, setSelectedPurchaseRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.theme_preference) {
@@ -68,7 +71,6 @@ function AppContent() {
   }
 
   if (!user || !profile) {
-    // Check if user is on accept-invitation page
     if (window.location.pathname === '/accept-invitation') {
       return <AcceptInvitation />;
     }
@@ -83,6 +85,8 @@ function AppContent() {
     }
   };
 
+  const isManagerOrDirector = profile.role === 'Kierownik' || profile.role === 'Dyrektor' || profile.is_admin;
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'invoices', label: 'Moje Faktury', icon: FileText },
@@ -90,6 +94,7 @@ function AppContent() {
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
     { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList },
+    ...(isManagerOrDirector ? [{ id: 'purchase-requests-approve', label: 'Do akceptacji', icon: Inbox }] : []),
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
     { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
@@ -98,6 +103,10 @@ function AppContent() {
   if (profile.is_admin) {
     menuItems.push({ id: 'settings', label: 'Ustawienia', icon: Settings });
   }
+
+  const activeMenuId = appView === 'purchase-request-detail'
+    ? (selectedPurchaseRequestId ? 'purchase-requests-approve' : 'my-purchase-requests')
+    : appView;
 
   return (
     <div className={`h-screen ${darkMode ? 'dark' : ''}`}>
@@ -121,7 +130,7 @@ function AppContent() {
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = appView === item.id;
+            const isActive = activeMenuId === item.id;
             return (
               <button
                 key={item.id}
@@ -199,6 +208,24 @@ function AppContent() {
             />
           )}
           {appView === 'my-purchase-requests' && <MyPurchaseRequests />}
+          {appView === 'purchase-requests-approve' && (
+            <PurchaseRequestsToApprove
+              onSelect={(id) => {
+                setSelectedPurchaseRequestId(id);
+                setAppView('purchase-request-detail');
+              }}
+            />
+          )}
+          {appView === 'purchase-request-detail' && selectedPurchaseRequestId && (
+            <PurchaseRequestDetail
+              requestId={selectedPurchaseRequestId}
+              isApprover={true}
+              onBack={() => {
+                setSelectedPurchaseRequestId(null);
+                setAppView('purchase-requests-approve');
+              }}
+            />
+          )}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
