@@ -9,6 +9,8 @@ import AIAgent from './components/AIAgent/AIAgent';
 import { ContractsPage } from './components/Contracts/ContractsPage';
 import { ContractFullPage } from './components/Contracts/ContractFullPage';
 import { KSEFInvoicesPage } from './components/KSEF/KSEFInvoicesPage';
+import { PurchaseRequestForm } from './components/PurchaseRequests/PurchaseRequestForm';
+import { MyPurchaseRequests } from './components/PurchaseRequests/MyPurchaseRequests';
 import NotificationBell from './components/Dashboard/NotificationBell';
 import UserConfiguration from './components/Configuration/UserConfiguration';
 import { InstructionsPage } from './components/Instructions/InstructionsPage';
@@ -178,7 +180,7 @@ function AppContent() {
           {appView === 'dashboard' && <Dashboard />}
           {appView === 'invoices' && <InvoiceList />}
           {appView === 'ksef' && <KSEFInvoicesPage />}
-          {appView === 'purchase-request' && <PurchaseRequestPage />}
+          {appView === 'purchase-request' && <PurchaseRequestForm />}
           {appView === 'contracts' && (
             <ContractsPage
               onOpenContract={(id: string) => {
@@ -196,7 +198,7 @@ function AppContent() {
               }}
             />
           )}
-          {appView === 'my-purchase-requests' && <MyPurchaseRequestsPage />}
+          {appView === 'my-purchase-requests' && <MyPurchaseRequests />}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && profile.is_admin && <SettingsPanel />}
@@ -207,61 +209,6 @@ function AppContent() {
   );
 }
 
-function PurchaseRequestPage() {
-  return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
-        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-white text-xs font-bold">!</span>
-        </div>
-        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-          W budowie &mdash; brak pełnej funkcjonalności
-        </p>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ShoppingCart className="w-8 h-8 text-brand-primary" />
-          </div>
-          <h2 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark mb-2">
-            Wniosek zakupowy
-          </h2>
-          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Ta funkcja jest aktualnie w budowie. Wkrótce będzie można składać wnioski zakupowe bezpośrednio w systemie.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MyPurchaseRequestsPage() {
-  return (
-    <div className="h-full bg-light-bg dark:bg-dark-bg flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 px-4 py-2.5 flex items-center gap-2.5">
-        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-white text-xs font-bold">!</span>
-        </div>
-        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-          W budowie &mdash; brak pełnej funkcjonalności
-        </p>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ClipboardList className="w-8 h-8 text-brand-primary" />
-          </div>
-          <h2 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark mb-2">
-            Moje wnioski zakupowe
-          </h2>
-          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Ta funkcja jest aktualnie w budowie. Wkrótce będzie można przeglądać swoje wnioski zakupowe bezpośrednio w systemie.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function App() {
   return (
