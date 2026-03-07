@@ -64,6 +64,7 @@ function ManagerLimitsInline({
   setByUserId: string;
 }) {
   const [singleLimit, setSingleLimit] = useState('');
+  const [monthlyLimit, setMonthlyLimit] = useState('');
   const [autoApprove, setAutoApprove] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -77,10 +78,11 @@ function ManagerLimitsInline({
     setErr(null);
 
     Promise.all([
-      supabase.from('manager_limits').select('single_invoice_limit').eq('manager_id', managerId).maybeSingle(),
+      supabase.from('manager_limits').select('single_invoice_limit, monthly_limit').eq('manager_id', managerId).maybeSingle(),
       supabase.from('purchase_request_limits').select('auto_approve_limit').eq('user_id', managerId).maybeSingle(),
     ]).then(([limRes, prRes]) => {
       setSingleLimit(limRes.data?.single_invoice_limit != null ? String(limRes.data.single_invoice_limit) : '');
+      setMonthlyLimit(limRes.data?.monthly_limit != null ? String(limRes.data.monthly_limit) : '');
       setAutoApprove(prRes.data?.auto_approve_limit != null ? String(prRes.data.auto_approve_limit) : '');
       setLoaded(true);
     });
@@ -88,18 +90,20 @@ function ManagerLimitsInline({
 
   async function save() {
     const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
+    const monthly = monthlyLimit.trim() !== '' ? parseFloat(monthlyLimit) : null;
     const auto = autoApprove.trim() !== '' ? parseFloat(autoApprove) : null;
 
     if (single !== null && (isNaN(single) || single < 0)) { setErr('Nieprawidłowy limit faktury'); return; }
+    if (monthly !== null && (isNaN(monthly) || monthly < 0)) { setErr('Nieprawidłowy limit miesięczny'); return; }
     if (auto !== null && (isNaN(auto) || auto < 0)) { setErr('Nieprawidłowy limit wniosku'); return; }
 
     setSaving(true); setErr(null);
     try {
       const { data: existing } = await supabase.from('manager_limits').select('manager_id').eq('manager_id', managerId).maybeSingle();
       if (existing) {
-        await supabase.from('manager_limits').update({ single_invoice_limit: single ?? 0 }).eq('manager_id', managerId);
-      } else if (single !== null) {
-        await supabase.from('manager_limits').insert({ manager_id: managerId, set_by: setByUserId, single_invoice_limit: single });
+        await supabase.from('manager_limits').update({ single_invoice_limit: single ?? 0, monthly_limit: monthly }).eq('manager_id', managerId);
+      } else if (single !== null || monthly !== null) {
+        await supabase.from('manager_limits').insert({ manager_id: managerId, set_by: setByUserId, single_invoice_limit: single ?? 0, monthly_limit: monthly });
       }
 
       const { data: existingPr } = await supabase.from('purchase_request_limits').select('user_id').eq('user_id', managerId).maybeSingle();
@@ -134,19 +138,35 @@ function ManagerLimitsInline({
         </div>
       ) : (
         <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-              Limit pojedynczej faktury (PLN)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={singleLimit}
-              onChange={e => setSingleLimit(e.target.value)}
-              className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-              placeholder="np. 5000.00 (puste = brak limitu)"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                Limit pojedynczej faktury (PLN)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={singleLimit}
+                onChange={e => setSingleLimit(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                placeholder="np. 5000.00 (puste = brak)"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                Limit miesięczny faktur (PLN)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={monthlyLimit}
+                onChange={e => setMonthlyLimit(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                placeholder="np. 20000.00 (puste = brak)"
+              />
+            </div>
           </div>
 
           <div className="rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
