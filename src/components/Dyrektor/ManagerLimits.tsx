@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { DollarSign, Save, AlertCircle, X, Users, Zap, CheckCircle, Calendar } from 'lucide-react';
+import { Save, AlertCircle, X, Users, Zap, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Manager {
@@ -8,14 +8,6 @@ interface Manager {
   full_name: string;
   email: string;
   role: string;
-}
-
-interface ManagerLimit {
-  id: string;
-  manager_id: string;
-  single_invoice_limit: number;
-  monthly_limit: number | null;
-  manager?: Manager;
 }
 
 interface PurchaseRequestLimit {
@@ -36,14 +28,11 @@ const fmt = (val: number | null | undefined) =>
 export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
   const { user } = useAuth();
   const [managers, setManagers] = useState<Manager[]>([]);
-  const [limits, setLimits] = useState<ManagerLimit[]>([]);
   const [prLimits, setPrLimits] = useState<PurchaseRequestLimit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingManager, setEditingManager] = useState<string | null>(null);
-  const [singleLimit, setSingleLimit] = useState('');
-  const [monthlyLimitInput, setMonthlyLimitInput] = useState('');
   const [autoApproveInput, setAutoApproveInput] = useState('');
 
   useEffect(() => {
@@ -53,7 +42,7 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
   async function loadData() {
     try {
       setLoading(true);
-      await Promise.all([loadManagers(), loadLimits(), loadPrLimits()]);
+      await Promise.all([loadManagers(), loadPrLimits()]);
     } finally {
       setLoading(false);
     }
@@ -70,21 +59,6 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
     setManagers(data || []);
   }
 
-  async function loadLimits() {
-    const { data, error } = await supabase
-      .from('manager_limits')
-      .select(`
-        id,
-        manager_id,
-        single_invoice_limit,
-        monthly_limit,
-        manager:manager_id(id, full_name, email, role)
-      `);
-
-    if (error) throw error;
-    setLimits(data || []);
-  }
-
   async function loadPrLimits() {
     const { data } = await supabase
       .from('purchase_request_limits')
@@ -92,38 +66,18 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
     setPrLimits(data || []);
   }
 
-  function getManagerLimit(managerId: string): ManagerLimit | undefined {
-    return limits.find(l => l.manager_id === managerId);
-  }
-
   function getPrLimit(managerId: string): PurchaseRequestLimit | undefined {
     return prLimits.find(l => l.user_id === managerId);
   }
 
   function handleEditManager(managerId: string) {
-    const limit = getManagerLimit(managerId);
     const prLimit = getPrLimit(managerId);
     setEditingManager(managerId);
-    setSingleLimit(limit?.single_invoice_limit.toString() || '0');
-    setMonthlyLimitInput(limit?.monthly_limit != null ? String(limit.monthly_limit) : '');
     setAutoApproveInput(prLimit?.auto_approve_limit != null ? String(prLimit.auto_approve_limit) : '');
     setError(null);
   }
 
   async function handleSaveLimit(managerId: string) {
-    const singleLimitNum = parseFloat(singleLimit);
-
-    if (isNaN(singleLimitNum) || singleLimitNum < 0) {
-      setError('Limit pojedynczej faktury musi być poprawną liczbą nieujemną');
-      return;
-    }
-
-    const monthlyLimitVal = monthlyLimitInput.trim() !== '' ? parseFloat(monthlyLimitInput) : null;
-    if (monthlyLimitVal !== null && (isNaN(monthlyLimitVal) || monthlyLimitVal < 0)) {
-      setError('Limit miesięczny musi być poprawną liczbą nieujemną');
-      return;
-    }
-
     const autoApproveVal = autoApproveInput.trim() !== '' ? parseFloat(autoApproveInput) : null;
     if (autoApproveVal !== null && (isNaN(autoApproveVal) || autoApproveVal < 0)) {
       setError('Limit auto-akceptacji wniosku musi być poprawną liczbą nieujemną');
@@ -132,26 +86,6 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
 
     try {
       setError(null);
-      const existingLimit = getManagerLimit(managerId);
-
-      if (existingLimit) {
-        const { error } = await supabase
-          .from('manager_limits')
-          .update({ single_invoice_limit: singleLimitNum, monthly_limit: monthlyLimitVal })
-          .eq('manager_id', managerId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('manager_limits')
-          .insert({
-            manager_id: managerId,
-            set_by: userId,
-            single_invoice_limit: singleLimitNum,
-            monthly_limit: monthlyLimitVal,
-          });
-        if (error) throw error;
-      }
-
       const existingPrLimit = getPrLimit(managerId);
       if (existingPrLimit) {
         const { error } = await supabase
@@ -172,10 +106,8 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
 
       setSuccess('Limity zostały zaktualizowane');
       setEditingManager(null);
-      setSingleLimit('');
-      setMonthlyLimitInput('');
       setAutoApproveInput('');
-      await Promise.all([loadLimits(), loadPrLimits()]);
+      await loadPrLimits();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Błąd podczas aktualizacji limitów');
@@ -184,8 +116,6 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
 
   function handleCancel() {
     setEditingManager(null);
-    setSingleLimit('');
-    setMonthlyLimitInput('');
     setAutoApproveInput('');
     setError(null);
   }
@@ -204,11 +134,11 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <DollarSign className="w-7 h-7 text-brand-primary" />
+              <Zap className="w-7 h-7 text-brand-primary" />
               <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">Limity kierowników</h1>
             </div>
             <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-              Ustaw limity zatwierdzania faktur oraz auto-akceptacji wniosków zakupowych dla kierowników
+              Ustaw limity auto-akceptacji wniosków zakupowych dla kierowników
             </p>
           </div>
           <button
@@ -244,7 +174,6 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {managers.map((manager) => {
-              const limit = getManagerLimit(manager.id);
               const prLimit = getPrLimit(manager.id);
               const isEditing = editingManager === manager.id;
 
@@ -269,37 +198,6 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
 
                   {isEditing ? (
                     <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                            Limit pojedynczej faktury (PLN)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={singleLimit}
-                            onChange={(e) => setSingleLimit(e.target.value)}
-                            className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/50"
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                            Limit miesięczny faktur (PLN)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={monthlyLimitInput}
-                            onChange={(e) => setMonthlyLimitInput(e.target.value)}
-                            className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/50"
-                            placeholder="Brak limitu"
-                          />
-                        </div>
-                      </div>
-
                       <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
                         <div className="flex items-center gap-1.5 mb-2">
                           <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -338,33 +236,7 @@ export default function ManagerLimits({ userId, onBack }: ManagerLimitsProps) {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <DollarSign className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-                          <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Pojedyncza faktura</div>
-                        </div>
-                        {limit ? (
-                          <div className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                            {fmt(limit.single_invoice_limit)}
-                          </div>
-                        ) : (
-                          <div className="text-xs italic text-text-secondary-light dark:text-text-secondary-dark">Brak limitu</div>
-                        )}
-                      </div>
-                      <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <Calendar className="w-3 h-3 text-text-secondary-light dark:text-text-secondary-dark" />
-                          <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Limit miesięczny</div>
-                        </div>
-                        {limit?.monthly_limit != null ? (
-                          <div className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                            {fmt(limit.monthly_limit)}
-                          </div>
-                        ) : (
-                          <div className="text-xs italic text-text-secondary-light dark:text-text-secondary-dark">Brak limitu</div>
-                        )}
-                      </div>
+                    <div className="w-full max-w-xs">
                       <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
                         <div className="flex items-center gap-1 mb-0.5">
                           <Zap className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
