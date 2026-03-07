@@ -175,7 +175,7 @@ export function PurchaseRequestDetail({
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg overflow-y-auto">
-      <div className="p-4 max-w-2xl mx-auto">
+      <div className="p-4">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-sm text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark mb-4 transition-colors"
