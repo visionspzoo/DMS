@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Building2, Plus, Edit2, Trash2, Users, ChevronRight, ChevronDown, X, Save, Search } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, Users, ChevronRight, ChevronDown, X, Save, Search, DollarSign, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import DepartmentFlowChart from './DepartmentFlowChart';
 
@@ -12,7 +12,6 @@ interface Department {
   manager_id: string | null;
   director_id: string | null;
   max_invoice_amount: number | null;
-  max_monthly_amount: number | null;
   google_drive_draft_folder_id: string | null;
   google_drive_unpaid_folder_id: string | null;
   google_drive_paid_folder_id: string | null;
@@ -42,6 +41,156 @@ interface DepartmentMember {
   user: Profile;
 }
 
+interface ManagerLimit {
+  manager_id: string;
+  single_invoice_limit: number;
+}
+
+interface PurchaseRequestLimit {
+  user_id: string;
+  auto_approve_limit: number | null;
+}
+
+const fmt = (val: number | null | undefined) =>
+  val !== null && val !== undefined
+    ? new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 2 }).format(val)
+    : null;
+
+function ManagerLimitsInline({
+  managerId,
+  setByUserId,
+}: {
+  managerId: string;
+  setByUserId: string;
+}) {
+  const [singleLimit, setSingleLimit] = useState('');
+  const [autoApprove, setAutoApprove] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!managerId) { setLoaded(false); return; }
+    setLoaded(false);
+    setSaved(false);
+    setErr(null);
+
+    Promise.all([
+      supabase.from('manager_limits').select('single_invoice_limit').eq('manager_id', managerId).maybeSingle(),
+      supabase.from('purchase_request_limits').select('auto_approve_limit').eq('user_id', managerId).maybeSingle(),
+    ]).then(([limRes, prRes]) => {
+      setSingleLimit(limRes.data?.single_invoice_limit != null ? String(limRes.data.single_invoice_limit) : '');
+      setAutoApprove(prRes.data?.auto_approve_limit != null ? String(prRes.data.auto_approve_limit) : '');
+      setLoaded(true);
+    });
+  }, [managerId]);
+
+  async function save() {
+    const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
+    const auto = autoApprove.trim() !== '' ? parseFloat(autoApprove) : null;
+
+    if (single !== null && (isNaN(single) || single < 0)) { setErr('Nieprawidłowy limit faktury'); return; }
+    if (auto !== null && (isNaN(auto) || auto < 0)) { setErr('Nieprawidłowy limit wniosku'); return; }
+
+    setSaving(true); setErr(null);
+    try {
+      const { data: existing } = await supabase.from('manager_limits').select('manager_id').eq('manager_id', managerId).maybeSingle();
+      if (existing) {
+        await supabase.from('manager_limits').update({ single_invoice_limit: single ?? 0 }).eq('manager_id', managerId);
+      } else if (single !== null) {
+        await supabase.from('manager_limits').insert({ manager_id: managerId, set_by: setByUserId, single_invoice_limit: single });
+      }
+
+      const { data: existingPr } = await supabase.from('purchase_request_limits').select('user_id').eq('user_id', managerId).maybeSingle();
+      if (existingPr) {
+        await supabase.from('purchase_request_limits').update({ auto_approve_limit: auto }).eq('user_id', managerId);
+      } else {
+        await supabase.from('purchase_request_limits').insert({ user_id: managerId, set_by: setByUserId, auto_approve_limit: auto });
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Błąd zapisu');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!managerId) return null;
+
+  return (
+    <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
+      <div className="flex items-center gap-2 mb-3">
+        <DollarSign className="w-4 h-4 text-brand-primary" />
+        <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+          Limity kierownika
+        </h4>
+      </div>
+      {!loaded ? (
+        <div className="h-8 flex items-center">
+          <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+              Limit pojedynczej faktury (PLN)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={singleLimit}
+              onChange={e => setSingleLimit(e.target.value)}
+              className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+              placeholder="np. 5000.00 (puste = brak limitu)"
+            />
+          </div>
+
+          <div className="rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                Auto-akceptacja wniosku zakupowego (PLN)
+              </span>
+            </div>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">
+              Wnioski zakupowe do tej kwoty będą akceptowane bez akceptacji dyrektora. Pozostaw puste, aby wymagać zawsze.
+            </p>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={autoApprove}
+              onChange={e => setAutoApprove(e.target.value)}
+              className="w-full px-3 py-1.5 border border-emerald-300 dark:border-emerald-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
+              placeholder="np. 3000.00 (puste = zawsze wymaga akceptacji)"
+            />
+          </div>
+
+          {err && <p className="text-xs text-red-600 dark:text-red-400">{err}</p>}
+
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+              saved
+                ? 'bg-emerald-500 text-white'
+                : 'bg-brand-primary text-white hover:bg-brand-primary/90'
+            }`}
+          >
+            <Save className="w-3.5 h-3.5" />
+            {saving ? 'Zapisywanie...' : saved ? 'Zapisano!' : 'Zapisz limity kierownika'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DepartmentManagement() {
   const { profile } = useAuth();
   const isAdmin = profile?.is_admin;
@@ -51,6 +200,8 @@ export default function DepartmentManagement() {
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [users, setUsers] = useState<Profile[]>([]);
+  const [managerLimits, setManagerLimits] = useState<ManagerLimit[]>([]);
+  const [prLimits, setPrLimits] = useState<PurchaseRequestLimit[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
@@ -65,7 +216,6 @@ export default function DepartmentManagement() {
     manager_id: '',
     director_id: '',
     max_invoice_amount: '',
-    max_monthly_amount: '',
     google_drive_draft_folder_id: '',
     google_drive_unpaid_folder_id: '',
     google_drive_paid_folder_id: '',
@@ -76,6 +226,8 @@ export default function DepartmentManagement() {
   useEffect(() => {
     loadDepartments();
     loadUsers();
+    loadManagerLimits();
+    loadPrLimits();
   }, []);
 
   useEffect(() => {
@@ -119,6 +271,16 @@ export default function DepartmentManagement() {
     }
   };
 
+  const loadManagerLimits = async () => {
+    const { data } = await supabase.from('manager_limits').select('manager_id, single_invoice_limit');
+    setManagerLimits(data || []);
+  };
+
+  const loadPrLimits = async () => {
+    const { data } = await supabase.from('purchase_request_limits').select('user_id, auto_approve_limit');
+    setPrLimits(data || []);
+  };
+
   const loadDepartmentMembers = async (departmentId: string) => {
     try {
       const { data, error } = await supabase
@@ -147,7 +309,6 @@ export default function DepartmentManagement() {
         manager_id: newDept.manager_id || null,
         director_id: newDept.director_id || null,
         max_invoice_amount: newDept.max_invoice_amount ? parseFloat(newDept.max_invoice_amount) : null,
-        max_monthly_amount: newDept.max_monthly_amount ? parseFloat(newDept.max_monthly_amount) : null,
         google_drive_draft_folder_id: newDept.google_drive_draft_folder_id || null,
         google_drive_unpaid_folder_id: newDept.google_drive_unpaid_folder_id || null,
         google_drive_paid_folder_id: newDept.google_drive_paid_folder_id || null,
@@ -157,7 +318,7 @@ export default function DepartmentManagement() {
 
       if (error) throw error;
 
-      setNewDept({ name: '', mpk_code: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '', google_drive_attachments_folder_id: '' });
+      setNewDept({ name: '', mpk_code: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '', google_drive_attachments_folder_id: '' });
       setShowAddDept(false);
       loadDepartments();
     } catch (err) {
@@ -179,7 +340,6 @@ export default function DepartmentManagement() {
           manager_id: editingDept.manager_id || null,
           director_id: editingDept.director_id || null,
           max_invoice_amount: editingDept.max_invoice_amount,
-          max_monthly_amount: editingDept.max_monthly_amount,
           google_drive_draft_folder_id: editingDept.google_drive_draft_folder_id,
           google_drive_unpaid_folder_id: editingDept.google_drive_unpaid_folder_id,
           google_drive_paid_folder_id: editingDept.google_drive_paid_folder_id,
@@ -192,6 +352,8 @@ export default function DepartmentManagement() {
       setShowEditDept(false);
       setEditingDept(null);
       loadDepartments();
+      loadManagerLimits();
+      loadPrLimits();
     } catch (err) {
       console.error('Error updating department:', err);
       alert('Nie udało się zaktualizować działu');
@@ -262,6 +424,16 @@ export default function DepartmentManagement() {
     return departments.filter(d => d.parent_department_id === parentId);
   };
 
+  const getManagerLimitForDept = (dept: Department) => {
+    if (!dept.manager_id) return null;
+    return managerLimits.find(l => l.manager_id === dept.manager_id) || null;
+  };
+
+  const getPrLimitForDept = (dept: Department) => {
+    if (!dept.manager_id) return null;
+    return prLimits.find(l => l.user_id === dept.manager_id) || null;
+  };
+
   const renderDepartmentTree = (parentId: string | null = null, level: number = 0) => {
     const childDepts = getChildDepts(parentId);
     if (childDepts.length === 0) return null;
@@ -270,6 +442,8 @@ export default function DepartmentManagement() {
       const hasChildren = getChildDepts(dept.id).length > 0;
       const isExpanded = expandedDepts.has(dept.id);
       const isSelected = selectedDept === dept.id;
+      const mgrLimit = getManagerLimitForDept(dept);
+      const prLimit = getPrLimitForDept(dept);
 
       return (
         <div key={dept.id} className="mb-0.5">
@@ -306,10 +480,17 @@ export default function DepartmentManagement() {
             >
               <div className="font-semibold text-xs text-text-primary-light dark:text-text-primary-dark truncate">
                 {dept.name}
+                {dept.mpk_code && <span className="ml-1 text-text-secondary-light dark:text-text-secondary-dark font-normal">({dept.mpk_code})</span>}
               </div>
               {(dept.manager || dept.director) && (
                 <div className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark truncate">
                   {dept.manager && `Kierownik: ${dept.manager.full_name}`}
+                  {dept.manager && mgrLimit && (
+                    <span className="ml-1 text-brand-primary">· limit: {fmt(mgrLimit.single_invoice_limit)}</span>
+                  )}
+                  {dept.manager && prLimit?.auto_approve_limit != null && (
+                    <span className="ml-1 text-emerald-600 dark:text-emerald-400">· wniosek: {fmt(prLimit.auto_approve_limit)}</span>
+                  )}
                   {dept.manager && dept.director && ' | '}
                   {dept.director && `Dyrektor: ${dept.director.full_name}`}
                 </div>
@@ -515,7 +696,7 @@ export default function DepartmentManagement() {
               <button
                 onClick={() => {
                   setShowAddDept(false);
-                  setNewDept({ name: '', parent_department_id: '', manager_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '' });
+                  setNewDept({ name: '', mpk_code: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '', google_drive_attachments_folder_id: '' });
                 }}
                 className="p-1 hover:bg-light-surface dark:hover:bg-dark-surface rounded transition-colors"
               >
@@ -604,42 +785,21 @@ export default function DepartmentManagement() {
 
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-2.5 mt-2.5">
                 <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-1.5">
-                  Limity zatwierdzania faktur
+                  Limit zatwierdzania faktur działu
                 </h4>
-                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-2">
-                  Ustaw maksymalne kwoty dla automatycznego zatwierdzania faktur bez potrzeby akceptacji przez działy nadrzędne
-                </p>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Max kwota pojedynczej faktury (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newDept.max_invoice_amount}
-                      onChange={(e) => setNewDept({ ...newDept, max_invoice_amount: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 5000.00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Max suma miesięcznych faktur (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newDept.max_monthly_amount}
-                      onChange={(e) => setNewDept({ ...newDept, max_monthly_amount: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 50000.00"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                    Max kwota pojedynczej faktury działu (PLN)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newDept.max_invoice_amount}
+                    onChange={(e) => setNewDept({ ...newDept, max_invoice_amount: e.target.value })}
+                    className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    placeholder="np. 5000.00"
+                  />
                 </div>
               </div>
 
@@ -647,62 +807,27 @@ export default function DepartmentManagement() {
                 <h4 className="text-xs font-semibold text-text-primary-light dark:text-text-primary-dark mb-1.5">
                   Foldery Google Drive
                 </h4>
-                <p className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark mb-2">
-                  Wprowadź ID folderów Google Drive dla automatycznego przenoszenia faktur
-                </p>
 
                 <div className="space-y-2">
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Folder dla faktur roboczych
-                    </label>
-                    <input
-                      type="text"
-                      value={newDept.google_drive_draft_folder_id}
-                      onChange={(e) => setNewDept({ ...newDept, google_drive_draft_folder_id: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Folder dla faktur nieopłaconych
-                    </label>
-                    <input
-                      type="text"
-                      value={newDept.google_drive_unpaid_folder_id}
-                      onChange={(e) => setNewDept({ ...newDept, google_drive_unpaid_folder_id: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Folder dla faktur opłaconych
-                    </label>
-                    <input
-                      type="text"
-                      value={newDept.google_drive_paid_folder_id}
-                      onChange={(e) => setNewDept({ ...newDept, google_drive_paid_folder_id: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                      Folder dla załączników
-                    </label>
-                    <input
-                      type="text"
-                      value={newDept.google_drive_attachments_folder_id}
-                      onChange={(e) => setNewDept({ ...newDept, google_drive_attachments_folder_id: e.target.value })}
-                      className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
+                  {[
+                    { key: 'google_drive_draft_folder_id', label: 'Folder dla faktur roboczych' },
+                    { key: 'google_drive_unpaid_folder_id', label: 'Folder dla faktur nieopłaconych' },
+                    { key: 'google_drive_paid_folder_id', label: 'Folder dla faktur opłaconych' },
+                    { key: 'google_drive_attachments_folder_id', label: 'Folder dla załączników' },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="block text-[10px] font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                        {label}
+                      </label>
+                      <input
+                        type="text"
+                        value={(newDept as Record<string, string>)[key]}
+                        onChange={(e) => setNewDept({ ...newDept, [key]: e.target.value })}
+                        className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600/50 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                        placeholder="ID folderu z Google Drive"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -717,7 +842,7 @@ export default function DepartmentManagement() {
                 <button
                   onClick={() => {
                     setShowAddDept(false);
-                    setNewDept({ name: '', parent_department_id: '', manager_id: '', max_invoice_amount: '', max_monthly_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '' });
+                    setNewDept({ name: '', mpk_code: '', parent_department_id: '', manager_id: '', director_id: '', max_invoice_amount: '', google_drive_draft_folder_id: '', google_drive_unpaid_folder_id: '', google_drive_paid_folder_id: '', google_drive_attachments_folder_id: '' });
                   }}
                   className="px-3 py-1.5 text-text-secondary-light dark:text-text-secondary-dark text-xs font-medium hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors"
                 >
@@ -854,106 +979,57 @@ export default function DepartmentManagement() {
               </div>
 
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
-                  Limity zatwierdzania faktur
+                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-3">
+                  Limit zatwierdzania faktur działu
                 </h4>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-                  Ustaw maksymalne kwoty dla automatycznego zatwierdzania faktur bez potrzeby akceptacji przez działy nadrzędne
-                </p>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Max kwota pojedynczej faktury (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editingDept.max_invoice_amount || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 5000.00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Max suma miesięcznych faktur (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editingDept.max_monthly_amount || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, max_monthly_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 50000.00"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                    Max kwota pojedynczej faktury działu (PLN)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingDept.max_invoice_amount || ''}
+                    onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    placeholder="np. 5000.00"
+                  />
                 </div>
               </div>
+
+              {canManageDepartments && editingDept.manager_id && (
+                <ManagerLimitsInline
+                  managerId={editingDept.manager_id}
+                  setByUserId={profile?.id ?? ''}
+                />
+              )}
 
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
                   Foldery Google Drive
                 </h4>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-                  Wprowadź ID folderów Google Drive dla automatycznego przenoszenia faktur
-                </p>
 
                 <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Folder dla faktur roboczych
-                    </label>
-                    <input
-                      type="text"
-                      value={editingDept.google_drive_draft_folder_id || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, google_drive_draft_folder_id: e.target.value || null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Folder dla faktur nieopłaconych
-                    </label>
-                    <input
-                      type="text"
-                      value={editingDept.google_drive_unpaid_folder_id || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, google_drive_unpaid_folder_id: e.target.value || null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Folder dla faktur opłaconych
-                    </label>
-                    <input
-                      type="text"
-                      value={editingDept.google_drive_paid_folder_id || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, google_drive_paid_folder_id: e.target.value || null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Folder dla załączników
-                    </label>
-                    <input
-                      type="text"
-                      value={editingDept.google_drive_attachments_folder_id || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, google_drive_attachments_folder_id: e.target.value || null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="ID folderu z Google Drive"
-                    />
-                  </div>
+                  {[
+                    { key: 'google_drive_draft_folder_id', label: 'Folder dla faktur roboczych' },
+                    { key: 'google_drive_unpaid_folder_id', label: 'Folder dla faktur nieopłaconych' },
+                    { key: 'google_drive_paid_folder_id', label: 'Folder dla faktur opłaconych' },
+                    { key: 'google_drive_attachments_folder_id', label: 'Folder dla załączników' },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                        {label}
+                      </label>
+                      <input
+                        type="text"
+                        value={(editingDept as Record<string, unknown>)[key] as string || ''}
+                        onChange={(e) => setEditingDept({ ...editingDept, [key]: e.target.value || null })}
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                        placeholder="ID folderu z Google Drive"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
