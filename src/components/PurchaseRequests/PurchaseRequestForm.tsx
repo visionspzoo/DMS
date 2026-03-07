@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle, Building2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle, Building2, FileText, ToggleLeft, ToggleRight, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -21,6 +21,9 @@ interface Department {
 
 interface RequestItem {
   id: string;
+  isProforma: boolean;
+  proformaFile: File | null;
+  proformaBase64: string | null;
   link: string;
   gross_amount: string;
   description: string;
@@ -33,6 +36,9 @@ interface RequestItem {
 function createEmptyItem(defaultDepartmentId: string): RequestItem {
   return {
     id: crypto.randomUUID(),
+    isProforma: false,
+    proformaFile: null,
+    proformaBase64: null,
     link: '',
     gross_amount: '',
     description: '',
@@ -43,6 +49,15 @@ function createEmptyItem(defaultDepartmentId: string): RequestItem {
   };
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function ItemCard({
   item,
   index,
@@ -50,6 +65,8 @@ function ItemCard({
   departments,
   onChange,
   onRemove,
+  onProformaToggle,
+  onProformaFile,
 }: {
   item: RequestItem;
   index: number;
@@ -57,43 +74,107 @@ function ItemCard({
   departments: Department[];
   onChange: (id: string, field: keyof RequestItem, value: string) => void;
   onRemove: (id: string) => void;
+  onProformaToggle: (id: string) => void;
+  onProformaFile: (id: string, file: File | null) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
       <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
         <span className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider">
           Pozycja {index + 1}
         </span>
-        {total > 1 && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => onRemove(item.id)}
-            className="p-1 rounded-md text-text-secondary-light dark:text-text-secondary-dark hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            onClick={() => onProformaToggle(item.id)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+              item.isProforma
+                ? 'text-sky-600 bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 border-sky-300 dark:border-sky-700'
+                : 'text-text-secondary-light dark:text-text-secondary-dark border-slate-200 dark:border-slate-700/50 hover:border-slate-400 dark:hover:border-slate-500'
+            }`}
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            {item.isProforma
+              ? <ToggleRight className="w-3.5 h-3.5" />
+              : <ToggleLeft className="w-3.5 h-3.5" />
+            }
+            Proforma PDF
           </button>
-        )}
+          {total > 1 && (
+            <button
+              type="button"
+              onClick={() => onRemove(item.id)}
+              className="p-1 rounded-md text-text-secondary-light dark:text-text-secondary-dark hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="md:col-span-2">
-          <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
-            <Link className="w-3.5 h-3.5" />
-            Link do zakupu
-          </label>
-          <input
-            type="url"
-            value={item.link}
-            onChange={e => onChange(item.id, 'link', e.target.value)}
-            placeholder="https://..."
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
-          />
-        </div>
+        {item.isProforma ? (
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Faktura proforma (PDF)
+            </label>
+            {item.proformaFile ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-sky-200 dark:border-sky-700/50 bg-sky-50 dark:bg-sky-900/20">
+                <FileText className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                <span className="text-sm text-text-primary-light dark:text-text-primary-dark flex-1 truncate">{item.proformaFile.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onProformaFile(item.id, null)}
+                  className="p-0.5 rounded text-text-secondary-light dark:text-text-secondary-dark hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-4 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-sky-400 dark:hover:border-sky-500 text-text-secondary-light dark:text-text-secondary-dark hover:text-sky-500 dark:hover:text-sky-400 transition-all flex flex-col items-center gap-2"
+              >
+                <Upload className="w-5 h-5" />
+                <span className="text-xs font-medium">Kliknij aby wybrać plik PDF</span>
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0] || null;
+                onProformaFile(item.id, file);
+                e.target.value = '';
+              }}
+            />
+          </div>
+        ) : (
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
+              <Link className="w-3.5 h-3.5" />
+              Link do zakupu
+            </label>
+            <input
+              type="url"
+              value={item.link}
+              onChange={e => onChange(item.id, 'link', e.target.value)}
+              placeholder="https://..."
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
             <DollarSign className="w-3.5 h-3.5" />
             Kwota brutto (PLN)
+            {item.isProforma && <span className="text-text-secondary-light dark:text-text-secondary-dark font-normal">(opcjonalnie)</span>}
           </label>
           <input
             type="number"
@@ -101,28 +182,36 @@ function ItemCard({
             step="0.01"
             value={item.gross_amount}
             onChange={e => onChange(item.id, 'gross_amount', e.target.value)}
-            placeholder="0.00"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
+            placeholder={item.isProforma ? 'Z proformy' : '0.00'}
+            disabled={item.isProforma}
+            className={`w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors ${
+              item.isProforma
+                ? 'bg-slate-100 dark:bg-slate-800/50 opacity-60 cursor-not-allowed'
+                : 'bg-light-bg dark:bg-dark-bg'
+            }`}
           />
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
-            <Hash className="w-3.5 h-3.5" />
-            Ilość sztuk
-          </label>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={item.quantity}
-            onChange={e => onChange(item.id, 'quantity', e.target.value)}
-            placeholder="1"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
-          />
-        </div>
+        {!item.isProforma && (
+          <div>
+            <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
+              <Hash className="w-3.5 h-3.5" />
+              Ilość sztuk
+            </label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={item.quantity}
+              onChange={e => onChange(item.id, 'quantity', e.target.value)}
+              placeholder="1"
+              disabled={item.isProforma}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
+            />
+          </div>
+        )}
 
-        <div className="md:col-span-2">
+        <div className={item.isProforma ? '' : 'md:col-span-2'}>
           <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
             <AlignLeft className="w-3.5 h-3.5" />
             Opis
@@ -146,9 +235,7 @@ function ItemCard({
             onChange={e => onChange(item.id, 'department_id', e.target.value)}
             className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
           >
-            {departments.length === 0 && (
-              <option value="">Brak działów</option>
-            )}
+            {departments.length === 0 && <option value="">Brak działów</option>}
             {departments.map(dept => (
               <option key={dept.id} value={dept.id}>{dept.name}</option>
             ))}
@@ -233,6 +320,23 @@ export function PurchaseRequestForm() {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   }
 
+  function handleProformaToggle(id: string) {
+    setItems(prev => prev.map(item =>
+      item.id === id
+        ? { ...item, isProforma: !item.isProforma, proformaFile: null, proformaBase64: null, link: '', gross_amount: '', quantity: '1' }
+        : item
+    ));
+  }
+
+  async function handleProformaFile(id: string, file: File | null) {
+    if (!file) {
+      setItems(prev => prev.map(item => item.id === id ? { ...item, proformaFile: null, proformaBase64: null } : item));
+      return;
+    }
+    const base64 = await fileToBase64(file);
+    setItems(prev => prev.map(item => item.id === id ? { ...item, proformaFile: file, proformaBase64: base64 } : item));
+  }
+
   function addItem() {
     setItems(prev => [...prev, createEmptyItem(defaultDepartmentId)]);
   }
@@ -246,10 +350,15 @@ export function PurchaseRequestForm() {
     if (!user) return;
 
     for (const item of items) {
-      if (!item.link.trim()) { setError('Uzupełnij link do zakupu w każdej pozycji.'); return; }
-      if (!item.gross_amount || parseFloat(item.gross_amount) <= 0) { setError('Podaj kwotę brutto w każdej pozycji.'); return; }
-      if (!item.description.trim()) { setError('Uzupełnij opis w każdej pozycji.'); return; }
-      if (!item.quantity || parseInt(item.quantity) < 1) { setError('Ilość musi być co najmniej 1.'); return; }
+      if (item.isProforma) {
+        if (!item.proformaFile) { setError('Dodaj plik PDF proformy w każdej pozycji proforma.'); return; }
+        if (!item.description.trim()) { setError('Uzupełnij opis w każdej pozycji.'); return; }
+      } else {
+        if (!item.link.trim()) { setError('Uzupełnij link do zakupu w każdej pozycji.'); return; }
+        if (!item.gross_amount || parseFloat(item.gross_amount) <= 0) { setError('Podaj kwotę brutto w każdej pozycji.'); return; }
+        if (!item.description.trim()) { setError('Uzupełnij opis w każdej pozycji.'); return; }
+        if (!item.quantity || parseInt(item.quantity) < 1) { setError('Ilość musi być co najmniej 1.'); return; }
+      }
     }
 
     setSubmitting(true);
@@ -257,14 +366,16 @@ export function PurchaseRequestForm() {
 
     const rows = items.map(item => ({
       user_id: user.id,
-      link: item.link.trim(),
-      gross_amount: parseFloat(item.gross_amount),
+      link: item.isProforma ? '' : item.link.trim(),
+      gross_amount: item.isProforma ? 0 : parseFloat(item.gross_amount),
       description: item.description.trim(),
-      quantity: parseInt(item.quantity),
+      quantity: item.isProforma ? 1 : parseInt(item.quantity),
       delivery_location: item.delivery_location,
       priority: item.priority,
       department_id: item.department_id || null,
       status: 'pending',
+      proforma_pdf_base64: item.isProforma ? item.proformaBase64 : null,
+      proforma_filename: item.isProforma ? item.proformaFile?.name : null,
     }));
 
     const { error: insertError } = await supabase.from('purchase_requests').insert(rows);
@@ -282,6 +393,7 @@ export function PurchaseRequestForm() {
   }
 
   const totalAmount = items.reduce((sum, item) => {
+    if (item.isProforma) return sum;
     const amount = parseFloat(item.gross_amount || '0') * parseInt(item.quantity || '1');
     return sum + (isNaN(amount) ? 0 : amount);
   }, 0);
@@ -330,6 +442,8 @@ export function PurchaseRequestForm() {
                 departments={departments}
                 onChange={handleChange}
                 onRemove={removeItem}
+                onProformaToggle={handleProformaToggle}
+                onProformaFile={handleProformaFile}
               />
             ))}
           </div>
@@ -347,10 +461,16 @@ export function PurchaseRequestForm() {
             <div>
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Łączna kwota brutto</p>
               <p className="text-lg font-bold text-text-primary-light dark:text-text-primary-dark">
-                {totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                {totalAmount > 0
+                  ? `${totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN`
+                  : items.some(i => i.isProforma) ? 'Z proformy' : '0,00 PLN'
+                }
               </p>
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
                 {items.length} {items.length === 1 ? 'pozycja' : items.length < 5 ? 'pozycje' : 'pozycji'}
+                {items.some(i => i.isProforma) && (
+                  <span className="ml-1 text-sky-500">· zawiera proformy</span>
+                )}
               </p>
             </div>
 
