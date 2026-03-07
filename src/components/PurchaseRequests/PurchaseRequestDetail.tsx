@@ -249,7 +249,7 @@ export function PurchaseRequestDetail({
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <div className="w-full p-4 space-y-4">
 
         {/* Back button */}
         <button
