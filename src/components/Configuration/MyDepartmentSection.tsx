@@ -230,7 +230,12 @@ export default function MyDepartmentSection() {
 
         {departments.map(dept => {
           const isOpen = expandedDepts.has(dept.id);
-          const subordinates = dept.members.filter(m => m.id !== profile?.id);
+          const isCurrentUserDirector = profile?.role === 'Dyrektor';
+          const subordinates = dept.members.filter(m => {
+            if (m.id === profile?.id) return false;
+            if (!isCurrentUserDirector && m.role === 'Dyrektor') return false;
+            return true;
+          });
 
           return (
             <div key={dept.id} className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
