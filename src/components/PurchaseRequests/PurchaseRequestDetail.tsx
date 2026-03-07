@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Clock, CheckCircle, XCircle, CreditCard, FileText, ExternalLink, MapPin, Zap, Package, Calendar, Building2, User, MessageSquare, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { PurchaseRequestComments } from './PurchaseRequestComments';
 
 interface PurchaseRequest {
   id: string;
@@ -436,6 +437,11 @@ export function PurchaseRequestDetail({
             </div>
           </div>
         )}
+
+        {/* Comments / discussion */}
+        <div className="mb-4">
+          <PurchaseRequestComments requestId={requestId} />
+        </div>
 
         {/* Approver actions */}
         {canApprove && (
