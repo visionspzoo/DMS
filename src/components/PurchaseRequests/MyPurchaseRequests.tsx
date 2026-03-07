@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight, User, Inbox, Building2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight, User, Inbox, Building2, Search, Filter, X, ChevronLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PurchaseRequestDetail } from './PurchaseRequestDetail';
@@ -41,6 +41,13 @@ interface PendingApproval {
   has_director: boolean | null;
 }
 
+interface Department {
+  id: string;
+  name: string;
+}
+
+const PAGE_SIZE = 30;
+
 const PRIORITY_STYLES: Record<string, string> = {
   niski: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400',
   normalny: 'text-brand-primary bg-brand-primary/10 dark:bg-brand-primary/20',
@@ -75,12 +82,18 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; styl
   },
 };
 
+const MONTH_NAMES = [
+  'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
+];
+
 function MyRequestCard({
   request,
   submitterName,
   submitterEmail,
   approverName,
   step,
+  departmentName,
   onClick,
 }: {
   request: PurchaseRequest;
@@ -88,6 +101,7 @@ function MyRequestCard({
   submitterEmail?: string | null;
   approverName?: string | null;
   step?: string | null;
+  departmentName?: string | null;
   onClick: () => void;
 }) {
   const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
@@ -148,6 +162,13 @@ function MyRequestCard({
           <Calendar className="w-3 h-3 flex-shrink-0" />
           {date}
         </span>
+
+        {departmentName && (
+          <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+            <Building2 className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate max-w-[120px]">{departmentName}</span>
+          </span>
+        )}
 
         {submitter && (
           <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
@@ -281,12 +302,20 @@ export function MyPurchaseRequests() {
   const { user, profile } = useAuth();
   const [myRequests, setMyRequests] = useState<PurchaseRequest[]>([]);
   const [toApprove, setToApprove] = useState<PendingApproval[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [submitters, setSubmitters] = useState<Record<string, { full_name: string; email: string }>>({});
   const [approverNames, setApproverNames] = useState<Record<string, string>>({});
+  const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isApproverView, setIsApproverView] = useState(false);
+
+  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
+  const [page, setPage] = useState(1);
 
   const isManagerOrDirector = profile?.role === 'Kierownik' || profile?.role === 'Dyrektor' || profile?.is_admin;
 
@@ -295,14 +324,19 @@ export function MyPurchaseRequests() {
     loadAll();
   }, [user]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search, deptFilter, monthFilter, yearFilter]);
+
   async function loadAll() {
     setLoading(true);
 
-    const [myRes, approveRes] = await Promise.all([
+    const [myRes, approveRes, deptRes] = await Promise.all([
       supabase.from('purchase_requests').select('*').order('created_at', { ascending: false }),
       isManagerOrDirector
         ? supabase.rpc('get_purchase_requests_for_approval')
         : Promise.resolve({ data: [], error: null }),
+      supabase.from('departments').select('id, name').order('name'),
     ]);
 
     if (!myRes.error && myRes.data) {
@@ -329,6 +363,11 @@ export function MyPurchaseRequests() {
       setToApprove(approveRes.data as PendingApproval[]);
     }
 
+    if (!deptRes.error && deptRes.data) {
+      setDepartments(deptRes.data);
+      setDepartmentMap(Object.fromEntries(deptRes.data.map((d: Department) => [d.id, d.name])));
+    }
+
     setLoading(false);
   }
 
@@ -337,21 +376,41 @@ export function MyPurchaseRequests() {
     setIsApproverView(asApprover);
   }
 
-  if (selectedId) {
-    return (
-      <PurchaseRequestDetail
-        requestId={selectedId}
-        onBack={() => {
-          setSelectedId(null);
-          setIsApproverView(false);
-          loadAll();
-        }}
-        isApprover={isApproverView}
-      />
-    );
-  }
+  const availableYears = useMemo(() => {
+    const years = new Set(myRequests.map(r => new Date(r.created_at).getFullYear()));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [myRequests]);
 
-  const filteredMy = filter === 'all' ? myRequests : myRequests.filter(r => r.status === filter);
+  const filteredMy = useMemo(() => {
+    let result = filter === 'all' ? myRequests : myRequests.filter(r => r.status === filter);
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(r =>
+        r.description?.toLowerCase().includes(q) ||
+        r.delivery_location?.toLowerCase().includes(q)
+      );
+    }
+
+    if (deptFilter) {
+      result = result.filter(r => r.department_id === deptFilter);
+    }
+
+    if (yearFilter) {
+      const y = parseInt(yearFilter);
+      result = result.filter(r => new Date(r.created_at).getFullYear() === y);
+    }
+
+    if (monthFilter) {
+      const m = parseInt(monthFilter);
+      result = result.filter(r => new Date(r.created_at).getMonth() + 1 === m);
+    }
+
+    return result;
+  }, [myRequests, filter, search, deptFilter, yearFilter, monthFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMy.length / PAGE_SIZE));
+  const paginatedMy = filteredMy.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const counts = {
     all: myRequests.length,
@@ -371,6 +430,29 @@ export function MyPurchaseRequests() {
 
   const showApprovalSection = isManagerOrDirector && (filter === 'all' || filter === 'pending') && toApprove.length > 0;
 
+  const hasActiveFilters = search.trim() || deptFilter || monthFilter || yearFilter;
+
+  function clearFilters() {
+    setSearch('');
+    setDeptFilter('');
+    setMonthFilter('');
+    setYearFilter('');
+  }
+
+  if (selectedId) {
+    return (
+      <PurchaseRequestDetail
+        requestId={selectedId}
+        onBack={() => {
+          setSelectedId(null);
+          setIsApproverView(false);
+          loadAll();
+        }}
+        isApprover={isApproverView}
+      />
+    );
+  }
+
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg overflow-y-auto">
       <div className="p-4">
@@ -381,7 +463,7 @@ export function MyPurchaseRequests() {
           </p>
         </div>
 
-        <div className="mb-4 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1 flex-wrap">
+        <div className="mb-3 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1 flex-wrap">
           {tabs.map(({ key, label }) => (
             <button
               key={key}
@@ -398,6 +480,74 @@ export function MyPurchaseRequests() {
                 : ` (${counts[key]})`}
             </button>
           ))}
+        </div>
+
+        <div className="mb-4 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Szukaj po opisie lub miejscu dostawy..."
+              className="w-full pl-9 pr-9 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0" />
+
+            <select
+              value={deptFilter}
+              onChange={e => setDeptFilter(e.target.value)}
+              className="flex-1 min-w-[140px] px-2.5 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+            >
+              <option value="">Wszystkie działy</option>
+              {departments.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={yearFilter}
+              onChange={e => setYearFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+            >
+              <option value="">Wszystkie lata</option>
+              {availableYears.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+
+            <select
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+            >
+              <option value="">Wszystkie miesiące</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={i + 1} value={i + 1}>{name}</option>
+              ))}
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Wyczyść
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -422,7 +572,7 @@ export function MyPurchaseRequests() {
                     onClick={() => openRequest(req.id, true)}
                   />
                 ))}
-                {filteredMy.length > 0 && (
+                {paginatedMy.length > 0 && (
                   <div className="flex items-center gap-2 mt-4 mb-1">
                     <h2 className="text-sm font-semibold text-text-secondary-light dark:text-text-secondary-dark">
                       Moje wnioski
@@ -432,28 +582,93 @@ export function MyPurchaseRequests() {
               </>
             )}
 
-            {filteredMy.length === 0 && !showApprovalSection ? (
+            {paginatedMy.length === 0 && !showApprovalSection ? (
               <div className="text-center py-20">
-                <Package className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
-                <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak wniosków zakupowych</p>
+                {hasActiveFilters ? (
+                  <>
+                    <Search className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
+                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak wyników dla podanych filtrów</p>
+                    <button
+                      onClick={clearFilters}
+                      className="mt-3 text-xs text-brand-primary hover:underline"
+                    >
+                      Wyczyść filtry
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Package className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
+                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak wniosków zakupowych</p>
+                  </>
+                )}
               </div>
-            ) : filteredMy.length === 0 && showApprovalSection ? null : (
-              filteredMy.map(r => (
+            ) : paginatedMy.length === 0 && showApprovalSection ? null : (
+              paginatedMy.map(r => (
                 <MyRequestCard
                   key={r.id}
                   request={r}
                   submitterName={submitters[r.user_id]?.full_name}
                   submitterEmail={submitters[r.user_id]?.email}
                   approverName={r.current_approver_id ? approverNames[r.current_approver_id] : null}
+                  departmentName={r.department_id ? departmentMap[r.department_id] : null}
                   onClick={() => openRequest(r.id, false)}
                 />
               ))
             )}
 
-            {!loading && filteredMy.length === 0 && !showApprovalSection && filter !== 'all' && (
+            {!loading && filteredMy.length === 0 && !showApprovalSection && filter !== 'all' && !hasActiveFilters && (
               <div className="text-center py-20">
                 <Inbox className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak wniosków w tej kategorii</p>
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/50 mt-2">
+                <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                  {filteredMy.length} wyników · strona {page} z {totalPages}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (page <= 3) {
+                      pageNum = i + 1;
+                    } else if (page >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = page - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setPage(pageNum)}
+                        className={`w-7 h-7 text-xs rounded-lg font-medium transition-colors ${
+                          page === pageNum
+                            ? 'bg-brand-primary text-white'
+                            : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
