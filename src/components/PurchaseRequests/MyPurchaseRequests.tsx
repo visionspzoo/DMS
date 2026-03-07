@@ -79,11 +79,13 @@ function MyRequestCard({
   request,
   submitterName,
   submitterEmail,
+  approverName,
   onClick,
 }: {
   request: PurchaseRequest;
   submitterName?: string | null;
   submitterEmail?: string | null;
+  approverName?: string | null;
   onClick: () => void;
 }) {
   const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
@@ -184,11 +186,23 @@ function MyRequestCard({
           </div>
         </div>
 
-        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-2">
+        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
             <Calendar className="w-3.5 h-3.5" />
             Złożony {date}
           </div>
+          {request.status === 'pending' && request.current_approver_id && approverName && (
+            <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+              <Clock className="w-3 h-3 flex-shrink-0" />
+              Oczekuje na decyzję: {approverName}
+            </span>
+          )}
+          {request.status === 'approved' && (
+            <span className="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 font-medium">
+              <CreditCard className="w-3 h-3 flex-shrink-0" />
+              Oczekuje na płatność
+            </span>
+          )}
         </div>
       </div>
     </button>
@@ -304,6 +318,7 @@ export function MyPurchaseRequests() {
   const [myRequests, setMyRequests] = useState<PurchaseRequest[]>([]);
   const [toApprove, setToApprove] = useState<PendingApproval[]>([]);
   const [submitters, setSubmitters] = useState<Record<string, { full_name: string; email: string }>>({});
+  const [approverNames, setApproverNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -328,14 +343,20 @@ export function MyPurchaseRequests() {
 
     if (!myRes.error && myRes.data) {
       setMyRequests(myRes.data);
-      const userIds = [...new Set(myRes.data.map((r: PurchaseRequest) => r.user_id))];
-      if (userIds.length > 0) {
+      const profileIds = [
+        ...new Set([
+          ...myRes.data.map((r: PurchaseRequest) => r.user_id),
+          ...myRes.data.filter((r: PurchaseRequest) => r.current_approver_id).map((r: PurchaseRequest) => r.current_approver_id as string),
+        ]),
+      ];
+      if (profileIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name, email')
-          .in('id', userIds);
+          .in('id', profileIds);
         if (profiles) {
           setSubmitters(Object.fromEntries(profiles.map(p => [p.id, { full_name: p.full_name, email: p.email }])));
+          setApproverNames(Object.fromEntries(profiles.map(p => [p.id, p.full_name || p.email || ''])));
         }
       }
     }
@@ -459,6 +480,7 @@ export function MyPurchaseRequests() {
                   request={r}
                   submitterName={submitters[r.user_id]?.full_name}
                   submitterEmail={submitters[r.user_id]?.email}
+                  approverName={r.current_approver_id ? approverNames[r.current_approver_id] : null}
                   onClick={() => openRequest(r.id, false)}
                 />
               ))
