@@ -150,7 +150,8 @@ export function KSEFInvoicesPage() {
     loadDepartments();
     checkKSEFConnection();
 
-    const savedLastSync = localStorage.getItem('ksef_last_sync');
+    const syncKey = `ksef_last_sync_${user?.id}`;
+    const savedLastSync = localStorage.getItem(syncKey);
     if (savedLastSync) {
       setLastSync(savedLastSync);
       const timeSinceLastSync = Date.now() - new Date(savedLastSync).getTime();
@@ -173,7 +174,8 @@ export function KSEFInvoicesPage() {
   useEffect(() => {
     if (!canAccessKSEFConfig) return;
 
-    const savedLastSync = localStorage.getItem('ksef_last_sync');
+    const syncKey = `ksef_last_sync_${user?.id}`;
+    const savedLastSync = localStorage.getItem(syncKey);
     let initialDelay = SYNC_INTERVAL_MS;
 
     if (savedLastSync) {
@@ -637,15 +639,18 @@ export function KSEFInvoicesPage() {
 
         const { data: inserted, error: insertError } = await supabase
           .from('ksef_invoices')
-          .insert(invoiceData)
+          .upsert(invoiceData, { onConflict: 'ksef_reference_number', ignoreDuplicates: true })
           .select();
 
         if (insertError) {
           console.error('❌ Błąd podczas zapisu faktury:', insertError);
           errorInvoices++;
-        } else {
+        } else if (inserted && inserted.length > 0) {
           console.log('✓ Faktura zapisana pomyślnie:', inserted);
           newInvoices++;
+        } else {
+          console.log('Faktura już istnieje w bazie (ignoreDuplicates), pomijam');
+          skippedInvoices++;
         }
       }
 
@@ -675,7 +680,7 @@ export function KSEFInvoicesPage() {
 
       const syncTime = new Date().toISOString();
       setLastSync(syncTime);
-      localStorage.setItem('ksef_last_sync', syncTime);
+      localStorage.setItem(`ksef_last_sync_${user?.id}`, syncTime);
       setNextSyncIn(SYNC_INTERVAL_MS);
     } catch (err: any) {
       console.error('KSEF fetch error:', err);
