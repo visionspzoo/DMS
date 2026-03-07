@@ -68,6 +68,7 @@ export function PurchaseRequestDetail({
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [department, setDepartment] = useState<Department | null>(null);
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
+  const [currentApproverRole, setCurrentApproverRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [comment, setComment] = useState('');
@@ -100,10 +101,14 @@ export function PurchaseRequestDetail({
       if (req.current_approver_id) {
         const { data: approverProfile } = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, role')
           .eq('id', req.current_approver_id)
           .maybeSingle();
         setCurrentApproverName(approverProfile?.full_name || null);
+        setCurrentApproverRole(approverProfile?.role || null);
+      } else {
+        setCurrentApproverName(null);
+        setCurrentApproverRole(null);
       }
     }
 
@@ -232,7 +237,8 @@ export function PurchaseRequestDetail({
             {request.current_approver_id && request.status === 'pending' && (
               <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
                 <User className="w-3.5 h-3.5" />
-                Oczekuje na: <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{currentApproverName || 'Nieznany'}</span>
+                {currentApproverRole === 'Dyrektor' ? 'Oczekuje na akceptację dyrektora:' : currentApproverRole === 'Kierownik' ? 'Oczekuje na akceptację kierownika:' : 'Oczekuje na:'}
+                <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{currentApproverName || 'Nieznany'}</span>
               </div>
             )}
           </div>
@@ -350,7 +356,9 @@ export function PurchaseRequestDetail({
                       </span>
                     </div>
                     <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                      {approval.role} · {approval.action === 'approved' ? 'Zaakceptował' : 'Odrzucił'}
+                      {approval.role === 'Kierownik' ? 'Kierownik' : approval.role === 'Dyrektor' ? 'Dyrektor' : approval.role}
+                      {' · '}
+                      {approval.action === 'approved' ? 'Zaakceptował' : 'Odrzucił'}
                     </p>
                     {approval.comment && (
                       <p className="text-xs text-text-primary-light dark:text-text-primary-dark mt-1 italic">"{approval.comment}"</p>

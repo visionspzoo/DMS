@@ -20,6 +20,7 @@ interface PendingRequest {
   submitted_at: string | null;
   created_at: string;
   proforma_filename: string | null;
+  has_director: boolean | null;
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -100,6 +101,16 @@ export function PurchaseRequestsToApprove({ onSelect }: { onSelect: (id: string)
                       </span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {profile?.role === 'Kierownik' && req.has_director && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400">
+                          Krok 1/2
+                        </span>
+                      )}
+                      {profile?.role === 'Dyrektor' && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400">
+                          Krok 2/2
+                        </span>
+                      )}
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400">
                         <Clock className="w-3 h-3" />
                         Oczekuje

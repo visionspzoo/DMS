@@ -146,9 +146,16 @@ function RequestCard({ request, onClick }: { request: PurchaseRequest; onClick: 
           </div>
         </div>
 
-        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-          <Calendar className="w-3.5 h-3.5" />
-          Złożony {date}
+        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+            <Calendar className="w-3.5 h-3.5" />
+            Złożony {date}
+          </div>
+          {request.status === 'pending' && request.current_approver_id && (
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+              Oczekuje na rozpatrzenie
+            </span>
+          )}
         </div>
       </div>
     </button>
