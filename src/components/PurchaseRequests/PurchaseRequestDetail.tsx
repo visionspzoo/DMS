@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, CheckCircle, XCircle, CreditCard, FileText, ExternalLink, MapPin, Zap, Package, Calendar, Building2, User, MessageSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, XCircle, CreditCard, FileText, ExternalLink, MapPin, Zap, Package, Calendar, Building2, User, MessageSquare, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -73,6 +73,7 @@ export function PurchaseRequestDetail({
   const [comment, setComment] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
   useEffect(() => {
     loadRequest();
@@ -149,7 +150,30 @@ export function PurchaseRequestDetail({
     await loadRequest();
   }
 
+  async function handleWithdraw() {
+    if (!request) return;
+    setActionLoading(true);
+    setActionError(null);
+
+    const { error } = await supabase
+      .from('purchase_requests')
+      .delete()
+      .eq('id', request.id)
+      .eq('user_id', profile?.id);
+
+    setActionLoading(false);
+
+    if (error) {
+      setActionError(error.message || 'Wystąpił błąd podczas wycofywania wniosku');
+      setShowWithdrawConfirm(false);
+      return;
+    }
+
+    onBack();
+  }
+
   const canApprove = isApprover && request?.current_approver_id === profile?.id && request?.status === 'pending';
+  const canWithdraw = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected');
 
   if (loading) {
     return (
@@ -334,6 +358,51 @@ export function PurchaseRequestDetail({
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Withdraw */}
+        {canWithdraw && (
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden mb-4">
+            <div className="p-4">
+              {actionError && !canApprove && (
+                <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 text-red-700 dark:text-red-400 text-sm">
+                  {actionError}
+                </div>
+              )}
+              {showWithdrawConfirm ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-text-primary-light dark:text-text-primary-dark">
+                    Czy na pewno chcesz wycofać ten wniosek? Operacja jest nieodwracalna.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleWithdraw}
+                      disabled={actionLoading}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-all disabled:opacity-60"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Tak, wycofaj wniosek
+                    </button>
+                    <button
+                      onClick={() => setShowWithdrawConfirm(false)}
+                      disabled={actionLoading}
+                      className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant text-sm transition-all"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowWithdrawConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 dark:border-red-700/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold text-sm transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Wycofaj wniosek
+                </button>
+              )}
             </div>
           </div>
         )}
