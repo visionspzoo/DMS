@@ -296,7 +296,9 @@ export default function MyDepartmentSection() {
                   {subordinates.map(member => {
                     const limit = getMemberLimit(member.id);
                     const isEditing = editingMember === member.id;
-                    const canEdit = isManagerOrDirector;
+                    const isDirector = profile?.role === 'Dyrektor';
+                    const memberIsDirector = member.role === 'Dyrektor';
+                    const canEdit = isDirector || (!memberIsDirector && isManagerOrDirector);
 
                     return (
                       <div key={member.id} className="px-4 py-3">
