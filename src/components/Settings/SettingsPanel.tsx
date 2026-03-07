@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive, DollarSign } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
+import ManagerLimits from '../Dyrektor/ManagerLimits';
 import AIPromptsSettings from './AIPromptsSettings';
 import SlackSettings from './SlackSettings';
 import UserInvitations from './UserInvitations';
@@ -61,6 +62,7 @@ export default function SettingsPanel() {
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk' | 'api' | 'google_drive'>('users');
+  const [showManagerLimits, setShowManagerLimits] = useState(false);
   const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
   const [selectedAccessDept, setSelectedAccessDept] = useState('');
   const [selectedAccessType, setSelectedAccessType] = useState<'view' | 'workflow'>('view');
@@ -394,7 +396,7 @@ export default function SettingsPanel() {
 
       <div className="mb-4 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
         <button
-          onClick={() => setActiveTab('users')}
+          onClick={() => { setActiveTab('users'); setShowManagerLimits(false); }}
           className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
             activeTab === 'users'
               ? 'bg-brand-primary text-white shadow-sm'
@@ -972,7 +974,24 @@ export default function SettingsPanel() {
         )}
 
         {activeTab === 'departments' && (
-          <DepartmentManagement />
+          showManagerLimits ? (
+            <ManagerLimits userId={profile?.id ?? ''} onBack={() => setShowManagerLimits(false)} />
+          ) : (
+            <div className="space-y-3">
+              {profile?.is_admin && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowManagerLimits(true)}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm font-medium text-text-primary-light dark:text-text-primary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors shadow-sm"
+                  >
+                    <DollarSign className="w-4 h-4 text-brand-primary" />
+                    Limity kierowników
+                  </button>
+                </div>
+              )}
+              <DepartmentManagement />
+            </div>
+          )
         )}
 
         {activeTab === 'ai_prompts' && (
