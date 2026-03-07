@@ -67,6 +67,8 @@ export function PurchaseRequestDetail({
   const [request, setRequest] = useState<PurchaseRequest | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [department, setDepartment] = useState<Department | null>(null);
+  const [submitterName, setSubmitterName] = useState<string | null>(null);
+  const [submitterEmail, setSubmitterEmail] = useState<string | null>(null);
   const [currentApproverName, setCurrentApproverName] = useState<string | null>(null);
   const [currentApproverRole, setCurrentApproverRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +92,15 @@ export function PurchaseRequestDetail({
 
     if (req) {
       setRequest(req);
+
+      const { data: submitterProfile } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', req.user_id)
+        .maybeSingle();
+      setSubmitterName(submitterProfile?.full_name || null);
+      setSubmitterEmail(submitterProfile?.email || null);
+
       if (req.department_id) {
         const { data: dept } = await supabase
           .from('departments')
@@ -234,9 +245,20 @@ export function PurchaseRequestDetail({
               </span>
             </div>
 
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+              <User className="w-3.5 h-3.5 flex-shrink-0" />
+              Złożony przez:
+              <span className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                {submitterName || submitterEmail || 'Nieznany'}
+              </span>
+              {submitterEmail && submitterName && (
+                <span className="text-text-secondary-light dark:text-text-secondary-dark">({submitterEmail})</span>
+              )}
+            </div>
+
             {request.current_approver_id && request.status === 'pending' && (
-              <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                <User className="w-3.5 h-3.5" />
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                <Clock className="w-3.5 h-3.5 flex-shrink-0" />
                 {currentApproverRole === 'Dyrektor' ? 'Oczekuje na akceptację dyrektora:' : currentApproverRole === 'Kierownik' ? 'Oczekuje na akceptację kierownika:' : 'Oczekuje na:'}
                 <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{currentApproverName || 'Nieznany'}</span>
               </div>

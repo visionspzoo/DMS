@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PurchaseRequestDetail } from './PurchaseRequestDetail';
 
 interface PurchaseRequest {
   id: string;
+  user_id: string;
   link: string;
   gross_amount: number;
   description: string;
@@ -54,7 +55,7 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; styl
   },
 };
 
-function RequestCard({ request, onClick }: { request: PurchaseRequest; onClick: () => void }) {
+function RequestCard({ request, submitterName, submitterEmail, onClick }: { request: PurchaseRequest; submitterName?: string | null; submitterEmail?: string | null; onClick: () => void }) {
   const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
   const priorityStyle = PRIORITY_STYLES[request.priority] || PRIORITY_STYLES.normalny;
   const priorityLabel = PRIORITY_LABELS[request.priority] || request.priority;
@@ -92,6 +93,14 @@ function RequestCard({ request, onClick }: { request: PurchaseRequest; onClick: 
       </div>
 
       <div className="p-4">
+        {(submitterName || submitterEmail) && (
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+            <User className="w-3 h-3 flex-shrink-0" />
+            <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{submitterName || submitterEmail}</span>
+            {submitterEmail && submitterName && <span className="truncate">({submitterEmail})</span>}
+          </div>
+        )}
+
         {isProforma ? (
           <div className="flex items-center gap-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
             <FileText className="w-3 h-3 flex-shrink-0" />
@@ -167,6 +176,7 @@ type FilterTab = 'all' | 'pending' | 'approved' | 'rejected' | 'paid';
 export function MyPurchaseRequests() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<PurchaseRequest[]>([]);
+  const [submitters, setSubmitters] = useState<Record<string, { full_name: string; email: string }>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -183,7 +193,19 @@ export function MyPurchaseRequests() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data) setRequests(data);
+    if (!error && data) {
+      setRequests(data);
+      const userIds = [...new Set(data.map((r: PurchaseRequest) => r.user_id))];
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+        if (profiles) {
+          setSubmitters(Object.fromEntries(profiles.map(p => [p.id, { full_name: p.full_name, email: p.email }])));
+        }
+      }
+    }
     setLoading(false);
   }
 
@@ -256,7 +278,13 @@ export function MyPurchaseRequests() {
         ) : (
           <div className="space-y-3">
             {filtered.map(r => (
-              <RequestCard key={r.id} request={r} onClick={() => setSelectedId(r.id)} />
+              <RequestCard
+                key={r.id}
+                request={r}
+                submitterName={submitters[r.user_id]?.full_name}
+                submitterEmail={submitters[r.user_id]?.email}
+                onClick={() => setSelectedId(r.id)}
+              />
             ))}
           </div>
         )}
