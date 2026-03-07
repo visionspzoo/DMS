@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle, Building2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -14,6 +14,11 @@ const PRIORITIES = [
 type Priority = typeof PRIORITIES[number]['value'];
 type DeliveryLocation = typeof DELIVERY_LOCATIONS[number];
 
+interface Department {
+  id: string;
+  name: string;
+}
+
 interface RequestItem {
   id: string;
   link: string;
@@ -22,9 +27,10 @@ interface RequestItem {
   quantity: string;
   delivery_location: DeliveryLocation;
   priority: Priority;
+  department_id: string;
 }
 
-function createEmptyItem(): RequestItem {
+function createEmptyItem(defaultDepartmentId: string): RequestItem {
   return {
     id: crypto.randomUUID(),
     link: '',
@@ -33,6 +39,7 @@ function createEmptyItem(): RequestItem {
     quantity: '1',
     delivery_location: 'Botaniczna',
     priority: 'normalny',
+    department_id: defaultDepartmentId,
   };
 }
 
@@ -40,12 +47,14 @@ function ItemCard({
   item,
   index,
   total,
+  departments,
   onChange,
   onRemove,
 }: {
   item: RequestItem;
   index: number;
   total: number;
+  departments: Department[];
   onChange: (id: string, field: keyof RequestItem, value: string) => void;
   onRemove: (id: string) => void;
 }) {
@@ -129,6 +138,25 @@ function ItemCard({
 
         <div>
           <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5" />
+            Dział
+          </label>
+          <select
+            value={item.department_id}
+            onChange={e => onChange(item.id, 'department_id', e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
+          >
+            {departments.length === 0 && (
+              <option value="">Brak działów</option>
+            )}
+            {departments.map(dept => (
+              <option key={dept.id} value={dept.id}>{dept.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5" />
             Dostawa do
           </label>
@@ -143,12 +171,12 @@ function ItemCard({
           </select>
         </div>
 
-        <div>
+        <div className="md:col-span-2">
           <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
             <Zap className="w-3.5 h-3.5" />
             Priorytet
           </label>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {PRIORITIES.map(p => (
               <button
                 key={p.value}
@@ -171,18 +199,42 @@ function ItemCard({
 }
 
 export function PurchaseRequestForm() {
-  const { user } = useAuth();
-  const [items, setItems] = useState<RequestItem[]>([createEmptyItem()]);
+  const { user, profile } = useAuth();
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [defaultDepartmentId, setDefaultDepartmentId] = useState<string>('');
+  const [items, setItems] = useState<RequestItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadDepartments();
+  }, [profile]);
+
+  async function loadDepartments() {
+    const { data } = await supabase
+      .from('departments')
+      .select('id, name')
+      .order('name');
+
+    const depts: Department[] = data || [];
+    setDepartments(depts);
+
+    const userDeptId = profile?.department_id || '';
+    const resolvedDefault = userDeptId && depts.some(d => d.id === userDeptId)
+      ? userDeptId
+      : depts[0]?.id || '';
+
+    setDefaultDepartmentId(resolvedDefault);
+    setItems([createEmptyItem(resolvedDefault)]);
+  }
 
   function handleChange(id: string, field: keyof RequestItem, value: string) {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   }
 
   function addItem() {
-    setItems(prev => [...prev, createEmptyItem()]);
+    setItems(prev => [...prev, createEmptyItem(defaultDepartmentId)]);
   }
 
   function removeItem(id: string) {
@@ -211,6 +263,7 @@ export function PurchaseRequestForm() {
       quantity: parseInt(item.quantity),
       delivery_location: item.delivery_location,
       priority: item.priority,
+      department_id: item.department_id || null,
       status: 'pending',
     }));
 
@@ -224,7 +277,7 @@ export function PurchaseRequestForm() {
     }
 
     setSuccess(true);
-    setItems([createEmptyItem()]);
+    setItems([createEmptyItem(defaultDepartmentId)]);
     setTimeout(() => setSuccess(false), 5000);
   }
 
@@ -232,6 +285,14 @@ export function PurchaseRequestForm() {
     const amount = parseFloat(item.gross_amount || '0') * parseInt(item.quantity || '1');
     return sum + (isNaN(amount) ? 0 : amount);
   }, 0);
+
+  if (items.length === 0) {
+    return (
+      <div className="h-full bg-light-bg dark:bg-dark-bg flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg overflow-y-auto">
@@ -266,6 +327,7 @@ export function PurchaseRequestForm() {
                 item={item}
                 index={index}
                 total={items.length}
+                departments={departments}
                 onChange={handleChange}
                 onRemove={removeItem}
               />
