@@ -516,6 +516,10 @@ export function KSEFInvoicesPage() {
       let skippedInvoices = 0;
       let errorInvoices = 0;
 
+      const { data: existingRefs } = await supabase.rpc('get_existing_ksef_references');
+      const existingRefSet = new Set<string>((existingRefs || []).map((r: { ksef_reference_number: string }) => r.ksef_reference_number));
+      console.log(`Znaleziono ${existingRefSet.size} faktur już w bazie`);
+
       // Add delay between requests to avoid rate limiting (429 errors)
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -559,17 +563,7 @@ export function KSEFInvoicesPage() {
 
         setSuccessMessage(`Pobieranie faktur: ${i + 1}/${ksefInvoices.length} - ${invoice.invoiceNumber}...`);
 
-        const { data: existing, error: checkError } = await supabase
-          .from('ksef_invoices')
-          .select('id')
-          .eq('ksef_reference_number', invoice.ksefNumber)
-          .maybeSingle();
-
-        if (checkError) {
-          console.error('Błąd sprawdzania istnienia faktury:', checkError);
-        }
-
-        if (existing) {
+        if (existingRefSet.has(invoice.ksefNumber)) {
           console.log('Faktura już istnieje w bazie, pomijam');
           skippedInvoices++;
           continue;
