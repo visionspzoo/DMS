@@ -84,7 +84,7 @@ function ItemCard({
         <div>
           <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
             <DollarSign className="w-3.5 h-3.5" />
-            Kwota brutto (PLN)
+            Łączna kwota brutto (PLN)
           </label>
           <input
             type="number"
