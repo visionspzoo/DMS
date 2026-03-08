@@ -7,6 +7,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function extractTaskId(body: any): string {
+  return (
+    body.task_id ||
+    body.id ||
+    body.task?.id ||
+    body.history_items?.[0]?.id ||
+    body.history_items?.[0]?.task?.id ||
+    ""
+  );
+}
+
+function extractNewStatus(body: any): string {
+  const historyItems: any[] = body.history_items || [];
+  const statusItem = historyItems.find((item: any) => item.field === "status");
+
+  return (
+    statusItem?.after?.status ||
+    statusItem?.after?.status?.status ||
+    body.task?.status?.status ||
+    body.status?.status ||
+    body.status ||
+    ""
+  ).toLowerCase().trim();
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -18,32 +43,42 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const body = await req.json();
-    console.log("ClickUp webhook payload:", JSON.stringify(body));
+    let body: any;
+    const rawText = await req.text();
+    console.log("ClickUp webhook raw body:", rawText);
+    console.log("ClickUp webhook headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
 
-    const eventName: string = body.event || "";
-    const taskId: string = body.task_id || body.history_items?.[0]?.task?.id || "";
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      return new Response(
+        JSON.stringify({ message: "Nieprawidlowy JSON", raw: rawText.slice(0, 200) }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    if (!eventName.includes("taskStatusUpdated") && !eventName.includes("task.status")) {
+    const eventName: string = (body.event || "").toLowerCase();
+    const taskId = extractTaskId(body);
+    const newStatus = extractNewStatus(body);
+
+    console.log("Event:", eventName, "| Task ID:", taskId, "| Status:", newStatus);
+
+    const isStatusEvent =
+      eventName.includes("taskstatusupdated") ||
+      eventName.includes("task.status") ||
+      eventName.includes("task_status") ||
+      newStatus !== "";
+
+    if (!isStatusEvent) {
       return new Response(
         JSON.stringify({ message: "Ignorowane zdarzenie: " + eventName }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const historyItems: any[] = body.history_items || [];
-    const statusItem = historyItems.find((item: any) => item.field === "status");
-
-    const newStatus: string =
-      statusItem?.after?.status?.toLowerCase() ||
-      body.task?.status?.status?.toLowerCase() ||
-      "";
-
-    console.log("Task ID:", taskId, "New status:", newStatus);
-
     if (!newStatus) {
       return new Response(
-        JSON.stringify({ message: "Brak statusu w payloadzie" }),
+        JSON.stringify({ message: "Brak statusu w payloadzie", event: eventName, task_id: taskId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -55,15 +90,15 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     const configuredPaidStatus = (config?.paid_status || "").toLowerCase().trim();
-
     const defaultPaidStatuses = ["complete", "completed", "done", "closed", "paid", "oplacone", "opłacone"];
 
     const isCompleted = configuredPaidStatus
       ? newStatus === configuredPaidStatus
-      : defaultPaidStatuses.includes(newStatus);
+      : defaultPaidStatuses.some((s) => newStatus.includes(s) || s.includes(newStatus));
 
     console.log(
       "Configured paid status:", configuredPaidStatus || "(brak - uzywam domyslnych)",
+      "| Nowy status:", newStatus,
       "| Czy pasuje:", isCompleted
     );
 
@@ -78,7 +113,7 @@ Deno.serve(async (req: Request) => {
 
     if (!taskId) {
       return new Response(
-        JSON.stringify({ message: "Brak task_id w payloadzie" }),
+        JSON.stringify({ message: "Brak task_id w payloadzie", body_keys: Object.keys(body) }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -92,6 +127,7 @@ Deno.serve(async (req: Request) => {
     if (findError) throw new Error(`DB error: ${findError.message}`);
 
     if (!request) {
+      console.log("Nie znaleziono wniosku dla task_id:", taskId);
       return new Response(
         JSON.stringify({ message: "Nie znaleziono wniosku dla task_id: " + taskId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
