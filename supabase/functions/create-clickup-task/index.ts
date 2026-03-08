@@ -126,18 +126,29 @@ Deno.serve(async (req: Request) => {
       throw new Error("Niekompletna konfiguracja ClickUp (brak tokenu lub ID listy)");
     }
 
-    const { data: request, error: reqError } = await supabase
+    const { data: requestRaw, error: reqError } = await supabase
       .from("purchase_requests")
-      .select(`
-        *,
-        submitter:profiles!purchase_requests_user_id_fkey(full_name, email),
-        department:departments!purchase_requests_department_id_fkey(name)
-      `)
+      .select("*")
       .eq("id", purchase_request_id)
       .maybeSingle();
 
     if (reqError) throw new Error(`Request error: ${reqError.message}`);
-    if (!request) throw new Error("Wniosek zakupowy nie znaleziony");
+    if (!requestRaw) throw new Error("Wniosek zakupowy nie znaleziony");
+
+    const [profileRes, deptRes] = await Promise.all([
+      requestRaw.user_id
+        ? supabase.from("profiles").select("full_name, email").eq("id", requestRaw.user_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      requestRaw.department_id
+        ? supabase.from("departments").select("name").eq("id", requestRaw.department_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const request = {
+      ...requestRaw,
+      submitter: profileRes.data || null,
+      department: deptRes.data || null,
+    };
 
     if (request.clickup_task_id) {
       return new Response(
@@ -216,12 +227,32 @@ Deno.serve(async (req: Request) => {
       .eq("enabled", true)
       .order("sort_order");
 
+    const cachedFields: any[] = config.cached_custom_fields || [];
+
     const customFields: Array<{ id: string; value: string | number }> = [];
     if (mappings && mappings.length > 0) {
       for (const mapping of mappings) {
-        const value = getAppFieldValue(request, mapping.app_field);
-        if (value !== null && value !== undefined && value !== "") {
-          customFields.push({ id: mapping.clickup_field_id, value });
+        const rawValue = getAppFieldValue(request, mapping.app_field);
+        if (rawValue === null || rawValue === undefined || rawValue === "") continue;
+
+        const fieldDef = cachedFields.find((f: any) => f.id === mapping.clickup_field_id);
+        const fieldType = fieldDef?.type || mapping.clickup_field_type;
+
+        if (fieldType === "drop_down" || fieldType === "labels") {
+          const options: any[] = fieldDef?.type_config?.options || [];
+          const match = options.find(
+            (o: any) => o.name?.toLowerCase() === String(rawValue).toLowerCase()
+          );
+          if (match) {
+            customFields.push({ id: mapping.clickup_field_id, value: match.id });
+          }
+        } else if (fieldType === "number" || fieldType === "currency") {
+          const num = parseFloat(String(rawValue));
+          if (!isNaN(num)) {
+            customFields.push({ id: mapping.clickup_field_id, value: num });
+          }
+        } else {
+          customFields.push({ id: mapping.clickup_field_id, value: String(rawValue) });
         }
       }
     }
