@@ -179,27 +179,6 @@ export function PurchaseRequestDetail({
     setLoading(false);
   }
 
-  async function triggerClickUpTask(requestId: string) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-clickup-task`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ purchase_request_id: requestId }),
-        }
-      );
-    } catch (err) {
-      console.error('ClickUp task creation error:', err);
-    }
-  }
-
   async function handleAction(action: 'approved' | 'rejected') {
     if (!request) return;
     setActionLoading(true);
@@ -221,17 +200,6 @@ export function PurchaseRequestDetail({
     setComment('');
     setShowRejectForm(false);
     await loadRequest();
-
-    if (action === 'approved' && data?.status === 'approved') {
-      const { data: updated } = await supabase
-        .from('purchase_requests')
-        .select('clickup_task_id')
-        .eq('id', request.id)
-        .maybeSingle();
-      if (!updated?.clickup_task_id) {
-        triggerClickUpTask(request.id);
-      }
-    }
   }
 
   async function handleWithdraw() {
