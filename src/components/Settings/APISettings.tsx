@@ -18,6 +18,9 @@ interface ApiToken {
 
 const BASE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/invoices-export-api';
 const PAID_URL = BASE_URL + '/invoices/{invoice_number}/mark-paid';
+const PROFORMA_BASE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/purchase-requests-api';
+const PROFORMA_LIST_URL = PROFORMA_BASE_URL + '/proforma';
+const PROFORMA_PAID_URL = PROFORMA_BASE_URL + '/proforma/{id}/mark-paid';
 
 export default function APISettings() {
   const { profile } = useAuth();
@@ -31,7 +34,7 @@ export default function APISettings() {
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'tokens' | 'docs'>('tokens');
+  const [activeSection, setActiveSection] = useState<'tokens' | 'docs' | 'proforma-docs'>('tokens');
 
   useEffect(() => {
     loadTokens();
@@ -197,6 +200,17 @@ export default function APISettings() {
         >
           <BookOpen className="w-3.5 h-3.5" />
           Dokumentacja
+        </button>
+        <button
+          onClick={() => setActiveSection('proforma-docs')}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            activeSection === 'proforma-docs'
+              ? 'bg-brand-primary text-white'
+              : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          Proformy API
         </button>
       </div>
 
@@ -701,6 +715,317 @@ export default function APISettings() {
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                 <p className="text-xs text-amber-800 dark:text-amber-300">
                   Tylko faktury ze statusem <code className="font-mono font-semibold">accepted</code> moga zostac oznaczone jako oplacone. Proba zmiany faktury z innym statusem zwroci blad <code className="font-mono font-semibold">422</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === 'proforma-docs' && (
+        <div className="space-y-4">
+          <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-lg p-3">
+            <p className="text-xs text-sky-800 dark:text-sky-300">
+              Wnioski zakupowe z proforma PDF nie trafiaja do ClickUp. Zamiast tego zewnetrzny system moze pobierac je przez to API, a po oplacie zglosic status przez endpoint <code className="font-mono font-semibold">mark-paid</code>.
+            </p>
+          </div>
+
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+            <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                GET — Lista proform do zatwierdzenia
+              </h2>
+            </div>
+            <div className="p-4 space-y-5">
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">URL</p>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="flex-1 text-xs font-mono text-text-primary-light dark:text-text-primary-dark break-all">
+                    GET {PROFORMA_LIST_URL}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(PROFORMA_LIST_URL, 'pf-url')}
+                    className="p-1 text-text-secondary-light dark:text-text-secondary-dark hover:text-brand-primary flex-shrink-0"
+                  >
+                    {copied === 'pf-url' ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Autoryzacja</p>
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="text-xs font-mono text-text-primary-light dark:text-text-primary-dark">
+                    Authorization: Bearer aurs_...
+                  </code>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Parametry zapytania (opcjonalne)</p>
+                <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-light-surface-variant dark:bg-dark-surface-variant">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Parametr</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Przyklad</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                      {[
+                        { param: 'status', desc: 'Filtruj po statusie: pending, approved, rejected, paid (mozna laczyc przecinkiem; domyslnie: approved)', example: 'status=approved' },
+                        { param: 'from_date', desc: 'Wnioski od daty (YYYY-MM-DD)', example: 'from_date=2026-01-01' },
+                        { param: 'to_date', desc: 'Wnioski do daty (YYYY-MM-DD)', example: 'to_date=2026-12-31' },
+                        { param: 'limit', desc: 'Liczba wynikow (max 500, domyslnie 100)', example: 'limit=50' },
+                        { param: 'offset', desc: 'Przesuniecie dla paginacji', example: 'offset=0' },
+                        { param: 'include_pdf', desc: 'Dolacz PDF proformy w base64 (true/false, domyslnie false)', example: 'include_pdf=true' },
+                      ].map(row => (
+                        <tr key={row.param} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-2"><code className="text-xs font-mono text-brand-primary">{row.param}</code></td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.desc}</td>
+                          <td className="px-3 py-2"><code className="text-xs font-mono text-text-secondary-light dark:text-text-secondary-dark">{row.example}</code></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Przyklad zapytania</p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <button
+                    onClick={() => copyToClipboard(`curl -H "Authorization: Bearer aurs_..." \\\n  "${PROFORMA_LIST_URL}?status=approved&include_pdf=true"`, 'pf-curl')}
+                    className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
+                  >
+                    {copied === 'pf-curl' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all">
+{`curl -H "Authorization: Bearer aurs_..." \\
+  "${PROFORMA_LIST_URL}?status=approved&include_pdf=true"`}
+                  </pre>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Przykladowa odpowiedz</p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <button
+                    onClick={() => copyToClipboard(`{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-wniosku",
+      "description": "Zakup serwera do serwerowni",
+      "delivery_location": "Botaniczna",
+      "priority": "wysoki",
+      "status": "approved",
+      "paid_at": null,
+      "created_at": "2026-03-01T10:00:00Z",
+      "updated_at": "2026-03-02T12:00:00Z",
+      "proforma_filename": "proforma_serwer.pdf",
+      "proforma_pdf_base64": "JVBERi0xLjQ...",
+      "department": {
+        "id": "uuid-dzialu",
+        "name": "IT",
+        "mpk_code": "MPK-010"
+      },
+      "submitter": {
+        "id": "uuid-usera",
+        "full_name": "Jan Kowalski",
+        "email": "jan@firma.pl"
+      }
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "limit": 100,
+    "offset": 0,
+    "statuses_included": ["approved"]
+  }
+}`, 'pf-resp')}
+                    className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
+                  >
+                    {copied === 'pf-resp' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <pre className="text-xs font-mono text-slate-300 overflow-x-auto">{`{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-wniosku",
+      "description": "Zakup serwera do serwerowni",
+      "delivery_location": "Botaniczna",
+      "priority": "wysoki",
+      "status": "approved",
+      "paid_at": null,
+      "created_at": "2026-03-01T10:00:00Z",
+      "updated_at": "2026-03-02T12:00:00Z",
+      "proforma_filename": "proforma_serwer.pdf",
+      "proforma_pdf_base64": "JVBERi0xLjQ...",
+      "department": { "id": "uuid", "name": "IT", "mpk_code": "MPK-010" },
+      "submitter": { "id": "uuid", "full_name": "Jan Kowalski", "email": "jan@firma.pl" }
+    }
+  ],
+  "meta": { "total": 1, "limit": 100, "offset": 0, "statuses_included": ["approved"] }
+}`}</pre>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Pola odpowiedzi</p>
+                <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-light-surface-variant dark:bg-dark-surface-variant">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Pole</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                      {[
+                        { field: 'id', desc: 'UUID wniosku zakupowego' },
+                        { field: 'description', desc: 'Opis zakupu podany przez skladajacego wniosek' },
+                        { field: 'delivery_location', desc: 'Miejsce dostawy (Botaniczna, Budowlanych, Leborska)' },
+                        { field: 'priority', desc: 'Priorytet: niski, normalny, wysoki, pilny' },
+                        { field: 'status', desc: 'Status: pending, approved, rejected, paid' },
+                        { field: 'paid_at', desc: 'Data i czas oplacenia (null jesli nieoplacona)' },
+                        { field: 'created_at', desc: 'Data i czas zlozenia wniosku' },
+                        { field: 'updated_at', desc: 'Data i czas ostatniej aktualizacji' },
+                        { field: 'proforma_filename', desc: 'Oryginalna nazwa pliku PDF proformy' },
+                        { field: 'proforma_pdf_base64', desc: 'PDF proformy zakodowany w Base64 (tylko przy include_pdf=true)' },
+                        { field: 'department', desc: 'Obiekt: id, name, mpk_code dzialu (null jesli brak)' },
+                        { field: 'submitter', desc: 'Obiekt: id, full_name, email skladajacego wniosek' },
+                      ].map(row => (
+                        <tr key={row.field} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-2"><code className="text-xs font-mono text-brand-primary">{row.field}</code></td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+            <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                GET — Pojedyncza proforma
+              </h2>
+            </div>
+            <div className="p-4 space-y-5">
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">URL</p>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="flex-1 text-xs font-mono text-text-primary-light dark:text-text-primary-dark break-all">
+                    GET {PROFORMA_LIST_URL}/&#123;id&#125;
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(`${PROFORMA_LIST_URL}/{id}`, 'pf-single-url')}
+                    className="p-1 text-text-secondary-light dark:text-text-secondary-dark hover:text-brand-primary flex-shrink-0"
+                  >
+                    {copied === 'pf-single-url' ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
+                  Parametr <code className="font-mono">?include_pdf=true</code> dziala tak samo jak w liscie.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+            <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+              <h2 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                POST — Oznacz profarme jako oplacona
+              </h2>
+            </div>
+            <div className="p-4 space-y-5">
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">URL</p>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700/50">
+                  <code className="flex-1 text-xs font-mono text-text-primary-light dark:text-text-primary-dark break-all">
+                    POST {PROFORMA_PAID_URL}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(PROFORMA_PAID_URL, 'pf-paid-url')}
+                    className="p-1 text-text-secondary-light dark:text-text-secondary-dark hover:text-brand-primary flex-shrink-0"
+                  >
+                    {copied === 'pf-paid-url' ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5">
+                  <code className="font-mono">id</code> to UUID wniosku zakupowego zwracany przez endpoint GET.
+                  Brak body — zadnych dodatkowych parametrow nie trzeba przekazywac.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Przyklad zapytania</p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <button
+                    onClick={() => copyToClipboard(`curl -X POST \\\n  -H "Authorization: Bearer aurs_..." \\\n  "${PROFORMA_BASE_URL}/proforma/uuid-wniosku/mark-paid"`, 'pf-paid-curl')}
+                    className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white"
+                  >
+                    {copied === 'pf-paid-curl' ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all">
+{`curl -X POST \\
+  -H "Authorization: Bearer aurs_..." \\
+  "${PROFORMA_BASE_URL}/proforma/uuid-wniosku/mark-paid"`}
+                  </pre>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Przykladowa odpowiedz</p>
+                <div className="relative bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <pre className="text-xs font-mono text-slate-300 overflow-x-auto">{`{
+  "success": true,
+  "data": {
+    "id": "uuid-wniosku",
+    "status": "paid",
+    "paid_at": "2026-03-08T14:30:00.000Z"
+  }
+}`}</pre>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider mb-2">Kody odpowiedzi</p>
+                <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-light-surface-variant dark:bg-dark-surface-variant">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Kod</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark">Opis</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
+                      {[
+                        { code: '200', desc: 'Sukces — proforma oznaczona jako oplacona' },
+                        { code: '401', desc: 'Brak lub nieprawidlowy token API' },
+                        { code: '404', desc: 'Wniosek o podanym UUID nie istnieje lub nie jest proforma' },
+                        { code: '422', desc: 'Wniosek istnieje ale ma inny status niz "approved" (nie mozna oznaczyc jako oplacona)' },
+                      ].map(row => (
+                        <tr key={row.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                          <td className="px-3 py-2"><code className="text-xs font-mono text-brand-primary">{row.code}</code></td>
+                          <td className="px-3 py-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">{row.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Tylko proformy ze statusem <code className="font-mono font-semibold">approved</code> moga zostac oznaczone jako oplacone. Wnioski w innych statusach zwroca blad <code className="font-mono font-semibold">422</code>.
                 </p>
               </div>
             </div>
