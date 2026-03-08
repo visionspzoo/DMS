@@ -29,15 +29,16 @@ Deno.serve(async (req: Request) => {
     if (configError) throw new Error(`Config error: ${configError.message}`);
 
     if (body.action === "test_connection") {
-      if (!config?.api_token) {
-        throw new Error("Brak tokenu API ClickUp w konfiguracji");
+      const tokenToTest = body.api_token || config?.api_token;
+      if (!tokenToTest) {
+        throw new Error("Brak tokenu API ClickUp - wprowadz token w formularzu");
       }
       const testRes = await fetch("https://api.clickup.com/api/v2/user", {
-        headers: { Authorization: config.api_token },
+        headers: { Authorization: tokenToTest },
       });
       if (!testRes.ok) {
-        const err = await testRes.json();
-        throw new Error(err.err || "Nieprawidlowy token API ClickUp");
+        const err = await testRes.json().catch(() => ({}));
+        throw new Error(err.err || `Nieprawidlowy token API ClickUp (HTTP ${testRes.status})`);
       }
       const userData = await testRes.json();
       return new Response(

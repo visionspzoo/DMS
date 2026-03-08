@@ -119,7 +119,7 @@ export default function ClickUpSettings() {
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
-          body: JSON.stringify({ action: 'test_connection' }),
+          body: JSON.stringify({ action: 'test_connection', api_token: config.api_token }),
         }
       );
 
