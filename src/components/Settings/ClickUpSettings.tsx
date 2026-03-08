@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, ExternalLink,
-  Copy, Check, RefreshCw, Plus, Trash2, ArrowRight, ToggleLeft, ToggleRight
+  Copy, Check, RefreshCw, Plus, Trash2, ArrowRight, ToggleLeft, ToggleRight,
+  GripVertical, Type, AlignLeft, ChevronDown,
 } from 'lucide-react';
 
 interface ClickUpConfig {
@@ -18,7 +19,7 @@ interface ClickUpField {
   id: string;
   name: string;
   type: string;
-  type_config?: any;
+  type_config?: unknown;
 }
 
 interface FieldMapping {
@@ -26,6 +27,17 @@ interface FieldMapping {
   clickup_field_id: string;
   clickup_field_name: string;
   clickup_field_type: string;
+  app_field: string;
+  app_field_label: string;
+  enabled: boolean;
+  sort_order: number;
+}
+
+interface StandardFieldMapping {
+  id?: string;
+  _idx?: number;
+  field_target: 'name' | 'description' | 'priority';
+  label: string;
   app_field: string;
   app_field_label: string;
   enabled: boolean;
@@ -46,6 +58,14 @@ const APP_FIELDS = [
   { value: 'bez_mpk', label: 'Bez MPK (Tak/Nie)' },
   { value: 'created_at', label: 'Data zlozenia wniosku' },
   { value: 'id', label: 'ID wniosku' },
+  { value: 'payment_method', label: 'Metoda platnosci' },
+  { value: 'pz_number', label: 'Numer PZ' },
+];
+
+const STANDARD_CLICKUP_FIELDS = [
+  { value: 'name' as const, label: 'Nazwa zadania (name)', icon: Type },
+  { value: 'description' as const, label: 'Opis zadania (description)', icon: AlignLeft },
+  { value: 'priority' as const, label: 'Priorytet (priority)', icon: ChevronDown },
 ];
 
 function callEdgeFunction(body: object) {
@@ -71,16 +91,18 @@ export default function ClickUpSettings() {
     cached_custom_fields: [],
   });
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
+  const [standardMappings, setStandardMappings] = useState<StandardFieldMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [fetchingFields, setFetchingFields] = useState(false);
   const [savingMappings, setSavingMappings] = useState(false);
+  const [savingStandard, setSavingStandard] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'mappings'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'standard' | 'mappings'>('config');
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clickup-webhook`;
 
@@ -91,9 +113,10 @@ export default function ClickUpSettings() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [configRes, mappingsRes] = await Promise.all([
+      const [configRes, mappingsRes, standardRes] = await Promise.all([
         supabase.from('clickup_config').select('*').limit(1).maybeSingle(),
         supabase.from('clickup_field_mappings').select('*').order('sort_order'),
+        supabase.from('clickup_standard_field_mappings').select('*').order('sort_order'),
       ]);
 
       if (configRes.data) {
@@ -106,9 +129,8 @@ export default function ClickUpSettings() {
         });
       }
 
-      if (mappingsRes.data) {
-        setMappings(mappingsRes.data);
-      }
+      if (mappingsRes.data) setMappings(mappingsRes.data);
+      if (standardRes.data) setStandardMappings(standardRes.data);
     } catch (err) {
       console.error('Error loading ClickUp config:', err);
     } finally {
@@ -150,8 +172,8 @@ export default function ClickUpSettings() {
       }
       setSuccess('Konfiguracja zapisana pomyslnie');
       setTimeout(() => setSuccess(null), 4000);
-    } catch (err: any) {
-      setError(err.message || 'Nie udalo sie zapisac konfiguracji');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Nie udalo sie zapisac konfiguracji');
     } finally {
       setSaving(false);
     }
@@ -171,8 +193,8 @@ export default function ClickUpSettings() {
       if (!response.ok) throw new Error(result.error || 'Test polaczenia nieudany');
       setSuccess(`Polaczenie z ClickUp dziala poprawnie. Workspace: ${result.workspace || 'OK'}`);
       setTimeout(() => setSuccess(null), 5000);
-    } catch (err: any) {
-      setError(err.message || 'Blad polaczenia z ClickUp');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Blad polaczenia z ClickUp');
     } finally {
       setTesting(false);
     }
@@ -194,11 +216,11 @@ export default function ClickUpSettings() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Blad pobierania pol');
       setConfig(prev => ({ ...prev, cached_custom_fields: result.fields || [] }));
-      setSuccess(`Pobrano ${result.fields?.length || 0} pol z listy ClickUp`);
+      setSuccess(`Pobrano ${result.fields?.length || 0} pol custom z listy ClickUp`);
       setTimeout(() => setSuccess(null), 4000);
       setActiveTab('mappings');
-    } catch (err: any) {
-      setError(err.message || 'Blad pobierania pol ClickUp');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Blad pobierania pol ClickUp');
     } finally {
       setFetchingFields(false);
     }
@@ -269,12 +291,80 @@ export default function ClickUpSettings() {
       }
 
       await loadAll();
-      setSuccess('Mapowanie pol zapisane pomyslnie');
+      setSuccess('Mapowanie pol custom zapisane pomyslnie');
       setTimeout(() => setSuccess(null), 4000);
-    } catch (err: any) {
-      setError(err.message || 'Nie udalo sie zapisac mapowania');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Nie udalo sie zapisac mapowania');
     } finally {
       setSavingMappings(false);
+    }
+  }
+
+  function addStandardLine(target: StandardFieldMapping['field_target']) {
+    setStandardMappings(prev => [
+      ...prev,
+      {
+        field_target: target,
+        label: '',
+        app_field: '',
+        app_field_label: '',
+        enabled: true,
+        sort_order: prev.filter(m => m.field_target === target).length,
+      },
+    ]);
+  }
+
+  function updateStandardMapping(index: number, changes: Partial<StandardFieldMapping>) {
+    setStandardMappings(prev => prev.map((m, i) => {
+      if (i !== index) return m;
+      const updated = { ...m, ...changes };
+      if (changes.app_field) {
+        updated.app_field_label = APP_FIELDS.find(f => f.value === changes.app_field)?.label || changes.app_field;
+      }
+      return updated;
+    }));
+  }
+
+  function removeStandardMapping(index: number) {
+    setStandardMappings(prev => prev.filter((_, i) => i !== index));
+  }
+
+  async function saveStandardMappings() {
+    if (!profile?.is_admin) return;
+    setSavingStandard(true);
+    setError(null);
+    try {
+      const { error: delErr } = await supabase
+        .from('clickup_standard_field_mappings')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      if (delErr) throw delErr;
+
+      const toInsert = standardMappings
+        .filter(m => m.app_field)
+        .map((m, i) => ({
+          field_target: m.field_target,
+          label: m.label,
+          app_field: m.app_field,
+          app_field_label: m.app_field_label,
+          enabled: m.enabled,
+          sort_order: i,
+        }));
+
+      if (toInsert.length > 0) {
+        const { error: insErr } = await supabase
+          .from('clickup_standard_field_mappings')
+          .insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      await loadAll();
+      setSuccess('Mapowanie pol podstawowych zapisane pomyslnie');
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Nie udalo sie zapisac mapowania pol podstawowych');
+    } finally {
+      setSavingStandard(false);
     }
   }
 
@@ -312,7 +402,7 @@ export default function ClickUpSettings() {
       )}
 
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
-        {(['config', 'mappings'] as const).map(tab => (
+        {(['config', 'standard', 'mappings'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -322,7 +412,12 @@ export default function ClickUpSettings() {
                 : 'border-transparent text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
             }`}
           >
-            {tab === 'config' ? 'Konfiguracja' : 'Mapowanie pol'}
+            {tab === 'config' ? 'Konfiguracja' : tab === 'standard' ? 'Pola podstawowe' : 'Pola custom'}
+            {tab === 'standard' && standardMappings.length > 0 && (
+              <span className="ml-1.5 text-xs bg-brand-primary/10 text-brand-primary rounded-full px-1.5 py-0.5">
+                {standardMappings.length}
+              </span>
+            )}
             {tab === 'mappings' && mappings.length > 0 && (
               <span className="ml-1.5 text-xs bg-brand-primary/10 text-brand-primary rounded-full px-1.5 py-0.5">
                 {mappings.length}
@@ -418,7 +513,7 @@ export default function ClickUpSettings() {
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <RefreshCw className="w-3.5 h-3.5" />
                       }
-                      Pobierz pola
+                      Pobierz pola custom
                     </button>
                   )}
                 </div>
@@ -465,13 +560,214 @@ export default function ClickUpSettings() {
         </>
       )}
 
+      {activeTab === 'standard' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
+            <p className="text-xs text-blue-800 dark:text-blue-300">
+              <strong>Pola podstawowe ClickUp</strong> to standardowe pola kazdego zadania: nazwa, opis i priorytet.
+              Mozesz skonfigurowac, ktore dane z wniosku zakupowego trafiaja do tych pol.
+              Jesli nie skonfigurujesz opisu, zostanie uzyty domyslny szablon ze wszystkimi polami.
+            </p>
+          </div>
+
+          {STANDARD_CLICKUP_FIELDS.map(targetField => {
+            const Icon = targetField.icon;
+            const lines = standardMappings
+              .map((m, idx) => ({ ...m, _idx: idx }))
+              .filter(m => m.field_target === targetField.value);
+
+            return (
+              <div
+                key={targetField.value}
+                className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-4"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-3.5 h-3.5 text-text-secondary-light dark:text-text-secondary-dark" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                        {targetField.label}
+                      </p>
+                      {targetField.value === 'description' && (
+                        <p className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                          Kazda linia ponizej to osobna linia w opisie zadania ClickUp
+                        </p>
+                      )}
+                      {targetField.value === 'name' && (
+                        <p className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                          Pierwsze pole staje sie nazwa zadania (jesli brak - uzyty zostanie domyslny schemat)
+                        </p>
+                      )}
+                      {targetField.value === 'priority' && (
+                        <p className="text-[11px] text-text-secondary-light dark:text-text-secondary-dark">
+                          Mapowanie priorytetu z wniosku (automatyczne)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {profile?.is_admin && targetField.value !== 'priority' && (
+                    <button
+                      onClick={() => addStandardLine(targetField.value)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-dashed border-slate-300 dark:border-slate-600 rounded-lg hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-primary transition-colors text-text-secondary-light dark:text-text-secondary-dark"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Dodaj linie
+                    </button>
+                  )}
+                </div>
+
+                {targetField.value === 'priority' ? (
+                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 p-3">
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-2">
+                      Priorytet jest mapowany automatycznie z pola "Priorytet" we wniosku zakupowym:
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      {[
+                        { from: 'pilny / urgent', to: 'Pilny (1)', color: 'text-red-600 dark:text-red-400' },
+                        { from: 'wysoki / high', to: 'Wysoki (2)', color: 'text-orange-600 dark:text-orange-400' },
+                        { from: 'normalny / normal', to: 'Normalny (3)', color: 'text-yellow-600 dark:text-yellow-400' },
+                        { from: 'niski / low', to: 'Niski (4)', color: 'text-slate-500 dark:text-slate-400' },
+                      ].map(row => (
+                        <div key={row.from} className="flex items-center gap-1.5">
+                          <span className="text-text-secondary-light dark:text-text-secondary-dark">{row.from}</span>
+                          <ArrowRight className="w-3 h-3 flex-shrink-0 text-text-secondary-light dark:text-text-secondary-dark" />
+                          <span className={`font-medium ${row.color}`}>{row.to}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : lines.length === 0 ? (
+                  <div className="text-center py-5 rounded-lg border border-dashed border-slate-200 dark:border-slate-700/50">
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {targetField.value === 'description'
+                        ? 'Brak konfiguracji - zostanie uzyty domyslny szablon opisu'
+                        : 'Brak konfiguracji - zostanie uzyta domyslna nazwa zadania'}
+                    </p>
+                    {profile?.is_admin && (
+                      <button
+                        onClick={() => addStandardLine(targetField.value)}
+                        className="mt-2 text-xs text-brand-primary hover:underline"
+                      >
+                        Dodaj pierwsza linie
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {lines.map((mapping, lineIdx) => (
+                      <div
+                        key={lineIdx}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors ${
+                          mapping.enabled
+                            ? 'border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/30'
+                            : 'border-slate-200 dark:border-slate-700/30 bg-slate-50/50 dark:bg-slate-800/10 opacity-60'
+                        }`}
+                      >
+                        <GripVertical className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 cursor-grab" />
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
+                          {targetField.value === 'description' && (
+                            <input
+                              type="text"
+                              value={mapping.label}
+                              onChange={e => updateStandardMapping(mapping._idx!, { label: e.target.value })}
+                              disabled={!profile?.is_admin}
+                              placeholder="Etykieta (np. Kwota:)"
+                              className="w-32 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-1 focus:ring-brand-primary disabled:opacity-50"
+                            />
+                          )}
+                          <select
+                            value={mapping.app_field}
+                            onChange={e => updateStandardMapping(mapping._idx!, { app_field: e.target.value })}
+                            disabled={!profile?.is_admin}
+                            className="flex-1 min-w-[140px] text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-1 focus:ring-brand-primary disabled:opacity-50"
+                          >
+                            <option value="">-- wybierz pole wniosku --</option>
+                            {APP_FIELDS.map(f => (
+                              <option key={f.value} value={f.value}>{f.label}</option>
+                            ))}
+                          </select>
+                          {mapping.app_field && (
+                            <span className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono truncate max-w-[120px]">
+                              {mapping.label
+                                ? `${mapping.label} [wartosc]`
+                                : `[${APP_FIELDS.find(f => f.value === mapping.app_field)?.label || mapping.app_field}]`
+                              }
+                            </span>
+                          )}
+                        </div>
+                        {profile?.is_admin && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => updateStandardMapping(mapping._idx!, { enabled: !mapping.enabled })}
+                              className={`p-1 rounded transition-colors ${
+                                mapping.enabled
+                                  ? 'text-green-600 hover:text-green-700 dark:text-green-400'
+                                  : 'text-slate-400 hover:text-slate-500'
+                              }`}
+                              title={mapping.enabled ? 'Wylacz' : 'Wlacz'}
+                            >
+                              {mapping.enabled
+                                ? <ToggleRight className="w-4 h-4" />
+                                : <ToggleLeft className="w-4 h-4" />
+                              }
+                            </button>
+                            <button
+                              onClick={() => removeStandardMapping(mapping._idx!)}
+                              className="p-1 rounded text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                              title="Usun linie"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {targetField.value === 'description' && lines.filter(m => m.enabled && m.app_field).length > 0 && (
+                      <div className="mt-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/40 p-3">
+                        <p className="text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 uppercase tracking-wide">
+                          Podglad opisu
+                        </p>
+                        {lines.filter(m => m.enabled && m.app_field).map((m, i) => (
+                          <p key={i} className="text-xs text-text-primary-light dark:text-text-primary-dark font-mono leading-relaxed">
+                            {m.label
+                              ? <><strong>{m.label}</strong>{' [wartosc]'}</>
+                              : `[${APP_FIELDS.find(f => f.value === m.app_field)?.label || m.app_field}]`
+                            }
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {profile?.is_admin && standardMappings.filter(m => m.app_field).length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={saveStandardMappings}
+                disabled={savingStandard}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+              >
+                {savingStandard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Zapisz pola podstawowe
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'mappings' && (
         <div className="space-y-4">
           <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                  Mapowanie pol wniosku &rarr; ClickUp
+                  Mapowanie pol wniosku &rarr; pola custom ClickUp
                 </h3>
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
                   Przypisz pola z wniosku zakupowego do pol custom w ClickUp. Najpierw pobierz pola z listy.
@@ -491,8 +787,8 @@ export default function ClickUpSettings() {
 
             {mappings.length === 0 && (config.cached_custom_fields || []).length === 0 && (
               <div className="text-center py-8 text-text-secondary-light dark:text-text-secondary-dark">
-                <p className="text-sm mb-3">Brak pobranych pol z ClickUp.</p>
-                <p className="text-xs mb-4">Przejdz do zakladki Konfiguracja, wpisz ID listy i kliknij "Pobierz pola".</p>
+                <p className="text-sm mb-3">Brak pobranych pol custom z ClickUp.</p>
+                <p className="text-xs mb-4">Przejdz do zakladki Konfiguracja, wpisz ID listy i kliknij "Pobierz pola custom".</p>
                 <button
                   onClick={() => setActiveTab('config')}
                   className="text-xs text-brand-primary hover:underline"
@@ -570,7 +866,7 @@ export default function ClickUpSettings() {
                 {availableClickUpFields.length > 0 && (
                   <div>
                     <p className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-2">
-                      Dostepne pola ClickUp (kliknij, aby dodac mapowanie):
+                      Dostepne pola custom ClickUp (kliknij, aby dodac mapowanie):
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {availableClickUpFields.map(field => (
@@ -589,7 +885,7 @@ export default function ClickUpSettings() {
                 )}
                 {availableClickUpFields.length === 0 && mappings.length > 0 && (
                   <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark text-center py-2">
-                    Wszystkie pola z listy zostaly juz zmapowane.
+                    Wszystkie pola custom z listy zostaly juz zmapowane.
                   </p>
                 )}
                 {profile?.is_admin && mappings.length > 0 && (
@@ -612,9 +908,9 @@ export default function ClickUpSettings() {
             <div className="flex items-start gap-2">
               <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">Jak dziala mapowanie pol?</p>
+                <p className="text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">Jak dziala mapowanie pol custom?</p>
                 <ol className="text-xs text-blue-700 dark:text-blue-400 space-y-1 list-decimal list-inside">
-                  <li>W zakladce Konfiguracja wpisz token i ID listy, kliknij "Pobierz pola"</li>
+                  <li>W zakladce Konfiguracja wpisz token i ID listy, kliknij "Pobierz pola custom"</li>
                   <li>Tutaj zobaczysz pola custom z Twojej listy ClickUp</li>
                   <li>Kliknij pole, aby dodac je do mapowania, a nastepnie wybierz odpowiednie pole z wniosku</li>
                   <li>Zapisz mapowanie - od teraz kazdy nowy wniosek bedzie wypelnial te pola w ClickUp</li>

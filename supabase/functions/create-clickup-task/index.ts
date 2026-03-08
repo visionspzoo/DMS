@@ -162,23 +162,53 @@ Deno.serve(async (req: Request) => {
     const departmentName = request.department?.name || "Brak dzialu";
     const priorityClickUp = priorityMap[request.priority?.toLowerCase()] ?? 3;
 
-    const amountFormatted = request.gross_amount
-      ? new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(request.gross_amount)
-      : "Brak kwoty";
+    const { data: standardMappings } = await supabase
+      .from("clickup_standard_field_mappings")
+      .select("*")
+      .eq("enabled", true)
+      .order("sort_order");
 
-    const descriptionLines = [
-      `**Wnioskodawca:** ${submitterName} (${submitterEmail})`,
-      `**Dzial:** ${departmentName}`,
-      `**Opis:** ${request.description || "Brak opisu"}`,
-      `**Kwota brutto:** ${amountFormatted}`,
-      `**Ilosc:** ${request.quantity ?? 1} szt.`,
-      `**Miejsce dostawy:** ${request.delivery_location || "Nie podano"}`,
-      `**Priorytet:** ${request.priority || "normalny"}`,
-      request.link ? `**Link do produktu:** ${request.link}` : null,
-      request.proforma_filename ? `**Proforma:** ${request.proforma_filename}` : null,
-      `**Data zlozenia:** ${new Date(request.created_at).toLocaleString("pl-PL")}`,
-      `**ID wniosku:** ${request.id}`,
-    ].filter(Boolean).join("\n");
+    const nameMappings = (standardMappings || []).filter((m: any) => m.field_target === "name");
+    const descMappings = (standardMappings || []).filter((m: any) => m.field_target === "description");
+
+    let taskName: string;
+    if (nameMappings.length > 0) {
+      const nameParts = nameMappings
+        .map((m: any) => getAppFieldValue(request, m.app_field))
+        .filter(Boolean);
+      taskName = nameParts.join(" - ") || `Wniosek zakupowy: ${request.description?.slice(0, 80) || "Bez opisu"}`;
+    } else {
+      taskName = `Wniosek zakupowy: ${request.description?.slice(0, 80) || "Bez opisu"}`;
+    }
+
+    let taskDescription: string;
+    if (descMappings.length > 0) {
+      const descLines = descMappings
+        .map((m: any) => {
+          const value = getAppFieldValue(request, m.app_field);
+          if (value === null || value === undefined || value === "") return null;
+          return m.label ? `${m.label} ${value}` : String(value);
+        })
+        .filter(Boolean);
+      taskDescription = descLines.join("\n");
+    } else {
+      const amountFormatted = request.gross_amount
+        ? new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(request.gross_amount)
+        : "Brak kwoty";
+      taskDescription = [
+        `**Wnioskodawca:** ${submitterName} (${submitterEmail})`,
+        `**Dzial:** ${departmentName}`,
+        `**Opis:** ${request.description || "Brak opisu"}`,
+        `**Kwota brutto:** ${amountFormatted}`,
+        `**Ilosc:** ${request.quantity ?? 1} szt.`,
+        `**Miejsce dostawy:** ${request.delivery_location || "Nie podano"}`,
+        `**Priorytet:** ${request.priority || "normalny"}`,
+        request.link ? `**Link do produktu:** ${request.link}` : null,
+        request.proforma_filename ? `**Proforma:** ${request.proforma_filename}` : null,
+        `**Data zlozenia:** ${new Date(request.created_at).toLocaleString("pl-PL")}`,
+        `**ID wniosku:** ${request.id}`,
+      ].filter(Boolean).join("\n");
+    }
 
     const { data: mappings } = await supabase
       .from("clickup_field_mappings")
@@ -197,8 +227,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const taskPayload: Record<string, any> = {
-      name: `Wniosek zakupowy: ${request.description?.slice(0, 80) || "Bez opisu"}`,
-      description: descriptionLines,
+      name: taskName,
+      description: taskDescription,
       priority: priorityClickUp,
       notify_all: false,
     };
