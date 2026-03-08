@@ -139,9 +139,59 @@ function MyRequestCard({
               {request.description}
             </span>
           </div>
+
+          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+            <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+              <Calendar className="w-3 h-3 flex-shrink-0" />
+              {date}
+            </span>
+
+            {departmentName && (
+              <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                <Building2 className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate max-w-[120px]">{departmentName}</span>
+              </span>
+            )}
+
+            {submitter && (
+              <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                <User className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate max-w-[120px]">{submitter}</span>
+              </span>
+            )}
+
+            {waitingOn && (
+              <span className={`flex items-center gap-1 text-xs font-medium ${request.status === 'approved' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                <Clock className="w-3 h-3 flex-shrink-0" />
+                Oczekuje: {waitingOn}
+              </span>
+            )}
+
+            {step && (
+              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>{step}</span>
+              </span>
+            )}
+
+            {request.status === 'paid' && request.paid_at && (
+              <span className="flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400">
+                <CreditCard className="w-3 h-3 flex-shrink-0" />
+                {new Date(request.paid_at).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                {' '}
+                {new Date(request.paid_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+
+            {request.clickup_task_id && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/50 flex-shrink-0">
+                <CheckCircle className="w-2.5 h-2.5" />
+                ClickUp
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 self-center">
           <span className="text-sm font-bold text-text-primary-light dark:text-text-primary-dark whitespace-nowrap">
             {isProforma ? '—' : `${totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`}
           </span>
@@ -157,56 +207,6 @@ function MyRequestCard({
 
           <ChevronRight className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark group-hover:text-brand-primary transition-colors" />
         </div>
-      </div>
-
-      <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-        <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-          <Calendar className="w-3 h-3 flex-shrink-0" />
-          {date}
-        </span>
-
-        {departmentName && (
-          <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-            <Building2 className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate max-w-[120px]">{departmentName}</span>
-          </span>
-        )}
-
-        {submitter && (
-          <span className="flex items-center gap-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-            <User className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate max-w-[120px]">{submitter}</span>
-          </span>
-        )}
-
-        {waitingOn && (
-          <span className={`flex items-center gap-1 text-xs font-medium ${request.status === 'approved' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
-            <Clock className="w-3 h-3 flex-shrink-0" />
-            Oczekuje: {waitingOn}
-          </span>
-        )}
-
-        {step && (
-          <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-            <span>{step}</span>
-          </span>
-        )}
-
-        {request.status === 'paid' && request.paid_at && (
-          <span className="flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400">
-            <CreditCard className="w-3 h-3 flex-shrink-0" />
-            {new Date(request.paid_at).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            {' '}
-            {new Date(request.paid_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
-
-        {request.clickup_task_id && (
-          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/50 flex-shrink-0">
-            <CheckCircle className="w-2.5 h-2.5" />
-            ClickUp
-          </span>
-        )}
       </div>
     </button>
   );
