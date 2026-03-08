@@ -226,6 +226,7 @@ Deno.serve(async (req: Request) => {
       .from('purchase_requests')
       .select(`
         id,
+        user_id,
         description,
         delivery_location,
         priority,
@@ -235,8 +236,7 @@ Deno.serve(async (req: Request) => {
         updated_at,
         proforma_filename,
         proforma_pdf_base64,
-        department:department_id (id, name, mpk_code),
-        user:user_id (id, full_name, email)
+        department:department_id (id, name, mpk_code)
       `)
       .not('proforma_pdf_base64', 'is', null)
       .in('status', statuses)
@@ -257,7 +257,22 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'Failed to fetch proforma purchase requests' }, 500);
     }
 
+    const userIds = [...new Set((requests || []).map((r: any) => r.user_id).filter(Boolean))];
+    let profilesMap: Record<string, { id: string; full_name: string; email: string }> = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', userIds);
+      if (profiles) {
+        for (const p of profiles) {
+          profilesMap[p.id] = p;
+        }
+      }
+    }
+
     const result = (requests || []).map((r: any) => {
+      const profile = profilesMap[r.user_id] || null;
       const entry: Record<string, unknown> = {
         id: r.id,
         description: r.description,
@@ -273,10 +288,10 @@ Deno.serve(async (req: Request) => {
           name: r.department.name,
           mpk_code: r.department.mpk_code || null,
         } : null,
-        submitter: r.user ? {
-          id: r.user.id,
-          full_name: r.user.full_name,
-          email: r.user.email,
+        submitter: profile ? {
+          id: profile.id,
+          full_name: profile.full_name,
+          email: profile.email,
         } : null,
       };
 
