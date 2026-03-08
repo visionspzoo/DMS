@@ -7,6 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function clickupAuthHeader(token: string): string {
+  return token.startsWith("pk_") ? token : `Bearer ${token}`;
+}
+
 function getAppFieldValue(request: Record<string, any>, appField: string): string | number | null {
   const fieldMap: Record<string, () => string | number | null> = {
     description: () => request.description || null,
@@ -53,7 +57,7 @@ Deno.serve(async (req: Request) => {
         throw new Error("Brak tokenu API ClickUp - wprowadz token w formularzu");
       }
       const testRes = await fetch("https://api.clickup.com/api/v2/user", {
-        headers: { Authorization: tokenToTest },
+        headers: { Authorization: clickupAuthHeader(tokenToTest) },
       });
       if (!testRes.ok) {
         const rawText = await testRes.text().catch(() => "");
@@ -77,7 +81,7 @@ Deno.serve(async (req: Request) => {
       if (!token || !listId) throw new Error("Brak tokenu lub ID listy");
 
       const fieldsRes = await fetch(`https://api.clickup.com/api/v2/list/${listId}/field`, {
-        headers: { Authorization: token },
+        headers: { Authorization: clickupAuthHeader(token) },
       });
       if (!fieldsRes.ok) {
         const errData = await fieldsRes.json().catch(() => ({}));
@@ -202,7 +206,7 @@ Deno.serve(async (req: Request) => {
       {
         method: "POST",
         headers: {
-          Authorization: config.api_token,
+          Authorization: clickupAuthHeader(config.api_token),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(taskPayload),
