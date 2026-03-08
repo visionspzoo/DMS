@@ -37,12 +37,18 @@ Deno.serve(async (req: Request) => {
         headers: { Authorization: tokenToTest },
       });
       if (!testRes.ok) {
-        const err = await testRes.json().catch(() => ({}));
-        throw new Error(err.err || `Nieprawidlowy token API ClickUp (HTTP ${testRes.status})`);
+        const rawText = await testRes.text().catch(() => "");
+        let errMsg = `HTTP ${testRes.status}`;
+        try {
+          const errJson = JSON.parse(rawText);
+          errMsg = errJson.err || errJson.error || errJson.message || errMsg;
+        } catch (_) {}
+        console.error("ClickUp test failed:", testRes.status, rawText);
+        throw new Error(`ClickUp API: ${errMsg}`);
       }
       const userData = await testRes.json();
       return new Response(
-        JSON.stringify({ success: true, workspace: userData.user?.username }),
+        JSON.stringify({ success: true, workspace: userData.user?.username, email: userData.user?.email }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
