@@ -114,6 +114,7 @@ export function PurchaseRequestDetail({
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     loadRequest();
@@ -203,6 +204,27 @@ export function PurchaseRequestDetail({
     await loadRequest();
   }
 
+  async function handleAdminDelete() {
+    if (!request) return;
+    setActionLoading(true);
+    setActionError(null);
+
+    const { error } = await supabase
+      .from('purchase_requests')
+      .delete()
+      .eq('id', request.id);
+
+    setActionLoading(false);
+
+    if (error) {
+      setActionError(error.message || 'Wystąpił błąd podczas usuwania wniosku');
+      setShowDeleteConfirm(false);
+      return;
+    }
+
+    onBack();
+  }
+
   async function handleWithdraw() {
     if (!request) return;
     setActionLoading(true);
@@ -225,6 +247,7 @@ export function PurchaseRequestDetail({
     onBack();
   }
 
+  const isAdmin = profile?.role === 'admin';
   const canApprove = isApprover && request?.current_approver_id === profile?.id && request?.status === 'pending';
   const canWithdraw = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected');
 
@@ -590,6 +613,49 @@ export function PurchaseRequestDetail({
                 >
                   <Trash2 className="w-4 h-4" />
                   Wycofaj wniosek
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Admin delete panel */}
+        {isAdmin && (
+          <div className="rounded-2xl border border-red-200 dark:border-red-700/50 bg-light-surface dark:bg-dark-surface overflow-hidden shadow-sm">
+            <div className="p-4">
+              {showDeleteConfirm ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2.5 px-3 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                    <p className="text-sm text-red-800 dark:text-red-300">
+                      Czy na pewno chcesz trwale usunąć ten wniosek? Operacja jest nieodwracalna.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAdminDelete}
+                      disabled={actionLoading}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition-all disabled:opacity-60 shadow-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {actionLoading ? 'Usuwanie...' : 'Tak, usuń wniosek'}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={actionLoading}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700/50 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant text-sm transition-all"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-700/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold text-sm transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Usuń wniosek (Admin)
                 </button>
               )}
             </div>
