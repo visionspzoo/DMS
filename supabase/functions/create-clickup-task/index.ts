@@ -51,6 +51,147 @@ Deno.serve(async (req: Request) => {
 
     if (configError) throw new Error(`Config error: ${configError.message}`);
 
+    if (body.action === "register_webhook") {
+      const token = body.api_token || config?.api_token;
+      if (!token) throw new Error("Brak tokenu API ClickUp");
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const webhookEndpoint = `${supabaseUrl}/functions/v1/clickup-webhook`;
+
+      const teamRes = await fetch("https://api.clickup.com/api/v2/team", {
+        headers: { Authorization: clickupAuthHeader(token) },
+      });
+      if (!teamRes.ok) throw new Error(`Blad pobierania workspace: HTTP ${teamRes.status}`);
+      const teamData = await teamRes.json();
+      const teamId = teamData.teams?.[0]?.id;
+      if (!teamId) throw new Error("Nie znaleziono workspace w ClickUp");
+
+      if (config?.clickup_webhook_id) {
+        const checkRes = await fetch(
+          `https://api.clickup.com/api/v2/team/${teamId}/webhook`,
+          { headers: { Authorization: clickupAuthHeader(token) } }
+        );
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const existing = (checkData.webhooks || []).find(
+            (w: any) => w.id === config.clickup_webhook_id
+          );
+          if (existing) {
+            return new Response(
+              JSON.stringify({ success: true, webhook_id: existing.id, endpoint: existing.endpoint, already_exists: true }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+      }
+
+      const createWebhookRes = await fetch(
+        `https://api.clickup.com/api/v2/team/${teamId}/webhook`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: clickupAuthHeader(token),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            endpoint: webhookEndpoint,
+            events: ["taskStatusUpdated"],
+          }),
+        }
+      );
+
+      if (!createWebhookRes.ok) {
+        const errData = await createWebhookRes.json().catch(() => ({}));
+        throw new Error(errData.err || errData.error || `Blad rejestracji webhooka: HTTP ${createWebhookRes.status}`);
+      }
+
+      const webhookData = await createWebhookRes.json();
+      const webhookId = webhookData.webhook?.id || webhookData.id;
+
+      await supabase
+        .from("clickup_config")
+        .update({ clickup_webhook_id: webhookId })
+        .eq("id", config!.id);
+
+      return new Response(
+        JSON.stringify({ success: true, webhook_id: webhookId, endpoint: webhookEndpoint }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (body.action === "check_webhook") {
+      const token = body.api_token || config?.api_token;
+      if (!token) throw new Error("Brak tokenu API ClickUp");
+
+      const teamRes = await fetch("https://api.clickup.com/api/v2/team", {
+        headers: { Authorization: clickupAuthHeader(token) },
+      });
+      if (!teamRes.ok) throw new Error(`Blad pobierania workspace: HTTP ${teamRes.status}`);
+      const teamData = await teamRes.json();
+      const teamId = teamData.teams?.[0]?.id;
+      if (!teamId) throw new Error("Nie znaleziono workspace w ClickUp");
+
+      const webhooksRes = await fetch(
+        `https://api.clickup.com/api/v2/team/${teamId}/webhook`,
+        { headers: { Authorization: clickupAuthHeader(token) } }
+      );
+      if (!webhooksRes.ok) throw new Error(`Blad pobierania webhookow: HTTP ${webhooksRes.status}`);
+      const webhooksData = await webhooksRes.json();
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const webhookEndpoint = `${supabaseUrl}/functions/v1/clickup-webhook`;
+      const registered = (webhooksData.webhooks || []).find(
+        (w: any) => w.endpoint === webhookEndpoint || w.id === config?.clickup_webhook_id
+      );
+
+      if (registered && (!config?.clickup_webhook_id || config.clickup_webhook_id !== registered.id)) {
+        await supabase
+          .from("clickup_config")
+          .update({ clickup_webhook_id: registered.id })
+          .eq("id", config!.id);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          registered: !!registered,
+          webhook_id: registered?.id || null,
+          endpoint: registered?.endpoint || null,
+          all_webhooks: webhooksData.webhooks?.length || 0,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (body.action === "delete_webhook") {
+      const token = body.api_token || config?.api_token;
+      const webhookId = body.webhook_id || config?.clickup_webhook_id;
+      if (!token) throw new Error("Brak tokenu API ClickUp");
+      if (!webhookId) throw new Error("Brak ID webhooka do usuniecia");
+
+      const delRes = await fetch(
+        `https://api.clickup.com/api/v2/webhook/${webhookId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: clickupAuthHeader(token) },
+        }
+      );
+
+      if (!delRes.ok && delRes.status !== 404) {
+        throw new Error(`Blad usuwania webhooka: HTTP ${delRes.status}`);
+      }
+
+      await supabase
+        .from("clickup_config")
+        .update({ clickup_webhook_id: null })
+        .eq("id", config!.id);
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (body.action === "test_connection") {
       const tokenToTest = body.api_token || config?.api_token;
       if (!tokenToTest) {

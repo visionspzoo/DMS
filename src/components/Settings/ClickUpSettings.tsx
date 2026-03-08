@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, ExternalLink,
   Copy, Check, RefreshCw, Plus, Trash2, ArrowRight, ToggleLeft, ToggleRight,
-  GripVertical, Type, AlignLeft, ChevronDown,
+  GripVertical, Type, AlignLeft, ChevronDown, Webhook, XCircle,
 } from 'lucide-react';
 
 interface ClickUpConfig {
@@ -14,6 +14,7 @@ interface ClickUpConfig {
   enabled: boolean;
   paid_status: string;
   cached_custom_fields?: ClickUpField[];
+  clickup_webhook_id?: string;
 }
 
 interface ClickUpField {
@@ -105,6 +106,10 @@ export default function ClickUpSettings() {
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [activeTab, setActiveTab] = useState<'config' | 'standard' | 'mappings'>('config');
+  const [webhookStatus, setWebhookStatus] = useState<'unknown' | 'registered' | 'not_registered'>('unknown');
+  const [registeringWebhook, setRegisteringWebhook] = useState(false);
+  const [checkingWebhook, setCheckingWebhook] = useState(false);
+  const [deletingWebhook, setDeletingWebhook] = useState(false);
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clickup-webhook`;
 
@@ -129,7 +134,13 @@ export default function ClickUpSettings() {
           enabled: configRes.data.enabled ?? false,
           paid_status: configRes.data.paid_status || '',
           cached_custom_fields: configRes.data.cached_custom_fields || [],
+          clickup_webhook_id: configRes.data.clickup_webhook_id || undefined,
         });
+        if (configRes.data.clickup_webhook_id) {
+          setWebhookStatus('registered');
+        } else {
+          setWebhookStatus('not_registered');
+        }
       }
 
       if (mappingsRes.data) setMappings(mappingsRes.data);
@@ -379,6 +390,81 @@ export default function ClickUpSettings() {
     setTimeout(() => setCopiedWebhook(false), 2000);
   }
 
+  async function checkWebhook() {
+    if (!config.api_token) return;
+    setCheckingWebhook(true);
+    setError(null);
+    try {
+      const response = await callEdgeFunction({ action: 'check_webhook', api_token: config.api_token });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Blad sprawdzania webhooka');
+      if (result.registered) {
+        setWebhookStatus('registered');
+        setConfig(prev => ({ ...prev, clickup_webhook_id: result.webhook_id }));
+        setSuccess('Webhook jest zarejestrowany i aktywny');
+      } else {
+        setWebhookStatus('not_registered');
+        setConfig(prev => ({ ...prev, clickup_webhook_id: undefined }));
+        setSuccess('Webhook nie jest zarejestrowany');
+      }
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setCheckingWebhook(false);
+    }
+  }
+
+  async function registerWebhook() {
+    if (!config.api_token) {
+      setError('Najpierw wpisz i zapisz token API');
+      return;
+    }
+    setRegisteringWebhook(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await callEdgeFunction({ action: 'register_webhook', api_token: config.api_token });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Blad rejestracji webhooka');
+      setWebhookStatus('registered');
+      setConfig(prev => ({ ...prev, clickup_webhook_id: result.webhook_id }));
+      if (result.already_exists) {
+        setSuccess('Webhook byl juz zarejestrowany');
+      } else {
+        setSuccess('Webhook zostal pomyslnie zarejestrowany w ClickUp!');
+      }
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setRegisteringWebhook(false);
+    }
+  }
+
+  async function deleteWebhook() {
+    if (!config.api_token || !config.clickup_webhook_id) return;
+    setDeletingWebhook(true);
+    setError(null);
+    try {
+      const response = await callEdgeFunction({
+        action: 'delete_webhook',
+        api_token: config.api_token,
+        webhook_id: config.clickup_webhook_id,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Blad usuwania webhooka');
+      setWebhookStatus('not_registered');
+      setConfig(prev => ({ ...prev, clickup_webhook_id: undefined }));
+      setSuccess('Webhook zostal usuniety');
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setDeletingWebhook(false);
+    }
+  }
+
   const availableClickUpFields = (config.cached_custom_fields || []).filter(
     f => !mappings.some(m => m.clickup_field_id === f.id)
   );
@@ -543,24 +629,110 @@ export default function ClickUpSettings() {
           </div>
 
           <div className="bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-4">
-            <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-1">
-              Webhook URL (synchronizacja statusow)
-            </h3>
-            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-              Dodaj ten URL jako Webhook w ClickUp, aby zmiana statusu automatycznie oznaczala wniosek jako oplacony.
-            </p>
-            <div className="flex items-center gap-2 mb-4">
-              <code className="flex-1 text-xs bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg text-text-primary-light dark:text-text-primary-dark font-mono truncate border border-slate-200 dark:border-slate-700">
-                {webhookUrl}
-              </code>
-              <button
-                onClick={copyWebhook}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-text-primary-light dark:text-text-primary-dark"
-              >
-                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedWebhook ? 'Skopiowano' : 'Kopiuj'}
-              </button>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  Webhook (synchronizacja statusow)
+                </h3>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                  Webhook automatycznie oznacza wniosek jako oplacony gdy zmienisz status zadania w ClickUp.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {webhookStatus === 'registered' && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Aktywny
+                  </span>
+                )}
+                {webhookStatus === 'not_registered' && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+                    <XCircle className="w-3.5 h-3.5" />
+                    Niezarejestrowany
+                  </span>
+                )}
+                {webhookStatus === 'unknown' && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                    Nieznany
+                  </span>
+                )}
+              </div>
             </div>
+
+            {webhookStatus === 'registered' ? (
+              <div className="mb-4 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 p-3 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2 min-w-0">
+                  <Webhook className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-green-800 dark:text-green-300">Webhook zarejestrowany</p>
+                    <p className="text-[11px] text-green-700 dark:text-green-400 mt-0.5 font-mono truncate">
+                      ID: {config.clickup_webhook_id}
+                    </p>
+                    <p className="text-[11px] text-green-600 dark:text-green-500 mt-0.5 truncate">
+                      {webhookUrl}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={checkWebhook}
+                    disabled={checkingWebhook}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-green-300 dark:border-green-700 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-green-700 dark:text-green-400 disabled:opacity-50"
+                  >
+                    {checkingWebhook ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Sprawdz
+                  </button>
+                  {profile?.is_admin && (
+                    <button
+                      onClick={deleteWebhook}
+                      disabled={deletingWebhook}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-600 dark:text-red-400 disabled:opacity-50"
+                    >
+                      {deletingWebhook ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      Usun
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 p-3">
+                <div className="flex items-start gap-2 mb-3">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    Webhook nie jest zarejestrowany — statusy z ClickUp nie beda automatycznie aktualizowane. Kliknij "Zarejestruj webhook" aby to naprawic.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {profile?.is_admin && config.api_token && (
+                    <button
+                      onClick={registerWebhook}
+                      disabled={registeringWebhook}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {registeringWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Webhook className="w-3.5 h-3.5" />}
+                      Zarejestruj webhook
+                    </button>
+                  )}
+                  <button
+                    onClick={checkWebhook}
+                    disabled={checkingWebhook || !config.api_token}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-text-primary-light dark:text-text-primary-dark disabled:opacity-50"
+                  >
+                    {checkingWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    Sprawdz status
+                  </button>
+                  <button
+                    onClick={copyWebhook}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-text-secondary-light dark:text-text-secondary-dark"
+                    title="Skopiuj URL webhooka (reczna rejestracja)"
+                  >
+                    {copiedWebhook ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedWebhook ? 'Skopiowano' : 'Kopiuj URL'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5">
                 Nazwa statusu "Oplacono" w ClickUp
