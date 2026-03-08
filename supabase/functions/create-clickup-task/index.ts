@@ -7,6 +7,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function getAppFieldValue(request: Record<string, any>, appField: string): string | number | null {
+  const fieldMap: Record<string, () => string | number | null> = {
+    description: () => request.description || null,
+    gross_amount: () => request.gross_amount ?? null,
+    quantity: () => request.quantity ?? null,
+    delivery_location: () => request.delivery_location || null,
+    priority: () => request.priority || null,
+    link: () => request.link || null,
+    submitter_name: () => request.submitter?.full_name || null,
+    submitter_email: () => request.submitter?.email || null,
+    department_name: () => request.department?.name || null,
+    proforma_filename: () => request.proforma_filename || null,
+    bez_mpk: () => (request.bez_mpk ? "Tak" : "Nie"),
+    created_at: () => request.created_at ? new Date(request.created_at).toLocaleString("pl-PL") : null,
+    id: () => request.id || null,
+  };
+  return fieldMap[appField]?.() ?? null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -43,7 +62,6 @@ Deno.serve(async (req: Request) => {
           const errJson = JSON.parse(rawText);
           errMsg = errJson.err || errJson.error || errJson.message || errMsg;
         } catch (_) {}
-        console.error("ClickUp test failed:", testRes.status, rawText);
         throw new Error(`ClickUp API: ${errMsg}`);
       }
       const userData = await testRes.json();
@@ -53,10 +71,39 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { purchase_request_id } = body;
-    if (!purchase_request_id) {
-      throw new Error("Brak purchase_request_id");
+    if (body.action === "fetch_list_fields") {
+      const token = body.api_token || config?.api_token;
+      const listId = body.list_id || config?.list_id;
+      if (!token || !listId) throw new Error("Brak tokenu lub ID listy");
+
+      const fieldsRes = await fetch(`https://api.clickup.com/api/v2/list/${listId}/field`, {
+        headers: { Authorization: token },
+      });
+      if (!fieldsRes.ok) {
+        const errData = await fieldsRes.json().catch(() => ({}));
+        throw new Error(errData.err || `Blad pobierania pol: ${fieldsRes.status}`);
+      }
+      const fieldsData = await fieldsRes.json();
+      const fields = (fieldsData.fields || []).map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        type: f.type,
+        type_config: f.type_config,
+      }));
+
+      await supabase
+        .from("clickup_config")
+        .update({ cached_custom_fields: fields })
+        .eq("id", config?.id);
+
+      return new Response(
+        JSON.stringify({ success: true, fields }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const { purchase_request_id } = body;
+    if (!purchase_request_id) throw new Error("Brak purchase_request_id");
 
     if (!config?.enabled) {
       return new Response(
@@ -90,9 +137,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const priorityMap: Record<string, number> = {
+      pilny: 1,
       urgent: 1,
+      wysoki: 2,
       high: 2,
+      normalny: 3,
       normal: 3,
+      niski: 4,
       low: 4,
     };
 
@@ -119,13 +170,32 @@ Deno.serve(async (req: Request) => {
       `**ID wniosku:** ${request.id}`,
     ].filter(Boolean).join("\n");
 
-    const taskPayload = {
+    const { data: mappings } = await supabase
+      .from("clickup_field_mappings")
+      .select("*")
+      .eq("enabled", true)
+      .order("sort_order");
+
+    const customFields: Array<{ id: string; value: string | number }> = [];
+    if (mappings && mappings.length > 0) {
+      for (const mapping of mappings) {
+        const value = getAppFieldValue(request, mapping.app_field);
+        if (value !== null && value !== undefined && value !== "") {
+          customFields.push({ id: mapping.clickup_field_id, value });
+        }
+      }
+    }
+
+    const taskPayload: Record<string, any> = {
       name: `Wniosek zakupowy: ${request.description?.slice(0, 80) || "Bez opisu"}`,
       description: descriptionLines,
       priority: priorityClickUp,
       notify_all: false,
-      custom_fields: [],
     };
+
+    if (customFields.length > 0) {
+      taskPayload.custom_fields = customFields;
+    }
 
     const createRes = await fetch(
       `https://api.clickup.com/api/v2/list/${config.list_id}/task`,
@@ -140,7 +210,7 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!createRes.ok) {
-      const errData = await createRes.json();
+      const errData = await createRes.json().catch(() => ({}));
       throw new Error(errData.err || `Blad tworzenia zadania ClickUp: ${createRes.status}`);
     }
 
