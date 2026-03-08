@@ -12,6 +12,7 @@ interface ClickUpConfig {
   api_token: string;
   list_id: string;
   enabled: boolean;
+  paid_status: string;
   cached_custom_fields?: ClickUpField[];
 }
 
@@ -88,6 +89,7 @@ export default function ClickUpSettings() {
     api_token: '',
     list_id: '',
     enabled: false,
+    paid_status: '',
     cached_custom_fields: [],
   });
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
@@ -125,6 +127,7 @@ export default function ClickUpSettings() {
           api_token: configRes.data.api_token || '',
           list_id: configRes.data.list_id || '',
           enabled: configRes.data.enabled ?? false,
+          paid_status: configRes.data.paid_status || '',
           cached_custom_fields: configRes.data.cached_custom_fields || [],
         });
       }
@@ -151,6 +154,7 @@ export default function ClickUpSettings() {
             api_token: config.api_token,
             list_id: config.list_id,
             enabled: config.enabled,
+            paid_status: config.paid_status,
             updated_at: new Date().toISOString(),
             updated_by: profile.id,
           })
@@ -163,6 +167,7 @@ export default function ClickUpSettings() {
             api_token: config.api_token,
             list_id: config.list_id,
             enabled: config.enabled,
+            paid_status: config.paid_status,
             updated_by: profile.id,
           })
           .select()
@@ -542,9 +547,9 @@ export default function ClickUpSettings() {
               Webhook URL (synchronizacja statusow)
             </h3>
             <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-              Dodaj ten URL jako Webhook w ClickUp, aby zmiany statusu na "Complete" automatycznie oznaczaly wniosek jako oplacony.
+              Dodaj ten URL jako Webhook w ClickUp, aby zmiana statusu automatycznie oznaczala wniosek jako oplacony.
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-4">
               <code className="flex-1 text-xs bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg text-text-primary-light dark:text-text-primary-dark font-mono truncate border border-slate-200 dark:border-slate-700">
                 {webhookUrl}
               </code>
@@ -555,6 +560,22 @@ export default function ClickUpSettings() {
                 {copiedWebhook ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedWebhook ? 'Skopiowano' : 'Kopiuj'}
               </button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5">
+                Nazwa statusu "Oplacono" w ClickUp
+              </label>
+              <input
+                type="text"
+                value={config.paid_status}
+                onChange={e => setConfig(prev => ({ ...prev, paid_status: e.target.value }))}
+                placeholder='np. Oplacono, paid, complete...'
+                disabled={!profile?.is_admin}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-dark-surface-2 text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 disabled:opacity-60"
+              />
+              <p className="mt-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Wpisz dokladnie tak jak nazywa sie status w ClickUp (wielkosc liter nie ma znaczenia). Jezeli pole jest puste, system uzyje domyslnych angielskich statusow (complete, done, closed, paid).
+              </p>
             </div>
           </div>
         </>

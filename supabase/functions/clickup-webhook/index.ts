@@ -32,9 +32,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const historyItems: any[] = body.history_items || [];
-    const statusItem = historyItems.find(
-      (item: any) => item.field === "status"
-    );
+    const statusItem = historyItems.find((item: any) => item.field === "status");
 
     const newStatus: string =
       statusItem?.after?.status?.toLowerCase() ||
@@ -43,15 +41,37 @@ Deno.serve(async (req: Request) => {
 
     console.log("Task ID:", taskId, "New status:", newStatus);
 
-    const isCompleted =
-      newStatus === "complete" ||
-      newStatus === "completed" ||
-      newStatus === "done" ||
-      newStatus === "closed";
+    if (!newStatus) {
+      return new Response(
+        JSON.stringify({ message: "Brak statusu w payloadzie" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: config } = await supabase
+      .from("clickup_config")
+      .select("paid_status")
+      .limit(1)
+      .maybeSingle();
+
+    const configuredPaidStatus = (config?.paid_status || "").toLowerCase().trim();
+
+    const defaultPaidStatuses = ["complete", "completed", "done", "closed", "paid", "oplacone", "opłacone"];
+
+    const isCompleted = configuredPaidStatus
+      ? newStatus === configuredPaidStatus
+      : defaultPaidStatuses.includes(newStatus);
+
+    console.log(
+      "Configured paid status:", configuredPaidStatus || "(brak - uzywam domyslnych)",
+      "| Czy pasuje:", isCompleted
+    );
 
     if (!isCompleted) {
       return new Response(
-        JSON.stringify({ message: "Status nie jest 'Complete', pomijam" }),
+        JSON.stringify({
+          message: `Status '${newStatus}' nie odpowiada statusowi oplacenia ('${configuredPaidStatus || defaultPaidStatuses.join(", ")}'), pomijam`,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
