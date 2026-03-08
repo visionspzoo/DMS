@@ -222,13 +222,13 @@ export function PurchaseRequestDetail({
     setShowRejectForm(false);
     await loadRequest();
 
-    if (action === 'approved') {
+    if (action === 'approved' && data?.status === 'approved') {
       const { data: updated } = await supabase
         .from('purchase_requests')
-        .select('status, clickup_task_id')
+        .select('clickup_task_id')
         .eq('id', request.id)
         .maybeSingle();
-      if (updated?.status === 'approved' && !updated?.clickup_task_id) {
+      if (!updated?.clickup_task_id) {
         triggerClickUpTask(request.id);
       }
     }
