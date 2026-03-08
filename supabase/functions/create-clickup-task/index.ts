@@ -291,6 +291,13 @@ Deno.serve(async (req: Request) => {
       department: deptRes.data || null,
     };
 
+    if (request.proforma_pdf_base64) {
+      return new Response(
+        JSON.stringify({ success: false, message: "Proformy nie tworza zadan w ClickUp - uzywaj API wnioskow zakupowych" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (request.clickup_task_id) {
       return new Response(
         JSON.stringify({ success: true, task_id: request.clickup_task_id, message: "Zadanie juz istnieje w ClickUp" }),
