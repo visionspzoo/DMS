@@ -80,12 +80,18 @@ Deno.serve(async (req: Request) => {
       const listId = body.list_id || config?.list_id;
       if (!token || !listId) throw new Error("Brak tokenu lub ID listy");
 
+      const cleanToken = token.trim();
       const fieldsRes = await fetch(`https://api.clickup.com/api/v2/list/${listId}/field`, {
-        headers: { Authorization: clickupAuthHeader(token) },
+        headers: { Authorization: clickupAuthHeader(cleanToken) },
       });
       if (!fieldsRes.ok) {
-        const errData = await fieldsRes.json().catch(() => ({}));
-        throw new Error(errData.err || `Blad pobierania pol: ${fieldsRes.status}`);
+        const rawText = await fieldsRes.text().catch(() => "");
+        let errMsg = `HTTP ${fieldsRes.status}`;
+        try {
+          const errJson = JSON.parse(rawText);
+          errMsg = errJson.err || errJson.error || errJson.message || errMsg;
+        } catch (_) {}
+        throw new Error(`ClickUp API: ${errMsg} (lista: ${listId}, token prefix: ${cleanToken.substring(0, 8)}...)`);
       }
       const fieldsData = await fieldsRes.json();
       const fields = (fieldsData.fields || []).map((f: any) => ({
