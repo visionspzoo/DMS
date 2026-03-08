@@ -143,7 +143,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: updateError } = await supabase
       .from("purchase_requests")
-      .update({ status: "paid" })
+      .update({ status: "paid", paid_at: new Date().toISOString() })
       .eq("id", request.id);
 
     if (updateError) throw new Error(`Update error: ${updateError.message}`);

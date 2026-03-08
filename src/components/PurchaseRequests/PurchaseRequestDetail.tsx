@@ -21,6 +21,7 @@ interface PurchaseRequest {
   department_id: string | null;
   proforma_filename: string | null;
   clickup_task_id: string | null;
+  paid_at: string | null;
 }
 
 interface Approval {
@@ -367,6 +368,21 @@ export function PurchaseRequestDetail({
               label="Data złożenia"
               value={new Date(request.created_at).toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}
             />
+            {request.status === 'paid' && request.paid_at && (
+              <MetaItem
+                icon={<CreditCard className="w-3.5 h-3.5" />}
+                label="Data opłacenia"
+                value={
+                  <span className="text-sky-700 dark:text-sky-300">
+                    {new Date(request.paid_at).toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {' '}
+                    <span className="font-normal text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {new Date(request.paid_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </span>
+                }
+              />
+            )}
           </div>
 
           {/* Link or proforma file */}

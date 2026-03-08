@@ -20,6 +20,7 @@ interface PurchaseRequest {
   proforma_filename?: string | null;
   department_id?: string | null;
   clickup_task_id?: string | null;
+  paid_at?: string | null;
 }
 
 interface PendingApproval {
@@ -188,6 +189,15 @@ function MyRequestCard({
         {step && (
           <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
             <span>{step}</span>
+          </span>
+        )}
+
+        {request.status === 'paid' && request.paid_at && (
+          <span className="flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400">
+            <CreditCard className="w-3 h-3 flex-shrink-0" />
+            {new Date(request.paid_at).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            {' '}
+            {new Date(request.paid_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
 
