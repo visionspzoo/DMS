@@ -316,6 +316,22 @@ function ApprovalCard({
 
 type FilterTab = 'all' | 'pending' | 'approved' | 'rejected' | 'paid';
 
+const filterStore: {
+  filter: FilterTab;
+  search: string;
+  deptFilter: string;
+  monthFilter: string;
+  yearFilter: string;
+  page: number;
+} = {
+  filter: 'all',
+  search: '',
+  deptFilter: '',
+  monthFilter: '',
+  yearFilter: '',
+  page: 1,
+};
+
 export function MyPurchaseRequests() {
   const { user, profile } = useAuth();
   const [myRequests, setMyRequests] = useState<PurchaseRequest[]>([]);
@@ -325,15 +341,26 @@ export function MyPurchaseRequests() {
   const [approverNames, setApproverNames] = useState<Record<string, string>>({});
   const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterTab>('all');
+  const [filter, setFilterState] = useState<FilterTab>(filterStore.filter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isApproverView, setIsApproverView] = useState(false);
 
-  const [search, setSearch] = useState('');
-  const [deptFilter, setDeptFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState('');
-  const [yearFilter, setYearFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const [search, setSearchState] = useState(filterStore.search);
+  const [deptFilter, setDeptFilterState] = useState(filterStore.deptFilter);
+  const [monthFilter, setMonthFilterState] = useState(filterStore.monthFilter);
+  const [yearFilter, setYearFilterState] = useState(filterStore.yearFilter);
+  const [page, setPageState] = useState(filterStore.page);
+
+  function setFilter(v: FilterTab) { filterStore.filter = v; setFilterState(v); }
+  function setSearch(v: string) { filterStore.search = v; setSearchState(v); }
+  function setDeptFilter(v: string) { filterStore.deptFilter = v; setDeptFilterState(v); }
+  function setMonthFilter(v: string) { filterStore.monthFilter = v; setMonthFilterState(v); }
+  function setYearFilter(v: string) { filterStore.yearFilter = v; setYearFilterState(v); }
+  function setPage(v: number | ((p: number) => number)) {
+    const next = typeof v === 'function' ? v(filterStore.page) : v;
+    filterStore.page = next;
+    setPageState(next);
+  }
 
   const isManagerOrDirector = profile?.role === 'Kierownik' || profile?.role === 'Dyrektor' || profile?.is_admin;
 
