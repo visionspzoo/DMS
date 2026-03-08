@@ -20,6 +20,7 @@ interface PurchaseRequest {
   current_approver_id: string | null;
   department_id: string | null;
   proforma_filename: string | null;
+  proforma_pdf_base64: string | null;
   clickup_task_id: string | null;
   paid_at: string | null;
 }
@@ -410,9 +411,27 @@ export function PurchaseRequestDetail({
 
           {/* Link or proforma file */}
           {isProforma ? (
-            <div className="mx-4 mb-4 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800/30 text-sm text-sky-700 dark:text-sky-300">
-              <FileText className="w-4 h-4 flex-shrink-0" />
-              <span className="font-medium truncate">{request.proforma_filename}</span>
+            <div className="mx-4 mb-4">
+              <button
+                onClick={() => {
+                  if (request.proforma_pdf_base64) {
+                    const base64 = request.proforma_pdf_base64.includes(',')
+                      ? request.proforma_pdf_base64.split(',')[1]
+                      : request.proforma_pdf_base64;
+                    const byteChars = atob(base64);
+                    const byteArr = new Uint8Array(byteChars.length);
+                    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+                    const blob = new Blob([byteArr], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 hover:border-sky-200 dark:hover:border-sky-700/50 transition-colors cursor-pointer text-sm"
+              >
+                <FileText className="w-4 h-4 flex-shrink-0" />
+                <span className="font-medium truncate flex-1 text-left">{request.proforma_filename}</span>
+                <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />
+              </button>
             </div>
           ) : request.link ? (
             <div className="mx-4 mb-4">
