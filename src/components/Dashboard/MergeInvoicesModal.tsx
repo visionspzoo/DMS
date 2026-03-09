@@ -98,32 +98,53 @@ async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
     }
   }
 
-  const nipGroups = new Map<string, Invoice[]>();
-  const nameGroups = new Map<string, Invoice[]>();
+  const groups = new Map<string, Invoice[]>();
 
   for (const inv of invoices) {
     const num = inv.invoice_number?.trim();
     if (!num) continue;
     const nip = normalizeNip(inv.supplier_nip);
-    if (nip) {
-      const key = `${nip}__${num}`;
-      const group = nipGroups.get(key) || [];
-      group.push(inv);
-      nipGroups.set(key, group);
-    } else {
-      const name = inv.supplier_name?.toLowerCase().trim() || '';
-      const key = `name__${name}__${num}`;
-      const group = nameGroups.get(key) || [];
-      group.push(inv);
-      nameGroups.set(key, group);
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    const key = nip ? `${nip}__${num}` : `name__${name}__${num}`;
+    const group = groups.get(key) || [];
+    if (!group.some(i => i.id === inv.id)) group.push(inv);
+    groups.set(key, group);
+  }
+
+  // Second pass: merge groups where one invoice has NIP and another doesn't
+  // but they share the same supplier name and invoice number
+  const nipNumberToName = new Map<string, string>();
+  for (const inv of invoices) {
+    const num = inv.invoice_number?.trim();
+    const nip = normalizeNip(inv.supplier_nip);
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    if (nip && num && name) nipNumberToName.set(`${nip}__${num}`, name);
+  }
+
+  for (const inv of invoices) {
+    const num = inv.invoice_number?.trim();
+    if (!num) continue;
+    const nip = normalizeNip(inv.supplier_nip);
+    if (nip) continue;
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    if (!name) continue;
+    const nameKey = `name__${name}__${num}`;
+    for (const [nipKey, nipName] of nipNumberToName.entries()) {
+      if (!nipKey.endsWith(`__${num}`)) continue;
+      if (nipName !== name) continue;
+      const nipGroup = groups.get(nipKey) || [];
+      const nameGroup = groups.get(nameKey) || [];
+      const merged = [...nipGroup];
+      for (const i of nameGroup) {
+        if (!merged.some(x => x.id === i.id)) merged.push(i);
+      }
+      groups.set(nipKey, merged);
+      groups.delete(nameKey);
     }
   }
 
   const duplicateIds = new Set<string>();
-  for (const group of nipGroups.values()) {
-    if (group.length >= 2) group.forEach(i => duplicateIds.add(i.id));
-  }
-  for (const group of nameGroups.values()) {
+  for (const group of groups.values()) {
     if (group.length >= 2) group.forEach(i => duplicateIds.add(i.id));
   }
 
@@ -146,17 +167,42 @@ function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
   for (const inv of invoices) {
     const num = inv.invoice_number?.trim();
     if (!num) continue;
-
     const nip = normalizeNip(inv.supplier_nip);
-    const groupKey = nip
-      ? `${nip}__${num}`
-      : `name__${inv.supplier_name?.toLowerCase().trim() || ''}__${num}`;
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    const key = nip ? `${nip}__${num}` : `name__${name}__${num}`;
+    const group = groups.get(key) || [];
+    if (!group.some(i => i.id === inv.id)) group.push(inv);
+    groups.set(key, group);
+  }
 
-    const group = groups.get(groupKey) || [];
-    if (!group.some(i => i.id === inv.id)) {
-      group.push(inv);
+  const nipNumberToName = new Map<string, string>();
+  for (const inv of invoices) {
+    const num = inv.invoice_number?.trim();
+    const nip = normalizeNip(inv.supplier_nip);
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    if (nip && num && name) nipNumberToName.set(`${nip}__${num}`, name);
+  }
+
+  for (const inv of invoices) {
+    const num = inv.invoice_number?.trim();
+    if (!num) continue;
+    const nip = normalizeNip(inv.supplier_nip);
+    if (nip) continue;
+    const name = inv.supplier_name?.toLowerCase().trim() || '';
+    if (!name) continue;
+    const nameKey = `name__${name}__${num}`;
+    for (const [nipKey, nipName] of nipNumberToName.entries()) {
+      if (!nipKey.endsWith(`__${num}`)) continue;
+      if (nipName !== name) continue;
+      const nipGroup = groups.get(nipKey) || [];
+      const nameGroup = groups.get(nameKey) || [];
+      const merged = [...nipGroup];
+      for (const i of nameGroup) {
+        if (!merged.some(x => x.id === i.id)) merged.push(i);
+      }
+      groups.set(nipKey, merged);
+      groups.delete(nameKey);
     }
-    groups.set(groupKey, group);
   }
 
   const result: DuplicateGroup[] = [];
