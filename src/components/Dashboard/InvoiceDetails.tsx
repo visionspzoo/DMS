@@ -1728,6 +1728,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   body: JSON.stringify({
                     fileId,
                     targetFolderId: department.google_drive_draft_folder_id,
+                    issueDate: currentInvoice.issue_date || null,
+                    invoiceNumber: currentInvoice.invoice_number || undefined,
+                    vendorName: currentInvoice.supplier_name || undefined,
                   }),
                 }
               );
