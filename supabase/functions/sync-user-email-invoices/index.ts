@@ -817,25 +817,8 @@ async function syncEmailAccount(
                   .maybeSingle();
                 deptName = deptInfo?.name || null;
 
-                const { data: deptMapping } = await supabase
-                  .from("user_drive_folder_mappings")
-                  .select("google_drive_folder_id, google_drive_folder_url")
-                  .eq("user_id", userIdForDrive)
-                  .eq("department_id", deptId)
-                  .eq("is_active", true)
-                  .maybeSingle();
-                if (deptMapping?.google_drive_folder_id) {
-                  targetFolderId = deptMapping.google_drive_folder_id;
-                  driveSource = "dept_folder_mapping";
-                } else if (deptMapping?.google_drive_folder_url) {
-                  const urlMatch = deptMapping.google_drive_folder_url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-                  if (urlMatch) {
-                    targetFolderId = urlMatch[1];
-                    driveSource = "dept_folder_mapping_url";
-                  }
-                }
-
-                if (!targetFolderId && deptInfo?.google_drive_draft_folder_id) {
+                // Prefer the department-level folder configured in Settings → Departments
+                if (deptInfo?.google_drive_draft_folder_id) {
                   targetFolderId = deptInfo.google_drive_draft_folder_id;
                   driveSource = "dept_draft_folder";
                 }
