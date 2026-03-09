@@ -1172,7 +1172,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      if (currentInvoice.status === 'draft') {
+      if (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') {
         if (!currentInvoice.department_id) {
           alert('Proszę przypisać dział przed przesłaniem faktury do obiegu.');
           setLoading(false);
@@ -1335,7 +1335,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           }
         }
 
-        alert('Faktura została przesłana do akceptacji');
+        alert(currentInvoice.status === 'rejected' ? 'Faktura została ponownie przesłana do akceptacji' : 'Faktura została przesłana do akceptacji');
         onUpdate();
         onClose();
       } else if (currentInvoice.status === 'accepted') {
