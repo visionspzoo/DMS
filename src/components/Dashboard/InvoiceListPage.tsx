@@ -1507,6 +1507,16 @@ export function InvoiceList() {
                 >
                   BEZ MPK: Brak powiązania
                 </button>
+              </>
+            )}
+            {(profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik' || profile?.role === 'CEO') && (
+              <>
+                {!(profile?.has_mpk_access || profile?.is_admin) && (
+                  <>
+                    <div className="h-4 w-px bg-slate-300 dark:bg-slate-600"></div>
+                    <label className="text-xs text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Filtrowanie:</label>
+                  </>
+                )}
                 <button
                   onClick={() => setFilterOwnerOnly(v => !v)}
                   className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
