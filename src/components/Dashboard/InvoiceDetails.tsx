@@ -573,7 +573,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   }, [currentInvoice.id, refreshInvoiceData]);
 
   const hasMpk = () => {
-    return !!(currentInvoice as any).cost_center_id;
+    return !!(currentInvoice as any).cost_center_id || !!(currentInvoice as any).bez_mpk;
   };
 
   const handleApprove = async (action: 'approved' | 'rejected', overrideComment?: string) => {
@@ -737,8 +737,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       setComment('');
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing approval:', error);
+      alert(`Błąd podczas akceptacji: ${error?.message || 'Nieznany błąd'}`);
     } finally {
       setLoading(false);
     }
