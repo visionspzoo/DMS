@@ -59,24 +59,29 @@ const INVOICE_FIELDS = `
   department:departments!department_id(id, name)
 `;
 
+function normalizeNip(nip: string | null | undefined): string {
+  return (nip || '').replace(/[^0-9]/g, '');
+}
+
 async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
-  const { data: flagged, error } = await supabase
+  const { data: allInvoices, error } = await supabase
     .from('invoices')
     .select(INVOICE_FIELDS)
-    .eq('is_duplicate', true)
+    .not('invoice_number', 'is', null)
+    .neq('invoice_number', '')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
 
-  const flaggedInvoices = (flagged || []) as Invoice[];
+  const invoices = (allInvoices || []) as Invoice[];
+  const allIds = new Set(invoices.map(i => i.id));
 
   const linkedIds = new Set<string>();
-  for (const inv of flaggedInvoices) {
+  for (const inv of invoices) {
     const ids = (inv.duplicate_invoice_ids as string[] | null) || [];
     for (const id of ids) linkedIds.add(id);
   }
-  const existingIds = new Set(flaggedInvoices.map(i => i.id));
-  const missingIds = [...linkedIds].filter(id => !existingIds.has(id));
+  const missingIds = [...linkedIds].filter(id => !allIds.has(id));
 
   if (missingIds.length > 0) {
     const { data: linked } = await supabase
@@ -85,15 +90,44 @@ async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
       .in('id', missingIds);
     if (linked) {
       for (const inv of linked as Invoice[]) {
-        if (!existingIds.has(inv.id)) {
-          flaggedInvoices.push(inv);
-          existingIds.add(inv.id);
+        if (!allIds.has(inv.id)) {
+          invoices.push(inv);
+          allIds.add(inv.id);
         }
       }
     }
   }
 
-  return flaggedInvoices;
+  const nipGroups = new Map<string, Invoice[]>();
+  const nameGroups = new Map<string, Invoice[]>();
+
+  for (const inv of invoices) {
+    const num = inv.invoice_number?.trim();
+    if (!num) continue;
+    const nip = normalizeNip(inv.supplier_nip);
+    if (nip) {
+      const key = `${nip}__${num}`;
+      const group = nipGroups.get(key) || [];
+      group.push(inv);
+      nipGroups.set(key, group);
+    } else {
+      const name = inv.supplier_name?.toLowerCase().trim() || '';
+      const key = `name__${name}__${num}`;
+      const group = nameGroups.get(key) || [];
+      group.push(inv);
+      nameGroups.set(key, group);
+    }
+  }
+
+  const duplicateIds = new Set<string>();
+  for (const group of nipGroups.values()) {
+    if (group.length >= 2) group.forEach(i => duplicateIds.add(i.id));
+  }
+  for (const group of nameGroups.values()) {
+    if (group.length >= 2) group.forEach(i => duplicateIds.add(i.id));
+  }
+
+  return invoices.filter(i => i.is_duplicate || duplicateIds.has(i.id));
 }
 
 function scoreInvoice(inv: Invoice): number {
@@ -107,83 +141,35 @@ function scoreInvoice(inv: Invoice): number {
 }
 
 function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
-  const invoiceMap = new Map<string, Invoice>(invoices.map(inv => [inv.id, inv]));
-  const visited = new Set<string>();
-  const result: DuplicateGroup[] = [];
+  const groups = new Map<string, Invoice[]>();
 
   for (const inv of invoices) {
-    if (visited.has(inv.id)) continue;
-
-    const linkedIds: string[] = (inv.duplicate_invoice_ids as string[] | null) || [];
-    const groupMembers: Invoice[] = [inv];
-
-    for (const linkedId of linkedIds) {
-      const linked = invoiceMap.get(linkedId);
-      if (linked && !visited.has(linkedId)) {
-        groupMembers.push(linked);
-      }
-    }
-
-    if (groupMembers.length >= 2) {
-      for (const m of groupMembers) visited.add(m.id);
-
-      const sorted = [...groupMembers].sort((a, b) => {
-        const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
-        if (scoreDiff !== 0) return scoreDiff;
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      });
-
-      const winner = sorted[0];
-      const losers = sorted.slice(1);
-      const key = sorted.map(i => i.id).sort().join('__');
-      result.push({ key, invoices: sorted, winner, losers });
-      continue;
-    }
-
-    visited.add(inv.id);
-
     const num = inv.invoice_number?.trim();
     if (!num) continue;
 
-    const nip = inv.supplier_nip?.replace(/[^0-9]/g, '');
-    const groupKey = nip ? `${nip}__${num}` : `name__${inv.supplier_name?.toLowerCase().trim()}__${num}`;
+    const nip = normalizeNip(inv.supplier_nip);
+    const groupKey = nip
+      ? `${nip}__${num}`
+      : `name__${inv.supplier_name?.toLowerCase().trim() || ''}__${num}`;
 
-    const existing = result.find(g => g.key === groupKey);
-    if (existing) {
-      existing.invoices.push(inv);
+    const group = groups.get(groupKey) || [];
+    if (!group.some(i => i.id === inv.id)) {
+      group.push(inv);
     }
+    groups.set(groupKey, group);
   }
 
-  for (const inv of invoices) {
-    if (visited.has(inv.id)) continue;
-
-    const num = inv.invoice_number?.trim();
-    if (!num) { visited.add(inv.id); continue; }
-
-    const nip = inv.supplier_nip?.replace(/[^0-9]/g, '');
-    const groupKey = nip ? `${nip}__${num}` : `name__${inv.supplier_name?.toLowerCase().trim()}__${num}`;
-
-    let group = result.find(g => g.key === groupKey);
-    if (!group) {
-      group = { key: groupKey, invoices: [], winner: inv, losers: [] };
-      result.push(group);
-    }
-    if (!group.invoices.some(i => i.id === inv.id)) {
-      group.invoices.push(inv);
-    }
-    visited.add(inv.id);
-  }
-
-  return result
-    .filter(g => g.invoices.length >= 2)
-    .map(g => {
-      const sorted = [...g.invoices].sort((a, b) => {
-        const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
-        if (scoreDiff !== 0) return scoreDiff;
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      });
-      return { key: g.key, invoices: sorted, winner: sorted[0], losers: sorted.slice(1) };
+  const result: DuplicateGroup[] = [];
+  for (const [key, members] of groups.entries()) {
+    if (members.length < 2) continue;
+    const sorted = [...members].sort((a, b) => {
+      const scoreDiff = scoreInvoice(b) - scoreInvoice(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     });
+    result.push({ key, invoices: sorted, winner: sorted[0], losers: sorted.slice(1) });
+  }
+  return result;
 }
 
 export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroupMerged }: MergeInvoicesModalProps) {
