@@ -2891,7 +2891,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid gap-4 ${(profile?.has_mpk_access || profile?.is_admin) ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
                         Dział główny (MPK)
@@ -2907,24 +2907,26 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                         )}
                       </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
-                        Powiązanie z PZ
-                      </label>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={(editedInvoice as any).pz_number || ''}
-                          onChange={(e) => setEditedInvoice({ ...editedInvoice, pz_number: e.target.value } as any)}
-                          placeholder="Numer PZ"
-                          className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
-                        />
-                      ) : (
-                        <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
-                          {(currentInvoice as any).pz_number || '—'}
-                        </p>
-                      )}
-                    </div>
+                    {(profile?.has_mpk_access || profile?.is_admin) && (
+                      <div>
+                        <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">
+                          Powiązanie z PZ
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={(editedInvoice as any).pz_number || ''}
+                            onChange={(e) => setEditedInvoice({ ...editedInvoice, pz_number: e.target.value } as any)}
+                            placeholder="Numer PZ"
+                            className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark focus:ring-2 focus:ring-brand-primary text-sm"
+                          />
+                        ) : (
+                          <p className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark mt-1">
+                            {(currentInvoice as any).pz_number || '—'}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {vendoSyncResult && (
@@ -3106,7 +3108,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 </div>
               </div>
 
-              {profile?.mpk_override_bez_mpk && isEditing && (
+              {(profile?.has_mpk_access || profile?.is_admin) && profile?.mpk_override_bez_mpk && isEditing && (
                 <div className="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-4">
                   <label className="flex items-center gap-3 cursor-pointer select-none">
                     <input

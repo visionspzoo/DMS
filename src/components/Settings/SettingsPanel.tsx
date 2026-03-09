@@ -20,6 +20,7 @@ interface Profile {
   is_admin: boolean;
   can_access_ksef_config: boolean;
   mpk_override_bez_mpk: boolean;
+  has_mpk_access: boolean;
   monthly_invoice_limit: number | null;
   single_invoice_limit: number | null;
   created_at: string;
@@ -85,6 +86,7 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
           is_admin,
           can_access_ksef_config,
           mpk_override_bez_mpk,
+          has_mpk_access,
           monthly_invoice_limit,
           single_invoice_limit,
           created_at,
@@ -276,6 +278,12 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
     }
   }
 
+  function handleHasMpkAccessChange(value: boolean) {
+    if (editingUser) {
+      setEditingUser({ ...editingUser, has_mpk_access: value });
+    }
+  }
+
   function handleMonthlyLimitChange(value: string) {
     if (editingUser) {
       const numValue = value === '' ? null : parseFloat(value);
@@ -300,6 +308,7 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
       is_admin: editingUser.is_admin,
       can_access_ksef_config: editingUser.can_access_ksef_config,
       mpk_override_bez_mpk: editingUser.mpk_override_bez_mpk,
+      has_mpk_access: editingUser.has_mpk_access,
       monthly_invoice_limit: editingUser.monthly_invoice_limit,
       single_invoice_limit: editingUser.single_invoice_limit
     });
@@ -735,6 +744,27 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                   >
                     Dostęp do konfiguracji KSEF
                   </label>
+                </div>
+
+                <div className="flex items-start gap-2 p-3 bg-sky-50 dark:bg-sky-900/10 border border-sky-200 dark:border-sky-800/30 rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="has_mpk_access"
+                    checked={editingUser.has_mpk_access}
+                    onChange={(e) => handleHasMpkAccessChange(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0"
+                  />
+                  <div>
+                    <label
+                      htmlFor="has_mpk_access"
+                      className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                    >
+                      Dostęp do MPK
+                    </label>
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                      Użytkownik widzi filtry MPK na liście faktur oraz pola PZ i BEZ MPK w szczegółach faktury
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg">

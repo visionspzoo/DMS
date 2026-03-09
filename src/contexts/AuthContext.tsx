@@ -16,6 +16,7 @@ interface Profile {
   created_at?: string;
   can_access_ksef_config?: boolean;
   mpk_override_bez_mpk?: boolean;
+  has_mpk_access?: boolean;
 }
 
 interface AuthContextType {
