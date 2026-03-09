@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check, FileText, UserPlus, ArrowRightLeft, Download } from 'lucide-react';
+import { Bell, X, Check, FileText, UserPlus, ArrowRightLeft, Download, CreditCard, ShoppingCart, ThumbsUp, ThumbsDown, Pencil } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Notification {
   id: string;
-  type: 'new_invoice' | 'status_change' | 'pending_review' | 'invoice_assigned' | 'invoice_transferred' | 'ksef_invoice_assigned' | 'new_contract' | 'contract_status_change';
+  type: 'new_invoice' | 'status_change' | 'pending_review' | 'invoice_assigned' | 'invoice_transferred' | 'ksef_invoice_assigned' | 'new_contract' | 'contract_status_change' | 'duplicate_detected' | 'invoice_draft_received' | 'invoice_paid' | 'purchase_request_assigned' | 'purchase_request_approved' | 'purchase_request_paid' | 'purchase_request_rejected';
   title: string;
   message: string;
   invoice_id: string | null;
+  purchase_request_id: string | null;
   is_read: boolean;
   created_at: string;
 }
@@ -148,15 +149,29 @@ export default function NotificationBell() {
       case 'pending_review':
         return <Bell className="w-5 h-5 text-amber-500" />;
       case 'invoice_assigned':
-        return <UserPlus className="w-5 h-5 text-purple-500" />;
+        return <UserPlus className="w-5 h-5 text-sky-500" />;
       case 'invoice_transferred':
-        return <ArrowRightLeft className="w-5 h-5 text-indigo-500" />;
+        return <ArrowRightLeft className="w-5 h-5 text-blue-500" />;
       case 'ksef_invoice_assigned':
         return <Download className="w-5 h-5 text-cyan-500" />;
+      case 'invoice_draft_received':
+        return <Pencil className="w-5 h-5 text-orange-500" />;
+      case 'invoice_paid':
+        return <CreditCard className="w-5 h-5 text-green-600" />;
       case 'new_contract':
         return <FileText className="w-5 h-5 text-emerald-500" />;
       case 'contract_status_change':
         return <Check className="w-5 h-5 text-teal-500" />;
+      case 'duplicate_detected':
+        return <Bell className="w-5 h-5 text-red-500" />;
+      case 'purchase_request_assigned':
+        return <ShoppingCart className="w-5 h-5 text-amber-500" />;
+      case 'purchase_request_approved':
+        return <ThumbsUp className="w-5 h-5 text-green-500" />;
+      case 'purchase_request_paid':
+        return <CreditCard className="w-5 h-5 text-emerald-600" />;
+      case 'purchase_request_rejected':
+        return <ThumbsDown className="w-5 h-5 text-red-500" />;
       default:
         return <Bell className="w-5 h-5 text-gray-500" />;
     }

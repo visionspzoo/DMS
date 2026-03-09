@@ -24,10 +24,30 @@ function getTypeEmoji(type: string): string {
       return ":arrows_counterclockwise:";
     case "pending_review":
       return ":eyes:";
+    case "invoice_assigned":
+      return ":bust_in_silhouette:";
+    case "invoice_transferred":
+      return ":arrow_right:";
+    case "ksef_invoice_assigned":
+      return ":inbox_tray:";
+    case "invoice_draft_received":
+      return ":pencil:";
+    case "invoice_paid":
+      return ":white_check_mark:";
     case "new_contract":
       return ":page_facing_up:";
     case "contract_status_change":
       return ":memo:";
+    case "duplicate_detected":
+      return ":warning:";
+    case "purchase_request_assigned":
+      return ":clipboard:";
+    case "purchase_request_approved":
+      return ":heavy_check_mark:";
+    case "purchase_request_paid":
+      return ":moneybag:";
+    case "purchase_request_rejected":
+      return ":x:";
     default:
       return ":bell:";
   }
@@ -40,11 +60,31 @@ function getTypeLabel(type: string): string {
     case "status_change":
       return "Zmiana statusu faktury";
     case "pending_review":
-      return "Oczekuje na przegląd";
+      return "Faktura oczekuje na akceptację";
+    case "invoice_assigned":
+      return "Przypisano fakturę";
+    case "invoice_transferred":
+      return "Faktura przeniesiona";
+    case "ksef_invoice_assigned":
+      return "Faktura z KSeF";
+    case "invoice_draft_received":
+      return "Faktura robocza";
+    case "invoice_paid":
+      return "Faktura opłacona";
     case "new_contract":
       return "Nowa umowa";
     case "contract_status_change":
       return "Zmiana statusu umowy";
+    case "duplicate_detected":
+      return "Wykryto duplikat faktury";
+    case "purchase_request_assigned":
+      return "Wniosek zakupowy do zatwierdzenia";
+    case "purchase_request_approved":
+      return "Wniosek zakupowy zaakceptowany";
+    case "purchase_request_paid":
+      return "Wniosek zakupowy opłacony";
+    case "purchase_request_rejected":
+      return "Wniosek zakupowy odrzucony";
     default:
       return "Powiadomienie";
   }
