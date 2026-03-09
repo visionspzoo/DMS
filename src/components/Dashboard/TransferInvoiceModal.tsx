@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, ArrowRight, Building2, User, AlertCircle, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAccessibleDepartments } from '../../lib/departmentUtils';
+import { getAllDepartments } from '../../lib/departmentUtils';
 
 interface Department {
   id: string;
@@ -70,7 +70,7 @@ export function TransferInvoiceModal({
 
   async function loadDepartments() {
     try {
-      const depts = await getAccessibleDepartments(profile);
+      const depts = await getAllDepartments();
       setDepartments(depts);
     } catch (err) {
       console.error('Error loading departments:', err);

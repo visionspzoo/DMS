@@ -81,6 +81,20 @@ export async function getAccessibleDepartments(
   }
 }
 
+export async function getAllDepartments(): Promise<AccessibleDepartment[]> {
+  try {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('id, name')
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error loading all departments:', error);
+    return [];
+  }
+}
+
 export async function hasAccessToDepartment(
   profile: Profile | null,
   departmentId: string
