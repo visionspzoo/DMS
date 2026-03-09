@@ -203,6 +203,21 @@ async function getOrCreateFolder(
   return createdFolder.id;
 }
 
+const POLISH_MONTHS: Record<number, string> = {
+  1: "01 - Styczen",
+  2: "02 - Luty",
+  3: "03 - Marzec",
+  4: "04 - Kwiecien",
+  5: "05 - Maj",
+  6: "06 - Czerwiec",
+  7: "07 - Lipiec",
+  8: "08 - Sierpien",
+  9: "09 - Wrzesien",
+  10: "10 - Pazdziernik",
+  11: "11 - Listopad",
+  12: "12 - Grudzien",
+};
+
 async function resolveTargetFolder(
   accessToken: string,
   baseFolderId: string,
@@ -219,10 +234,10 @@ async function resolveTargetFolder(
   }
 
   const year = String(date.getFullYear());
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const monthLabel = POLISH_MONTHS[date.getMonth() + 1];
 
   const yearFolderId = await getOrCreateFolder(accessToken, baseFolderId, year);
-  const monthFolderId = await getOrCreateFolder(accessToken, yearFolderId, month);
+  const monthFolderId = await getOrCreateFolder(accessToken, yearFolderId, monthLabel);
 
   return monthFolderId;
 }
