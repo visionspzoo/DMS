@@ -13,7 +13,7 @@ export default function UserConfiguration() {
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<ConfigTab>('account');
 
-  const canManageLimits = profile?.is_admin || profile?.role === 'Kierownik' || profile?.role === 'Dyrektor';
+  const canManageLimits = profile?.role === 'Kierownik' || profile?.role === 'Dyrektor';
 
   const tabs: { id: ConfigTab; label: string; icon: typeof Mail }[] = [
     { id: 'account', label: 'Konto', icon: User },

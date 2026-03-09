@@ -175,43 +175,85 @@ export function PurchaseRequestLimits() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const canManage = profile?.is_admin || profile?.role === 'Kierownik' || profile?.role === 'Dyrektor';
+  const canManage = profile?.role === 'Kierownik' || profile?.role === 'Dyrektor';
 
   useEffect(() => {
-    if (canManage) loadUsers();
+    if (canManage && profile?.id) loadUsers();
     else setLoading(false);
   }, [profile]);
 
   async function loadUsers() {
+    if (!profile?.id) return;
     setLoading(true);
+
+    const myId = profile.id;
+    const isDirector = profile.role === 'Dyrektor';
+    const isManager = profile.role === 'Kierownik';
+
+    const { data: allDepts } = await supabase
+      .from('departments')
+      .select('id, name, manager_id, director_id');
+
+    const myDepts = (allDepts || []).filter(d =>
+      (isDirector && d.director_id === myId) ||
+      (isManager && d.manager_id === myId)
+    );
+
+    if (myDepts.length === 0) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
+    const myDeptIds = myDepts.map(d => d.id);
+    const deptsMap = Object.fromEntries((allDepts || []).map(d => [d.id, d.name]));
+
+    const { data: membersData } = await supabase
+      .from('department_members')
+      .select('user_id, department_id')
+      .in('department_id', myDeptIds);
+
+    const memberUserIds = [...new Set((membersData || []).map(m => m.user_id))].filter(id => id !== myId);
+
+    if (memberUserIds.length === 0) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
 
     const { data: profilesData } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, department_id')
-      .in('role', ['Kierownik', 'Dyrektor'])
+      .in('id', memberUserIds)
       .order('full_name');
 
     const { data: limitsData } = await supabase
       .from('purchase_request_limits')
-      .select('*');
-
-    const { data: deptsData } = await supabase
-      .from('departments')
-      .select('id, name');
+      .select('*')
+      .in('user_id', memberUserIds);
 
     const limitsMap = Object.fromEntries((limitsData || []).map(l => [l.user_id, l]));
-    const deptsMap = Object.fromEntries((deptsData || []).map(d => [d.id, d.name]));
 
-    const result: UserLimit[] = (profilesData || []).map(p => ({
-      user_id: p.id,
-      full_name: p.full_name,
-      email: p.email,
-      role: p.role,
-      department_name: p.department_id ? deptsMap[p.department_id] || null : null,
-      single_limit: limitsMap[p.id]?.single_limit ?? null,
-      monthly_limit: limitsMap[p.id]?.monthly_limit ?? null,
-      limit_id: limitsMap[p.id]?.id ?? null,
-    }));
+    const memberDeptMap: Record<string, string> = {};
+    for (const m of membersData || []) {
+      if (!memberDeptMap[m.user_id]) {
+        memberDeptMap[m.user_id] = m.department_id;
+      }
+    }
+
+    const result: UserLimit[] = (profilesData || []).map(p => {
+      const deptId = memberDeptMap[p.id] || p.department_id;
+      return {
+        user_id: p.id,
+        full_name: p.full_name,
+        email: p.email,
+        role: p.role,
+        department_name: deptId ? deptsMap[deptId] || null : null,
+        single_limit: limitsMap[p.id]?.single_limit ?? null,
+        monthly_limit: limitsMap[p.id]?.monthly_limit ?? null,
+        limit_id: limitsMap[p.id]?.id ?? null,
+      };
+    });
 
     setUsers(result);
     setLoading(false);
@@ -297,7 +339,7 @@ export function PurchaseRequestLimits() {
       ) : users.length === 0 ? (
         <div className="text-center py-12">
           <Users className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
-          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak kierowników ani dyrektorów w systemie</p>
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak podwładnych w Twoich działach</p>
         </div>
       ) : (
         <div className="space-y-3">
