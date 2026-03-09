@@ -285,6 +285,31 @@ function ItemCard({
   );
 }
 
+const DRAFT_STORAGE_KEY = 'purchase_request_draft';
+
+function saveDraft(items: RequestItem[]) {
+  try {
+    const serializable = items.map(item => ({ ...item, proformaFile: null }));
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(serializable));
+  } catch {}
+}
+
+function loadDraft(): RequestItem[] | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RequestItem[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed.map(item => ({ ...item, proformaFile: null }));
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
+}
+
 export function PurchaseRequestForm() {
   const { user, profile } = useAuth();
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -293,12 +318,16 @@ export function PurchaseRequestForm() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const departmentsLoadedRef = useRef(false);
 
   useEffect(() => {
-    loadDepartments();
+    if (!departmentsLoadedRef.current) {
+      loadDepartments();
+    }
   }, [profile]);
 
   async function loadDepartments() {
+    departmentsLoadedRef.current = true;
     const { data } = await supabase
       .from('departments')
       .select('id, name')
@@ -313,36 +342,66 @@ export function PurchaseRequestForm() {
       : depts[0]?.id || '';
 
     setDefaultDepartmentId(resolvedDefault);
-    setItems([createEmptyItem(resolvedDefault)]);
+
+    const draft = loadDraft();
+    if (draft) {
+      setItems(draft);
+    } else {
+      setItems([createEmptyItem(resolvedDefault)]);
+    }
   }
 
   function handleChange(id: string, field: keyof RequestItem, value: string) {
-    setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+    setItems(prev => {
+      const updated = prev.map(item => item.id === id ? { ...item, [field]: value } : item);
+      saveDraft(updated);
+      return updated;
+    });
   }
 
   function handleProformaToggle(id: string) {
-    setItems(prev => prev.map(item =>
-      item.id === id
-        ? { ...item, isProforma: !item.isProforma, proformaFile: null, proformaBase64: null, link: '', gross_amount: '', quantity: '1' }
-        : item
-    ));
+    setItems(prev => {
+      const updated = prev.map(item =>
+        item.id === id
+          ? { ...item, isProforma: !item.isProforma, proformaFile: null, proformaBase64: null, link: '', gross_amount: '', quantity: '1' }
+          : item
+      );
+      saveDraft(updated);
+      return updated;
+    });
   }
 
   async function handleProformaFile(id: string, file: File | null) {
     if (!file) {
-      setItems(prev => prev.map(item => item.id === id ? { ...item, proformaFile: null, proformaBase64: null } : item));
+      setItems(prev => {
+        const updated = prev.map(item => item.id === id ? { ...item, proformaFile: null, proformaBase64: null } : item);
+        saveDraft(updated);
+        return updated;
+      });
       return;
     }
     const base64 = await fileToBase64(file);
-    setItems(prev => prev.map(item => item.id === id ? { ...item, proformaFile: file, proformaBase64: base64 } : item));
+    setItems(prev => {
+      const updated = prev.map(item => item.id === id ? { ...item, proformaFile: file, proformaBase64: base64 } : item);
+      saveDraft(updated);
+      return updated;
+    });
   }
 
   function addItem() {
-    setItems(prev => [...prev, createEmptyItem(defaultDepartmentId)]);
+    setItems(prev => {
+      const updated = [...prev, createEmptyItem(defaultDepartmentId)];
+      saveDraft(updated);
+      return updated;
+    });
   }
 
   function removeItem(id: string) {
-    setItems(prev => prev.filter(item => item.id !== id));
+    setItems(prev => {
+      const updated = prev.filter(item => item.id !== id);
+      saveDraft(updated);
+      return updated;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -387,6 +446,7 @@ export function PurchaseRequestForm() {
       return;
     }
 
+    clearDraft();
     setSuccess(true);
     setItems([createEmptyItem(defaultDepartmentId)]);
     setTimeout(() => setSuccess(false), 5000);
