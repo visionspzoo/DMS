@@ -340,13 +340,30 @@ Deno.serve(async (req: Request) => {
       taskName = `Wniosek zakupowy: ${request.description?.slice(0, 80) || "Bez opisu"}`;
     }
 
+    const APP_FIELD_LABELS: Record<string, string> = {
+      description: "Opis:",
+      gross_amount: "Kwota brutto:",
+      quantity: "Ilosc:",
+      delivery_location: "Miejsce dostawy:",
+      priority: "Priorytet:",
+      link: "Link do produktu:",
+      submitter_name: "Wnioskodawca:",
+      submitter_email: "Email zamawiajacego:",
+      department_name: "Dzial:",
+      proforma_filename: "Proforma:",
+      bez_mpk: "Bez MPK:",
+      created_at: "Data zlozenia:",
+      id: "ID wniosku:",
+    };
+
     let taskDescription: string;
     if (descMappings.length > 0) {
       const descLines = descMappings
         .map((m: any) => {
           const value = getAppFieldValue(request, m.app_field);
           if (value === null || value === undefined || value === "") return null;
-          return m.label ? `${m.label} ${value}` : String(value);
+          const label = m.label || APP_FIELD_LABELS[m.app_field] || m.app_field;
+          return `**${label}** ${value}`;
         })
         .filter(Boolean);
       taskDescription = descLines.join("\n");
@@ -355,7 +372,8 @@ Deno.serve(async (req: Request) => {
         ? new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(request.gross_amount)
         : "Brak kwoty";
       taskDescription = [
-        `**Wnioskodawca:** ${submitterName} (${submitterEmail})`,
+        `**Wnioskodawca:** ${submitterName}`,
+        `**Email zamawiajacego:** ${submitterEmail}`,
         `**Dzial:** ${departmentName}`,
         `**Opis:** ${request.description || "Brak opisu"}`,
         `**Kwota brutto:** ${amountFormatted}`,
