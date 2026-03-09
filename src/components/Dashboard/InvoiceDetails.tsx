@@ -758,30 +758,25 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const canEdit = () => {
-    if (!profile) {
-      return false;
-    }
+    if (!profile) return false;
+    return true;
+  };
 
-    // Admins can always edit
-    if (profile.is_admin) {
-      return true;
-    }
+  const canEditAllFields = () => {
+    if (!profile) return false;
 
-    // Can edit draft or rejected if I'm current_approver or (no approver assigned and I'm uploader)
+    if (profile.is_admin) return true;
+
     if (currentInvoice.status === 'draft' || currentInvoice.status === 'rejected') {
       if (currentInvoice.current_approver_id === profile.id ||
           (!currentInvoice.current_approver_id && currentInvoice.uploaded_by === profile.id)) {
         return true;
       }
 
-      // Dyrektor może edytować faktury draft lub odrzucone z działów, których jest dyrektorem
       if (profile.role === 'Dyrektor' && invoiceDepartmentInfo) {
-        if (invoiceDepartmentInfo.director_id === profile.id) {
-          return true;
-        }
+        if (invoiceDepartmentInfo.director_id === profile.id) return true;
       }
 
-      // Kierownik może edytować faktury draft lub odrzucone Specjalistów ze swojego działu
       if (profile.role === 'Kierownik' && invoiceDepartmentInfo) {
         if (
           currentInvoice.department_id === profile.department_id &&
@@ -792,7 +787,6 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
     }
 
-    // Can edit waiting/pending if I'm current_approver
     if ((currentInvoice.status === 'waiting' || currentInvoice.status === 'pending') &&
         currentInvoice.current_approver_id === profile.id) {
       return true;
@@ -846,30 +840,35 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   const handleSaveEdit = async () => {
     setLoading(true);
     try {
+      const limitedFields = {
+        description: editedInvoice.description,
+        cost_center_id: editedInvoice.cost_center_id || null,
+        bez_mpk: !!(editedInvoice as any).bez_mpk,
+        pz_number: (editedInvoice as any).pz_number || null,
+        internal_comment: (editedInvoice as any).internal_comment || null,
+      };
+
+      const fullFields = canEditAllFields() ? {
+        invoice_number: editedInvoice.invoice_number,
+        supplier_name: editedInvoice.supplier_name,
+        supplier_nip: editedInvoice.supplier_nip,
+        buyer_name: editedInvoice.buyer_name,
+        buyer_nip: editedInvoice.buyer_nip,
+        issue_date: editedInvoice.issue_date,
+        due_date: editedInvoice.due_date,
+        net_amount: editedInvoice.net_amount,
+        tax_amount: editedInvoice.tax_amount,
+        gross_amount: editedInvoice.gross_amount,
+        currency: editedInvoice.currency,
+        department_id: editedInvoice.department_id,
+        status: profile?.is_admin ? editedInvoice.status : undefined,
+        paid_at: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
+        paid_by: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
+      } : {};
+
       const { error } = await supabase
         .from('invoices')
-        .update({
-          invoice_number: editedInvoice.invoice_number,
-          supplier_name: editedInvoice.supplier_name,
-          supplier_nip: editedInvoice.supplier_nip,
-          buyer_name: editedInvoice.buyer_name,
-          buyer_nip: editedInvoice.buyer_nip,
-          issue_date: editedInvoice.issue_date,
-          due_date: editedInvoice.due_date,
-          net_amount: editedInvoice.net_amount,
-          tax_amount: editedInvoice.tax_amount,
-          gross_amount: editedInvoice.gross_amount,
-          currency: editedInvoice.currency,
-          department_id: editedInvoice.department_id,
-          status: profile?.is_admin ? editedInvoice.status : undefined,
-          paid_at: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
-          paid_by: profile?.is_admin && editedInvoice.status !== 'paid' ? null : undefined,
-          description: editedInvoice.description,
-          cost_center_id: editedInvoice.cost_center_id || null,
-          bez_mpk: !!(editedInvoice as any).bez_mpk,
-          pz_number: (editedInvoice as any).pz_number || null,
-          internal_comment: (editedInvoice as any).internal_comment || null,
-        })
+        .update({ ...limitedFields, ...fullFields })
         .eq('id', currentInvoice.id);
 
       if (error) throw error;
@@ -2683,7 +2682,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Numer faktury</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.invoice_number || ''}
@@ -2744,7 +2743,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Dostawca</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.supplier_name || ''}
@@ -2767,7 +2766,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">NIP / VAT ID</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.supplier_nip || ''}
@@ -2806,7 +2805,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Odbiorca</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.buyer_name || ''}
@@ -2829,7 +2828,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">NIP Odbiorcy</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.buyer_nip || ''}
@@ -2855,7 +2854,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Data wystawienia</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="date"
                           value={editedInvoice.issue_date || ''}
@@ -2872,7 +2871,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                     </div>
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Termin płatności</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="date"
                           value={editedInvoice.due_date || ''}
@@ -2939,7 +2938,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Waluta</label>
-                      {isEditing ? (
+                      {isEditing && canEditAllFields() ? (
                         <input
                           type="text"
                           value={editedInvoice.currency || ''}
@@ -3139,7 +3138,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 <div className="grid grid-cols-3 gap-4">
                   <div className="text-center p-3 bg-light-surface dark:bg-dark-surface rounded-lg">
                     <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">Netto</label>
-                    {isEditing ? (
+                    {isEditing && canEditAllFields() ? (
                       <input
                         type="number"
                         step="0.01"
@@ -3157,7 +3156,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   </div>
                   <div className="text-center p-3 bg-light-surface dark:bg-dark-surface rounded-lg">
                     <label className="text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wide">VAT</label>
-                    {isEditing ? (
+                    {isEditing && canEditAllFields() ? (
                       <input
                         type="number"
                         step="0.01"
@@ -3175,7 +3174,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                   </div>
                   <div className="text-center p-3 bg-brand-primary/10 rounded-lg">
                     <label className="text-xs font-medium text-brand-primary uppercase tracking-wide">Brutto</label>
-                    {isEditing ? (
+                    {isEditing && canEditAllFields() ? (
                       <input
                         type="number"
                         step="0.01"
