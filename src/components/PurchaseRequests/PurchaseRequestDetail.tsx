@@ -248,7 +248,7 @@ export function PurchaseRequestDetail({
     onBack();
   }
 
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = profile?.is_admin === true;
   const canApprove = isApprover && request?.current_approver_id === profile?.id && request?.status === 'pending';
   const canWithdraw = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected');
 
