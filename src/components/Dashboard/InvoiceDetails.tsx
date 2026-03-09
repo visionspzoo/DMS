@@ -693,15 +693,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (updateError) throw updateError;
 
       Object.assign(invoice, data);
+      setCurrentInvoice(data);
 
       // Move file to unpaid folder when fully accepted
-      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
-      if (newStatus === 'accepted' && fileId && currentInvoice.department_id) {
+      const fileId = data.google_drive_id || data.user_drive_file_id;
+      if (newStatus === 'accepted' && fileId && data.department_id) {
         const { data: { session } } = await supabase.auth.getSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
-          .eq('id', currentInvoice.department_id)
+          .eq('id', data.department_id)
           .single();
 
         if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
@@ -1923,15 +1924,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (updateError) throw updateError;
 
       Object.assign(invoice, data);
+      setCurrentInvoice(data);
 
       // Move file to unpaid folder when fully accepted
-      const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
-      if (newStatus === 'accepted' && fileId && currentInvoice.department_id) {
+      const fileId = data.google_drive_id || data.user_drive_file_id;
+      if (newStatus === 'accepted' && fileId && data.department_id) {
         const { data: { session } } = await supabase.auth.getSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
-          .eq('id', currentInvoice.department_id)
+          .eq('id', data.department_id)
           .single();
 
         if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
