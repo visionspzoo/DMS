@@ -68,6 +68,7 @@ export function InvoiceList() {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [filterBezMpkNoPz, setFilterBezMpkNoPz] = useState(false);
+  const [filterOwnerOnly, setFilterOwnerOnly] = useState(false);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -565,13 +566,13 @@ export function InvoiceList() {
     if (profile?.id) {
       setCurrentPage(1);
     }
-  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, filterBezMpkNoPz]);
+  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, filterBezMpkNoPz, filterOwnerOnly]);
 
   useEffect(() => {
     if (profile?.id) {
       filterInvoices();
     }
-  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, filterBezMpkNoPz, invoices, profile]);
+  }, [selectedMonth, selectedYear, selectedStatuses, selectedDepartments, searchQuery, filterBezMpkNoPz, filterOwnerOnly, invoices, profile]);
 
 
   const filterInvoices = () => {
@@ -644,6 +645,10 @@ export function InvoiceList() {
       filtered = filtered.filter(inv =>
         (inv as any).bez_mpk === true && (!inv.pz_number || inv.pz_number.trim() === '')
       );
+    }
+
+    if (filterOwnerOnly) {
+      filtered = filtered.filter(inv => inv.current_approver_id === profile.id);
     }
 
     setFilteredInvoices(filtered);
@@ -1499,6 +1504,16 @@ export function InvoiceList() {
               }`}
             >
               BEZ MPK: Brak powiązania
+            </button>
+            <button
+              onClick={() => setFilterOwnerOnly(v => !v)}
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                filterOwnerOnly
+                  ? 'bg-sky-600 text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-sky-600/10'
+              }`}
+            >
+              Właściciel
             </button>
           </div>
         </div>
