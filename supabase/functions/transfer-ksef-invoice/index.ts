@@ -319,14 +319,17 @@ Deno.serve(async (req: Request) => {
     }
 
     // 6. Find appropriate approver for department if userId not provided
-    let appropriateApproverId = userId || null;
-
-    // Use manager_id and director_id directly from the departments table (authoritative source)
-    // Directors are assigned to departments via departments.director_id, NOT via profiles.department_id
     const deptManagerId: string | null = department.manager_id || null;
     const deptDirectorId: string | null = department.director_id || null;
 
-    if (!appropriateApproverId) {
+    // If userId was explicitly provided (user manually selected), use them as both owner and approver.
+    // Otherwise fall back to dept manager → director → RPC lookup.
+    let appropriateApproverId: string | null = null;
+
+    if (userId) {
+      appropriateApproverId = userId;
+      console.log("Using explicitly selected user as approver:", appropriateApproverId);
+    } else {
       appropriateApproverId = deptManagerId || deptDirectorId || null;
       if (appropriateApproverId) {
         console.log("Using dept manager/director as approver:", appropriateApproverId);
@@ -348,9 +351,9 @@ Deno.serve(async (req: Request) => {
 
     // 7. Create invoice record (without Drive URL yet)
     const taxAmount = ksefInvoice.tax_amount || (ksefInvoice.gross_amount - ksefInvoice.net_amount);
-    // invoiceOwner should be the department's manager or director, NOT the logged-in user
-    // The logged-in user (uploaderId) might be an admin fetching invoices from a different dept
-    const invoiceOwner = deptManagerId || deptDirectorId || userId || ksefInvoice.fetched_by;
+    // If userId was explicitly provided, they become the owner.
+    // Otherwise default to dept manager → director → ksef fetcher.
+    const invoiceOwner = userId || deptManagerId || deptDirectorId || ksefInvoice.fetched_by;
 
     const invoiceData: any = {
       invoice_number: ksefInvoice.invoice_number,
