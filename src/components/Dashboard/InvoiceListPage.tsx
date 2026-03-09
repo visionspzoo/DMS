@@ -648,7 +648,7 @@ export function InvoiceList() {
     }
 
     if (filterOwnerOnly) {
-      filtered = filtered.filter(inv => inv.current_approver_id === profile.id);
+      filtered = filtered.filter(inv => inv.uploaded_by === profile.id);
     }
 
     setFilteredInvoices(filtered);
