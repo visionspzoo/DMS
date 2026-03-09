@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Mail, UserPlus, Send, XCircle, CheckCircle, Clock, AlertCircle, Trash2, Copy, Loader } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
@@ -86,8 +86,7 @@ export default function UserInvitations() {
       console.log('Zalogowany użytkownik:', user);
       console.log('Profil użytkownika:', profile);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji użytkownika');
+      const session = await getValidSession();
 
       console.log('Session user ID:', session.user?.id);
       console.log('Session user email:', session.user?.email);

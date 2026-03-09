@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight, Search, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
 import { KSEFConfiguration } from './KSEFConfiguration';
 import { fetchKSEFInvoices, checkKSEFStatus } from '../../lib/ksefApiClient';
@@ -439,11 +439,7 @@ export function KSEFInvoicesPage() {
       // Small delay to allow database transactions to commit
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn('Brak sesji, pomijam upload PDF');
-        return;
-      }
+      const session = await getValidSession();
 
       const uploadResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auto-upload-ksef-pdfs`,
@@ -690,13 +686,13 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getValidSession();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/revert-ksef-invoice`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ ksefInvoiceId }),
@@ -744,7 +740,7 @@ export function KSEFInvoicesPage() {
 
         if (invoiceError) throw invoiceError;
 
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getValidSession();
 
         // Delete from department folder
         if (invoice?.google_drive_id && session) {
@@ -900,14 +896,9 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError || !refreshData.session) throw new Error('Brak aktywnej sesji - zaloguj się ponownie');
-      }
-
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession) throw new Error('Brak aktywnej sesji');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) throw new Error('Brak aktywnej sesji - zaloguj się ponownie');
+      const currentSession = refreshData.session;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,

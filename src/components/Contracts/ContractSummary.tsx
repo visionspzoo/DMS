@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, FileText, AlertCircle, CheckCircle, Brain } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 
 interface ContractSummaryProps {
   contractId: string;
@@ -55,10 +55,7 @@ export function ContractSummary({ contractId, pdfBase64, onClose }: ContractSumm
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Nie zalogowano');
-      }
+      const session = await getValidSession();
 
       const optimalPrompt = `Przeanalizuj tę umowę i przygotuj szczegółowe podsumowanie w języku polskim. Odpowiedź podziel na 3 sekcje (każda sekcja ma być osobnym akapitem):
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
@@ -172,14 +172,14 @@ export default function SlackSettings() {
     setSuccess(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getValidSession();
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const response = await fetch(`${supabaseUrl}/functions/v1/send-slack-notification/test-connection`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
           'Apikey': supabaseAnonKey,
         },
@@ -277,14 +277,14 @@ export default function SlackSettings() {
     setSuccess(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getValidSession();
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const response = await fetch(`${supabaseUrl}/functions/v1/midnight-summary`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
           'Apikey': supabaseAnonKey,
         },

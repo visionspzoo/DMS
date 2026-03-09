@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, getValidSession } from './supabase';
 
 export interface FileUploadEntry {
   file: File;
@@ -249,7 +249,7 @@ export async function uploadInvoiceFile(
 
   onProgress('ML tagi...');
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await getValidSession();
     if (session) {
       const mlResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ml-predict-tags`,

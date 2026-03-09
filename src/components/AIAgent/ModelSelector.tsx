@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Check, Star, Loader2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 export type LLMModel = 'claude-sonnet-4' | 'gpt-4o' | 'gemini-2.0-flash';
@@ -72,8 +72,7 @@ export function ModelSelector({ selectedModel, onModelChange, compact = false }:
 
   const loadAvailableModels = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const session = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Upload, FileText, Loader, TrendingUp, Search, X, AlertTriangle, CheckCircle2, RefreshCw, HardDrive, Clock, Mail, Trash2, Send, Check, XCircle, DollarSign, GitMerge, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceList as InvoiceListComponent } from './InvoiceList';
 import { InvoiceDetails } from './InvoiceDetails';
@@ -209,18 +209,10 @@ export function InvoiceList() {
     if (manual) setSyncMessage(null);
 
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      let session = currentSession;
-      if (!session) throw new Error('Brak sesji');
-
-      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-      if (expiresAt && Date.now() >= expiresAt - 60 * 1000) {
-        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
-        if (refreshed) session = refreshed;
-      }
+      const currentSession = await getValidSession();
 
       const headers = {
-        'Authorization': `Bearer ${session.access_token}`,
+        'Authorization': `Bearer ${currentSession.access_token}`,
         'Content-Type': 'application/json',
         'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
       };

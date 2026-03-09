@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, Send, Loader, Save, ChevronDown, Trash2, Plus, Search, RotateCcw, GitBranch } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import PromptPipelineCreator from './PromptPipelineCreator';
 import { ModelSelector, type LLMModel } from '../AIAgent/ModelSelector';
@@ -294,19 +294,13 @@ export function ContractAIAssistant({ contractId, contractTitle, pdfBase64 }: Co
     }
   }
 
-  const getSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Brak sesji');
-    return session;
-  };
-
   const callAI = async (
     action: string,
     prompt: string,
     chatHistory: Array<{ role: string; content: string }>,
     includePdf: boolean,
   ) => {
-    const session = await getSession();
+    const session = await getValidSession();
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
       {

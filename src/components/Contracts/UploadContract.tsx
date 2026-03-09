@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Upload } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface UploadContractProps {
@@ -70,10 +70,7 @@ export function UploadContract({ onClose, onSuccess }: UploadContractProps) {
             throw new Error('Brak zalogowanego użytkownika');
           }
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('No active session');
-          }
+          const session = await getValidSession();
 
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 

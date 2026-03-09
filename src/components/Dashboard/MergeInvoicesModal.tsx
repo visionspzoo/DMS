@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, GitMerge, FileCheck, AlertTriangle, Loader, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
 
 type Invoice = Database['public']['Tables']['invoices']['Row'] & {
@@ -303,8 +303,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
 
   const deleteFromDrive = async (fileId: string, ownerUserId?: string | null) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const session = await getValidSession();
       await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-from-google-drive`,
         {

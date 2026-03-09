@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Save, Link as LinkIcon, Info, CheckCircle, XCircle, Loader, Mail, Plus, Trash2, RefreshCw, HardDrive, CreditCard as Edit2, X, AlertCircle, Calendar, RotateCcw, Upload } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAccessibleDepartments } from '../../lib/departmentUtils';
 
@@ -127,8 +127,7 @@ export default function GmailWorkspaceConfig() {
       setEmailMessage({ type: 'success', text: 'Przetwarzanie autoryzacji Google...' });
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Brak sesji uzytkownika');
+        const session = await getValidSession();
 
         const redirectUri = `${window.location.origin}${window.location.pathname}`;
         const response = await fetch(
@@ -676,26 +675,14 @@ export default function GmailWorkspaceConfig() {
       console.log('🔍 Starting Drive sync...');
 
       // Wymuszamy odświeżenie sesji
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const session = await getValidSession();
 
       console.log('📋 Session data:', {
         hasSession: !!session,
-        hasError: !!sessionError,
-        error: sessionError,
         userId: session?.user?.id,
         expiresAt: session?.expires_at,
         now: Math.floor(Date.now() / 1000),
       });
-
-      if (sessionError) {
-        console.error('❌ Session error:', sessionError);
-        throw new Error(`Blad sesji: ${sessionError.message}`);
-      }
-
-      if (!session) {
-        console.error('❌ No session found');
-        throw new Error('Brak sesji uzytkownika. Prosze sie wylogowac i zalogowac ponownie.');
-      }
 
       // ALWAYS refresh session before Drive sync to ensure valid token
       console.log('🔄 FORCE refreshing session before Drive sync...');

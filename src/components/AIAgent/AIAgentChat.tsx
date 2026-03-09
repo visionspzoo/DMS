@@ -179,8 +179,8 @@ export default function AIAgentChat({
   };
 
   const callAIAgent = async (message: string, history: { role: string; content: string }[]): Promise<{ response: string; model: string }> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !session) throw new Error('Not authenticated');
 
     const body: Record<string, any> = {
       message,

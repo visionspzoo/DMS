@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Send, Loader, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -49,8 +49,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
+      const session = await getValidSession();
 
       setMessages(prev => [...prev, {
         role: 'system',
@@ -127,8 +126,7 @@ export function AIAssistant({ contractId, contractTitle, pdfBase64 }: AIAssistan
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
+      const session = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,

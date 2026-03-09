@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Tag, Plus, X, Brain, Check, Loader, XCircle, Sparkles, CheckCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 
 interface TagType {
   id: string;
@@ -105,8 +105,7 @@ export function InvoiceTags({ invoiceId, isEditing, supplierName, supplierNip, d
     setLoadingPredictions(true);
     setMlError(false);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const session = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ml-predict-tags`,

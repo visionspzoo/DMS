@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { Upload, FileText, AlertCircle, CheckCircle, Building2 } from 'lucide-react';
 
 interface DyrektorUploadInvoiceProps {
@@ -110,7 +110,7 @@ export default function DyrektorUploadInvoice({ userId, onSuccess, onCancel }: D
 
       if (insertError) throw insertError;
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getValidSession();
       if (session) {
         const selectedDept = departments.find(d => d.id === departmentId);
         if (selectedDept?.google_drive_draft_folder_id) {

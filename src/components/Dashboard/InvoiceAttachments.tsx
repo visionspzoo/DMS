@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Paperclip, Upload, ExternalLink, Trash2, FileText, Image, File, X, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Attachment {
@@ -81,8 +81,8 @@ export function InvoiceAttachments({ invoiceId, invoiceNumber, departmentId }: I
 
     const errors: string[] = [];
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session || !user) {
+    const session = await getValidSession();
+    if (!user) {
       setUploadError('Not authenticated');
       setUploading(false);
       return;

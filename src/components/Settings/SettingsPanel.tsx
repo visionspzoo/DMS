@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive, CheckSquare } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
@@ -219,8 +219,7 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
     try {
       setError(null);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji użytkownika');
+      const session = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,

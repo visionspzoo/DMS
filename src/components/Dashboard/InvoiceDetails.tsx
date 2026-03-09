@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, CheckCircle, XCircle, MessageSquare, User, Calendar, DollarSign, FileText, ExternalLink, CreditCard as Edit2, Save, Clock, Trash2, CreditCard, ArrowRight, Undo2, Upload, Mail, HardDrive, FileCheck, RefreshCw, AlertTriangle, Download, ShieldAlert } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Database } from '../../lib/database.types';
 import { InvoiceTags } from './InvoiceTags';
@@ -698,7 +698,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       // Move file to unpaid folder when fully accepted
       const fileId = data.google_drive_id || data.user_drive_file_id;
       if (newStatus === 'accepted' && fileId && data.department_id) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getValidSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
@@ -809,8 +809,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     setIsSyncingVendo(true);
     setVendoSyncResult(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Brak sesji');
+      const session = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendo-sync-pz`,
@@ -880,8 +879,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
         try {
           console.log('📄 Faktura bez PDF - generowanie...');
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) throw new Error('No active session');
+          const session = await getValidSession();
 
           // Generate PDF
           const generateResponse = await fetch(
@@ -975,10 +973,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     setLoading(true);
     try {
       // Get user session for proper authorization
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No active session');
-      }
+      const session = await getValidSession();
 
       // Delete from department folder (google_drive_id)
       if (currentInvoice.google_drive_id) {
@@ -1109,44 +1104,40 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       // Move file to paid folder on Google Drive
       const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
       if (fileId && currentInvoice.department_id) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          console.error('No active session for Google Drive operation');
-        } else {
-          const { data: deptData } = await supabase
-            .from('departments')
-            .select('google_drive_paid_folder_id')
-            .eq('id', currentInvoice.department_id)
-            .maybeSingle();
+        const session = await getValidSession();
+        const { data: deptData } = await supabase
+          .from('departments')
+          .select('google_drive_paid_folder_id')
+          .eq('id', currentInvoice.department_id)
+          .maybeSingle();
 
-          if (deptData?.google_drive_paid_folder_id) {
-            try {
-              const moveResponse = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${session.access_token}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    fileId: fileId,
-                    targetFolderId: deptData.google_drive_paid_folder_id,
-                    issueDate: currentInvoice.issue_date || null,
-                    invoiceNumber: currentInvoice.invoice_number || null,
-                    vendorName: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim() || null,
-                  }),
-                }
-              );
-
-              if (!moveResponse.ok) {
-                console.error('Failed to move file to paid folder:', await moveResponse.text());
-              } else {
-                console.log('✓ File moved to paid folder on Google Drive');
+        if (deptData?.google_drive_paid_folder_id) {
+          try {
+            const moveResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fileId: fileId,
+                  targetFolderId: deptData.google_drive_paid_folder_id,
+                  issueDate: currentInvoice.issue_date || null,
+                  invoiceNumber: currentInvoice.invoice_number || null,
+                  vendorName: currentInvoice.supplier_name?.replace(/\[BŁĄD[^\]]*\]\s*/g, '').trim() || null,
+                }),
               }
-            } catch (moveError) {
-              console.error('Error moving file on Google Drive:', moveError);
+            );
+
+            if (!moveResponse.ok) {
+              console.error('Failed to move file to paid folder:', await moveResponse.text());
+            } else {
+              console.log('✓ File moved to paid folder on Google Drive');
             }
+          } catch (moveError) {
+            console.error('Error moving file on Google Drive:', moveError);
           }
         }
       }
@@ -1308,26 +1299,24 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               .single();
 
             if (!deptError && department?.google_drive_draft_folder_id) {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session?.access_token) {
-                const moveResponse = await fetch(
-                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${session.access_token}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      fileId: currentInvoice.user_drive_file_id,
-                      targetFolderId: department.google_drive_draft_folder_id,
-                    }),
-                  }
-                );
-
-                if (!moveResponse.ok) {
-                  console.error('Failed to move file on Google Drive:', await moveResponse.text());
+              const session = await getValidSession();
+              const moveResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fileId: currentInvoice.user_drive_file_id,
+                    targetFolderId: department.google_drive_draft_folder_id,
+                  }),
                 }
+              );
+
+              if (!moveResponse.ok) {
+                console.error('Failed to move file on Google Drive:', await moveResponse.text());
               }
             }
           } catch (moveError) {
@@ -1436,10 +1425,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             throw new Error('Brak zalogowanego użytkownika');
           }
 
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('No active session');
-          }
+          const session = await getValidSession();
 
           const uploadResponse = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-google-drive`,
@@ -1601,13 +1587,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getValidSession();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/revert-ksef-invoice`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ ksefInvoiceId }),
@@ -1729,29 +1715,27 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
             .single();
 
           if (!deptError && department?.google_drive_draft_folder_id) {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.access_token) {
-              for (const fileId of driveFileIds) {
-                const moveResponse = await fetch(
-                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${session.access_token}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      fileId,
-                      targetFolderId: department.google_drive_draft_folder_id,
-                    }),
-                  }
-                );
-
-                if (!moveResponse.ok) {
-                  console.error(`Failed to move file ${fileId} on Google Drive:`, await moveResponse.text());
-                } else {
-                  console.log(`File ${fileId} moved to target department draft folder`);
+            const session = await getValidSession();
+            for (const fileId of driveFileIds) {
+              const moveResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fileId,
+                    targetFolderId: department.google_drive_draft_folder_id,
+                  }),
                 }
+              );
+
+              if (!moveResponse.ok) {
+                console.error(`Failed to move file ${fileId} on Google Drive:`, await moveResponse.text());
+              } else {
+                console.log(`File ${fileId} moved to target department draft folder`);
               }
             }
           }
@@ -1929,7 +1913,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       // Move file to unpaid folder when fully accepted
       const fileId = data.google_drive_id || data.user_drive_file_id;
       if (newStatus === 'accepted' && fileId && data.department_id) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getValidSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
@@ -2057,7 +2041,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       const fileId = currentInvoice.google_drive_id || currentInvoice.user_drive_file_id;
       if (fileId && currentInvoice.department_id) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getValidSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
