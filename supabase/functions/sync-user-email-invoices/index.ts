@@ -587,7 +587,21 @@ async function syncEmailAccount(
 
       const pdfParts = collectPdfParts(message.payload);
       const subject = message.payload?.headers?.find((h: any) => h.name === "Subject")?.value || "";
-      console.log(`Message ${messageId}: found ${pdfParts.length} PDF attachment(s)`);
+      const emailDateHeader = message.payload?.headers?.find((h: any) => h.name === "Date")?.value || null;
+      let emailDateIso: string | null = null;
+      if (emailDateHeader) {
+        const parsed = new Date(emailDateHeader);
+        if (!isNaN(parsed.getTime())) {
+          emailDateIso = parsed.toISOString().split("T")[0];
+        }
+      }
+      if (!emailDateIso && message.internalDate) {
+        const parsed = new Date(Number(message.internalDate));
+        if (!isNaN(parsed.getTime())) {
+          emailDateIso = parsed.toISOString().split("T")[0];
+        }
+      }
+      console.log(`Message ${messageId}: found ${pdfParts.length} PDF attachment(s), emailDate=${emailDateIso}`);
 
       for (const part of pdfParts) {
         attachmentCount++;
@@ -768,27 +782,28 @@ async function syncEmailAccount(
           const fileUrlForDrive = publicUrl;
           const fileNameForDrive = part.filename;
           const userIdForDrive = userId;
+          const emailDateForDrive = emailDateIso;
 
           EdgeRuntime.waitUntil((async () => {
             try {
               // Wait for DB triggers (auto_assign, OCR side effects) to settle
-              await new Promise((r) => setTimeout(r, 3000));
+              await new Promise((r) => setTimeout(r, 5000));
 
-              // Retry fetching the invoice up to 3 times to get department_id
+              // Retry fetching the invoice up to 5 times to get department_id and issue_date
               let refreshedInvoice: any = null;
-              for (let attempt = 0; attempt < 3; attempt++) {
+              for (let attempt = 0; attempt < 5; attempt++) {
                 const { data } = await supabase
                   .from("invoices")
                   .select("id, department_id, status, issue_date")
                   .eq("id", invoiceIdForDrive)
                   .maybeSingle();
                 refreshedInvoice = data;
-                if (refreshedInvoice?.department_id) break;
-                if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+                if (refreshedInvoice?.department_id && refreshedInvoice?.issue_date) break;
+                if (attempt < 4) await new Promise((r) => setTimeout(r, 3000));
               }
 
               const deptId = refreshedInvoice?.department_id;
-              const issueDate = refreshedInvoice?.issue_date || null;
+              const issueDate = refreshedInvoice?.issue_date || emailDateForDrive || null;
 
               let targetFolderId: string | null = null;
               let driveSource = "none";
