@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, DollarSign, Calendar, Users, ShieldCheck, AlertCircle, CheckCircle, Pencil } from 'lucide-react';
+import { Save, DollarSign, Users, ShieldCheck, AlertCircle, CheckCircle, Pencil } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -10,7 +10,6 @@ interface UserLimit {
   role: string;
   department_name: string | null;
   single_limit: number | null;
-  monthly_limit: number | null;
   limit_id: string | null;
 }
 
@@ -19,19 +18,17 @@ function LimitRow({
   onSave,
 }: {
   user: UserLimit;
-  onSave: (userId: string, single: number | null, monthly: number | null) => Promise<boolean>;
+  onSave: (userId: string, single: number | null) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [singleVal, setSingleVal] = useState(user.single_limit?.toString() || '');
-  const [monthlyVal, setMonthlyVal] = useState(user.monthly_limit?.toString() || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
     setSaving(true);
     const single = singleVal ? parseFloat(singleVal) : null;
-    const monthly = monthlyVal ? parseFloat(monthlyVal) : null;
-    const ok = await onSave(user.user_id, single, monthly);
+    const ok = await onSave(user.user_id, single);
     setSaving(false);
     if (ok) {
       setSaved(true);
@@ -78,7 +75,7 @@ function LimitRow({
 
       <div className="p-4">
         {editing ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" />
@@ -94,32 +91,13 @@ function LimitRow({
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
               />
               <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                Wnioski do tej kwoty nie wymagają akceptacji
+                Wnioski do tej kwoty nie wymagają akceptacji wyższego szczebla
               </p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" />
-                Limit miesięczny (PLN)
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={monthlyVal}
-                onChange={e => setMonthlyVal(e.target.value)}
-                placeholder="Brak limitu"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
-              />
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                Łączna kwota w miesiącu bez akceptacji
-              </p>
-            </div>
-            <div className="col-span-2 flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => {
                   setSingleVal(user.single_limit?.toString() || '');
-                  setMonthlyVal(user.monthly_limit?.toString() || '');
                   setEditing(false);
                 }}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/50 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant text-sm transition-all"
@@ -137,30 +115,16 @@ function LimitRow({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-start gap-2">
-              <DollarSign className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Limit jednorazowy</p>
-                <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                  {user.single_limit != null
-                    ? `${user.single_limit.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`
-                    : <span className="text-text-secondary-light dark:text-text-secondary-dark font-normal">Brak</span>
-                  }
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <Calendar className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Limit miesięczny</p>
-                <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                  {user.monthly_limit != null
-                    ? `${user.monthly_limit.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`
-                    : <span className="text-text-secondary-light dark:text-text-secondary-dark font-normal">Brak</span>
-                  }
-                </p>
-              </div>
+          <div className="flex items-start gap-2">
+            <DollarSign className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Limit jednorazowy</p>
+              <p className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                {user.single_limit != null
+                  ? `${user.single_limit.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`
+                  : <span className="text-text-secondary-light dark:text-text-secondary-dark font-normal">Brak limitu</span>
+                }
+              </p>
             </div>
           </div>
         )}
@@ -250,7 +214,6 @@ export function PurchaseRequestLimits() {
         role: p.role,
         department_name: deptId ? deptsMap[deptId] || null : null,
         single_limit: limitsMap[p.id]?.single_limit ?? null,
-        monthly_limit: limitsMap[p.id]?.monthly_limit ?? null,
         limit_id: limitsMap[p.id]?.id ?? null,
       };
     });
@@ -259,14 +222,14 @@ export function PurchaseRequestLimits() {
     setLoading(false);
   }
 
-  async function handleSave(userId: string, single: number | null, monthly: number | null): Promise<boolean> {
+  async function handleSave(userId: string, single: number | null): Promise<boolean> {
     setError(null);
     const existing = users.find(u => u.user_id === userId);
 
     const payload = {
       user_id: userId,
       single_limit: single,
-      monthly_limit: monthly,
+      monthly_limit: null,
       set_by: profile?.id,
       updated_at: new Date().toISOString(),
     };
@@ -292,7 +255,7 @@ export function PurchaseRequestLimits() {
 
     setUsers(prev => prev.map(u =>
       u.user_id === userId
-        ? { ...u, single_limit: single, monthly_limit: monthly }
+        ? { ...u, single_limit: single }
         : u
     ));
     return true;
@@ -316,10 +279,9 @@ export function PurchaseRequestLimits() {
       <div className="mb-4 px-4 py-3 rounded-lg bg-light-surface-variant dark:bg-dark-surface-variant border border-slate-200 dark:border-slate-700/50 flex items-start gap-2.5">
         <AlertCircle className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
         <div>
-          <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-0.5">Jak działają limity?</p>
+          <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-0.5">Jak działa limit jednorazowy?</p>
           <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark leading-relaxed">
-            Jeśli kierownik lub dyrektor ma ustawiony <strong>limit jednorazowy</strong>, wnioski do tej kwoty są automatycznie zatwierdzane na ich etapie.
-            <strong> Limit miesięczny</strong> działa analogicznie dla łącznej kwoty w danym miesiącu.
+            Jeśli kierownik lub dyrektor ma ustawiony <strong>limit jednorazowy</strong>, wnioski do tej kwoty są automatycznie zatwierdzane na ich etapie i nie wymagają ręcznej akceptacji.
             Brak limitu oznacza, że wszystkie wnioski wymagają ręcznej akceptacji.
           </p>
         </div>
