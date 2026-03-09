@@ -896,9 +896,7 @@ export function KSEFInvoicesPage() {
     setSuccessMessage('');
 
     try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) throw new Error('Brak aktywnej sesji - zaloguj się ponownie');
-      const currentSession = refreshData.session;
+      const currentSession = await getValidSession();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transfer-ksef-invoice`,

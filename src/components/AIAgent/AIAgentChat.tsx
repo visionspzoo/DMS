@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Brain, User, Loader2, Bot, Sparkles } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getValidSession } from '../../lib/supabase';
 import { ModelSelector, type LLMModel } from './ModelSelector';
 import type { CustomAgent } from './AIAgentSidebar';
 
@@ -179,8 +179,7 @@ export default function AIAgentChat({
   };
 
   const callAIAgent = async (message: string, history: { role: string; content: string }[]): Promise<{ response: string; model: string }> => {
-    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !session) throw new Error('Not authenticated');
+    const session = await getValidSession();
 
     const body: Record<string, any> = {
       message,

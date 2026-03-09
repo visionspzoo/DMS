@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    flowType: 'pkce',
+    flowType: 'implicit',
     detectSessionInUrl: true,
     autoRefreshToken: true,
     persistSession: true,
@@ -23,12 +23,11 @@ export async function getValidSession() {
 
   const expiresAt = session.expires_at ?? 0;
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const REFRESH_THRESHOLD = 60;
+  const REFRESH_THRESHOLD = 300;
 
   if (expiresAt - nowSeconds < REFRESH_THRESHOLD) {
-    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !refreshed.session) throw new Error('Nie można odświeżyć sesji - zaloguj się ponownie');
-    return refreshed.session;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    if (refreshed.session) return refreshed.session;
   }
 
   return session;
