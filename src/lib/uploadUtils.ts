@@ -136,6 +136,16 @@ export async function uploadInvoiceFile(
 
   onProgress('OCR...');
   try {
+    const ocrBody: Record<string, unknown> = {
+      invoiceId: finalInvoiceData.id,
+      mimeType: file.type,
+    };
+    if (file.type === 'application/pdf') {
+      ocrBody.pdfBase64 = pdfBase64;
+    } else {
+      ocrBody.fileBase64 = pdfBase64;
+      ocrBody.fileUrl = publicUrl;
+    }
     const ocrResponse = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-invoice-ocr`,
       {
@@ -144,11 +154,7 @@ export async function uploadInvoiceFile(
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fileUrl: publicUrl,
-          invoiceId: finalInvoiceData.id,
-          mimeType: file.type,
-        }),
+        body: JSON.stringify(ocrBody),
       }
     );
 

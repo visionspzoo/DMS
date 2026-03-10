@@ -1662,12 +1662,13 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     try {
       const requestBody: any = {
         invoiceId: currentInvoice.id,
+        mimeType: 'application/pdf',
       };
 
-      if (currentInvoice.file_url) {
-        requestBody.fileUrl = currentInvoice.file_url;
-      } else if (currentInvoice.pdf_base64) {
+      if (currentInvoice.pdf_base64) {
         requestBody.pdfBase64 = currentInvoice.pdf_base64;
+      } else if (currentInvoice.file_url) {
+        requestBody.fileUrl = currentInvoice.file_url;
       }
 
       const response = await fetch(
