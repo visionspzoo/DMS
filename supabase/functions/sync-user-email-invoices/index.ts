@@ -660,6 +660,15 @@ async function syncEmailAccount(
             }
           }
 
+          const preCheckPass = await quickInvoicePreCheck(pdfData, part.filename);
+          if (!preCheckPass) {
+            console.log(`Pre-check failed for "${part.filename}" — skipping (not an invoice)`);
+            if (send) {
+              await send({ type: "attachment_skipped", filename: part.filename, reason: "not_invoice_precheck" });
+            }
+            continue;
+          }
+
           const sanitizedFilename = part.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
           const fileName = `${Date.now()}_${sanitizedFilename}`;
           const filePath = `invoices/${fileName}`;
@@ -744,10 +753,14 @@ async function syncEmailAccount(
               console.log(`OCR processed for invoice ${invoiceData.id}`);
 
               const d = ocrData.data || {};
-              const hasInvoiceNumber = d.invoice_number && String(d.invoice_number).trim().length > 0 && d.invoice_number !== 'null';
-              const hasAmount = d.gross_amount && String(d.gross_amount).trim().length > 0 && d.gross_amount !== 'null';
-              const hasSupplier = d.supplier_name && String(d.supplier_name).trim().length > 0 && d.supplier_name !== 'null';
-              isRealInvoice = !!(hasInvoiceNumber || (hasAmount && hasSupplier));
+              const clean = (v: unknown) => v && String(v).trim().length > 1 && v !== 'null' && !String(v).startsWith('[');
+              const hasInvoiceNumber = clean(d.invoice_number);
+              const hasAmount = d.gross_amount && parseFloat(String(d.gross_amount)) > 0;
+              const hasSupplier = clean(d.supplier_name);
+              const hasBuyer = clean(d.buyer_name) || clean(d.buyer_nip);
+              const hasDate = clean(d.issue_date);
+              const signals = [hasInvoiceNumber, hasAmount, hasSupplier, hasBuyer, hasDate].filter(Boolean).length;
+              isRealInvoice = signals >= 2;
 
               if (!isRealInvoice) {
                 console.log(`Not an invoice (${part.filename}), deleting record and file`);
@@ -930,6 +943,77 @@ async function syncEmailAccount(
   console.log(`Synced ${syncedCount} invoices from ${config.email_address}`);
 
   return syncedCount;
+}
+
+async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Promise<boolean> {
+  try {
+    const fnLower = filename.toLowerCase();
+
+    const SKIP_PATTERNS = [
+      'specyfikacja', 'specification', 'packing_list', 'packing list',
+      'waybill', 'way_bill', 'cmr', 'bill_of_lading', 'bill of lading',
+      'delivery_note', 'delivery note', 'delivery_order',
+      'listy_przewozowy', 'list_przewozowy', 'list przewozowy',
+      'certyfikat', 'certificate', 'cert_', '_cert.',
+      'newsletter', 'brochure', 'katalog', 'catalog', 'catalogue',
+      'presentation', 'prezentacja', 'oferta_', '_oferta',
+      'price_list', 'cennik',
+    ];
+    for (const pattern of SKIP_PATTERNS) {
+      if (fnLower.includes(pattern)) {
+        console.log(`Pre-check SKIP by filename: "${filename}" (pattern: ${pattern})`);
+        return false;
+      }
+    }
+
+    const INVOICE_FILENAME_HINTS = [
+      'faktura', 'invoice', 'facture', 'rechnung', 'fattura', 'factura',
+      'fakt_', 'fakt.', '_fakt', 'inv_', 'inv.', '_inv', 'fv_', 'fv.', '_fv',
+      'fac_', 'fac.', '_fac',
+    ];
+    for (const hint of INVOICE_FILENAME_HINTS) {
+      if (fnLower.includes(hint)) {
+        console.log(`Pre-check PASS by filename hint: "${filename}" (hint: ${hint})`);
+        return true;
+      }
+    }
+
+    try {
+      const pdfParse = await import('npm:pdf-parse@1.1.1');
+      const pdfData = await (pdfParse as any).default(pdfBytes);
+      const text = pdfData?.text || '';
+
+      if (text.trim().length < 40) {
+        console.log(`Pre-check: PDF text too short (${text.trim().length} chars) - treating as invoice (scanned?)`);
+        return true;
+      }
+
+      const lowerText = text.toLowerCase();
+
+      const INVOICE_KEYWORDS = [
+        'faktura', 'invoice', 'facture', 'rechnung', 'fattura', 'factura',
+        'faktura vat', 'nr faktury', 'numer faktury', 'invoice number', 'invoice no', 'invoice #',
+        'bill to', 'sold to', 'numer dokumentu',
+        'nip', 'tax id', 'vat number', 'vat no', 'vat id', 'siret', 'steuernummer', 'tvaintracom',
+        'sprzedawca', 'nabywca', 'seller', 'buyer', 'vendor',
+        'kwota brutto', 'kwota netto', 'amount due', 'total amount', 'total net', 'total vat',
+        'termin platnosci', 'payment due', 'payment terms', 'due date',
+        'netto', 'brutto', 'net amount', 'gross amount',
+      ];
+
+      const found = INVOICE_KEYWORDS.filter(kw => lowerText.includes(kw));
+      const isInvoice = found.length >= 2;
+
+      console.log(`Pre-check "${filename}": ${isInvoice ? 'PASS' : 'FAIL'} (${found.length} keywords: ${found.slice(0, 6).join(', ')})`);
+      return isInvoice;
+    } catch (parseErr: any) {
+      console.warn(`Pre-check pdf-parse failed for "${filename}": ${parseErr?.message} — allowing`);
+      return true;
+    }
+  } catch (err: any) {
+    console.error(`Pre-check error for "${filename}":`, err?.message);
+    return true;
+  }
 }
 
 async function verifyIsInvoice(pdfContent: Uint8Array): Promise<boolean> {
