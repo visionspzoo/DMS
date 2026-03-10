@@ -20,6 +20,8 @@ interface MergeInvoicesModalProps {
   onClose: () => void;
   onMergeComplete: () => void;
   onGroupMerged?: () => void;
+  currentUserId?: string;
+  isAdmin?: boolean;
 }
 
 const INVOICE_FIELDS = `
@@ -218,7 +220,7 @@ function buildDuplicateGroups(invoices: Invoice[]): DuplicateGroup[] {
   return result;
 }
 
-export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroupMerged }: MergeInvoicesModalProps) {
+export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroupMerged, currentUserId, isAdmin }: MergeInvoicesModalProps) {
   const [merging, setMerging] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
   const [mergeResults, setMergeResults] = useState<{ key: string; success: boolean; error?: string }[]>([]);
@@ -245,7 +247,13 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
       .finally(() => setLoadingDuplicates(false));
   }, []);
 
-  const duplicateGroups = useMemo(() => buildDuplicateGroups(allDuplicates), [allDuplicates]);
+  const duplicateGroups = useMemo(() => {
+    const groups = buildDuplicateGroups(allDuplicates);
+    if (isAdmin || !currentUserId) return groups;
+    return groups.filter(g =>
+      g.invoices.some(inv => inv.uploaded_by === currentUserId)
+    );
+  }, [allDuplicates, currentUserId, isAdmin]);
 
   useEffect(() => {
     const initial = new Map<string, string>();

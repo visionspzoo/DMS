@@ -1748,6 +1748,8 @@ export function InvoiceList() {
             loadInvoices();
           }}
           onGroupMerged={() => loadInvoices()}
+          currentUserId={profile?.id}
+          isAdmin={profile?.is_admin ?? false}
         />
       )}
 
