@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase, getValidSession } from '../../lib/supabase';
 import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive, CheckSquare } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
@@ -33,6 +33,18 @@ interface Profile {
 
 const roles = ['CEO', 'Dyrektor', 'Kierownik', 'Specjalista'];
 
+function ReadOnlyWrapper({ readOnly, children }: { readOnly: boolean; children: React.ReactNode }) {
+  if (!readOnly) return <>{children}</>;
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none opacity-60">
+        {children}
+      </div>
+      <div className="absolute inset-0 z-10 cursor-not-allowed" />
+    </div>
+  );
+}
+
 interface Department {
   id: string;
   name: string;
@@ -50,6 +62,7 @@ interface DepartmentAccess {
 
 export default function SettingsPanel() {
   const { profile } = useAuth();
+  const isReadOnly = !profile?.is_admin;
   const canManageInvitations = profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik';
   const canViewDepartments = profile?.is_admin || profile?.role === 'Dyrektor' || profile?.role === 'Kierownik';
   const [users, setUsers] = useState<Profile[]>([]);
@@ -387,7 +400,7 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
             Ustawienia Systemu
           </h1>
           <p className="text-text-secondary-light dark:text-text-secondary-dark mt-0.5 text-sm">
-            Zarządzanie użytkownikami, rolami i konfiguracją systemu
+            {isReadOnly ? 'Podgląd konfiguracji systemu (tryb tylko do odczytu)' : 'Zarządzanie użytkownikami, rolami i konfiguracją systemu'}
           </p>
         </div>
         {activeTab === 'departments' && profile?.is_admin && (
@@ -400,6 +413,13 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
           </button>
         )}
       </div>
+
+      {isReadOnly && (
+        <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg text-sm text-amber-700 dark:text-amber-400">
+          <Shield className="w-4 h-4 flex-shrink-0" />
+          Tryb podglądu — masz wgląd w konfigurację systemu, ale nie możesz wprowadzać zmian.
+        </div>
+      )}
 
       <div className="mb-4 flex items-center gap-1 bg-light-surface dark:bg-dark-surface rounded-lg border border-slate-200 dark:border-slate-700/50 p-1">
         <button
@@ -569,7 +589,7 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                 <tr
                   key={user.id}
                   onClick={() => openEditModal(user)}
-                  className="hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors cursor-pointer"
+                  className={`hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors ${isReadOnly ? 'cursor-default' : 'cursor-pointer'}`}
                 >
                   <td className="px-3 py-2">
                     <div>
@@ -631,7 +651,9 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
               <div className="px-6 py-4 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Users className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-                  <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">Edytuj Użytkownika</h2>
+                  <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+                    {isReadOnly ? 'Szczegóły użytkownika' : 'Edytuj Użytkownika'}
+                  </h2>
                 </div>
                 <button
                   onClick={closeEditModal}
@@ -674,7 +696,8 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                     onChange={(e) => setEditedFullName(e.target.value)}
                     placeholder="Wpisz imię i nazwisko"
                     required
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                    disabled={isReadOnly}
+                    className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark ${isReadOnly ? 'cursor-not-allowed opacity-70' : 'focus:outline-none focus:ring-2 focus:ring-brand-primary'}`}
                   />
                 </div>
 
@@ -685,7 +708,8 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                   <select
                     value={editingUser.role}
                     onChange={(e) => handleRoleChange(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    disabled={isReadOnly}
+                    className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? 'cursor-not-allowed opacity-70' : 'focus:outline-none focus:ring-2 focus:ring-brand-primary'}`}
                   >
                     {roles.map((role) => (
                       <option key={role} value={role}>
@@ -702,7 +726,8 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                   <select
                     value={editingUser.department_id || ''}
                     onChange={(e) => handleDepartmentChange(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
+                    disabled={isReadOnly}
+                    className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? 'cursor-not-allowed opacity-70' : 'focus:outline-none focus:ring-2 focus:ring-brand-primary'}`}
                   >
                     <option value="">Brak przypisania</option>
                     {departments.map((dept) => (
@@ -719,11 +744,12 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                     id="is_admin"
                     checked={editingUser.is_admin}
                     onChange={(e) => handleAdminChange(e.target.checked)}
-                    className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
+                    disabled={isReadOnly}
+                    className={`w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary ${isReadOnly ? 'cursor-not-allowed opacity-70' : ''}`}
                   />
                   <label
                     htmlFor="is_admin"
-                    className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                    className={`text-sm font-medium text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? '' : 'cursor-pointer'}`}
                   >
                     Uprawnienia administratora
                   </label>
@@ -735,11 +761,12 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                     id="can_access_ksef_config"
                     checked={editingUser.can_access_ksef_config}
                     onChange={(e) => handleKsefConfigAccessChange(e.target.checked)}
-                    className="w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary"
+                    disabled={isReadOnly}
+                    className={`w-4 h-4 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary ${isReadOnly ? 'cursor-not-allowed opacity-70' : ''}`}
                   />
                   <label
                     htmlFor="can_access_ksef_config"
-                    className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                    className={`text-sm font-medium text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? '' : 'cursor-pointer'}`}
                   >
                     Dostęp do konfiguracji KSEF
                   </label>
@@ -751,12 +778,13 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                     id="has_mpk_access"
                     checked={editingUser.has_mpk_access}
                     onChange={(e) => handleHasMpkAccessChange(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0"
+                    disabled={isReadOnly}
+                    className={`w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0 ${isReadOnly ? 'cursor-not-allowed opacity-70' : ''}`}
                   />
                   <div>
                     <label
                       htmlFor="has_mpk_access"
-                      className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                      className={`text-sm font-medium text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? '' : 'cursor-pointer'}`}
                     >
                       Dostęp do MPK
                     </label>
@@ -772,12 +800,13 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                     id="mpk_override_bez_mpk"
                     checked={editingUser.mpk_override_bez_mpk}
                     onChange={(e) => handleMpkOverrideBezMpkChange(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0"
+                    disabled={isReadOnly}
+                    className={`w-4 h-4 mt-0.5 text-brand-primary border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-brand-primary flex-shrink-0 ${isReadOnly ? 'cursor-not-allowed opacity-70' : ''}`}
                   />
                   <div>
                     <label
                       htmlFor="mpk_override_bez_mpk"
-                      className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark cursor-pointer"
+                      className={`text-sm font-medium text-text-primary-light dark:text-text-primary-dark ${isReadOnly ? '' : 'cursor-pointer'}`}
                     >
                       Dostęp BEZ MPK
                     </label>
@@ -809,7 +838,8 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                         placeholder="np. 50000"
                         step="0.01"
                         min="0"
-                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                        disabled={isReadOnly}
+                        className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark ${isReadOnly ? 'cursor-not-allowed opacity-70' : 'focus:outline-none focus:ring-2 focus:ring-brand-primary'}`}
                       />
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
                         Maksymalna suma faktur w PLN którą Dyrektor może zatwierdzić w miesiącu
@@ -827,7 +857,8 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                         placeholder="np. 10000"
                         step="0.01"
                         min="0"
-                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+                        disabled={isReadOnly}
+                        className={`w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark ${isReadOnly ? 'cursor-not-allowed opacity-70' : 'focus:outline-none focus:ring-2 focus:ring-brand-primary'}`}
                       />
                       <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
                         Maksymalna kwota pojedynczej faktury w PLN którą Dyrektor może zatwierdzić
@@ -860,17 +891,23 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                               </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => removeUserAccess(access.id)}
-                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
-                          >
-                            <X className="w-4 h-4 text-red-600 dark:text-red-400" />
-                          </button>
+                          {!isReadOnly && (
+                            <button
+                              onClick={() => removeUserAccess(access.id)}
+                              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                            >
+                              <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}
+                    {userAccess.length === 0 && (
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Brak dodatkowych uprawnień</p>
+                    )}
                   </div>
 
+                  {!isReadOnly && (
                   <div className="flex gap-2">
                     <select
                       value={selectedAccessDept}
@@ -898,24 +935,29 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3 pt-4">
-                  <button
-                    onClick={handleSaveUser}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all shadow-md"
-                  >
-                    <Save className="w-5 h-5" />
-                    Zapisz zmiany
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteUser(editingUser.id)}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-all shadow-md"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    Usuń
-                  </button>
+                  {!isReadOnly && (
+                    <>
+                      <button
+                        onClick={handleSaveUser}
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-primary text-white font-medium rounded-lg hover:bg-brand-primary/90 transition-all shadow-md"
+                      >
+                        <Save className="w-5 h-5" />
+                        Zapisz zmiany
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteUser(editingUser.id)}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-all shadow-md"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                        Usuń
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={closeEditModal}
@@ -1009,27 +1051,39 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
         )}
 
         {activeTab === 'invitations' && (
-          <UserInvitations />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <UserInvitations />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'departments' && (
-          <DepartmentManagement />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <DepartmentManagement />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'ai_prompts' && (
-          <AIPromptsSettings />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <AIPromptsSettings />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'slack' && (
-          <SlackSettings />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <SlackSettings />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'mpk' && (
-          <CostCentersManagement />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <CostCentersManagement />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'api' && (
-          <APISettings />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <APISettings />
+          </ReadOnlyWrapper>
         )}
 
         {activeTab === 'google_drive' && profile?.is_admin && (
@@ -1037,7 +1091,9 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
         )}
 
         {activeTab === 'clickup' && (
-          <ClickUpSettings />
+          <ReadOnlyWrapper readOnly={isReadOnly}>
+            <ClickUpSettings />
+          </ReadOnlyWrapper>
         )}
 
     </div>

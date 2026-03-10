@@ -96,7 +96,7 @@ function AppContent() {
     { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
   ];
 
-  if (profile.is_admin) {
+  if (profile.is_admin || profile.role === 'Dyrektor') {
     menuItems.push({ id: 'settings', label: 'Ustawienia', icon: Settings });
   }
 
@@ -204,7 +204,7 @@ function AppContent() {
           {appView === 'my-purchase-requests' && <MyPurchaseRequests />}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
-          {appView === 'settings' && profile.is_admin && <SettingsPanel />}
+          {appView === 'settings' && (profile.is_admin || profile.role === 'Dyrektor') && <SettingsPanel />}
           {appView === 'instructions' && <InstructionsPage />}
         </main>
       </div>
