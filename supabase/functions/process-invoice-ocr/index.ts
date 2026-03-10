@@ -39,7 +39,15 @@ BARDZO WAŻNE - FORMATOWANIE KWOT:
 - ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
 - ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
 - USUŃ wszystkie spacje z kwot
-- Przykłady: "7 564,62" → "7564.62", "1 234 567,89" → "1234567.89", "123,45" → "123.45"
+- USUŃ symbole walut (€, $, £) z kwot
+- Przykłady konwersji:
+  - "7 564,62" → "7564.62"
+  - "1 234 567,89" → "1234567.89"
+  - "123,45" → "123.45"
+  - "€ 44.400,00" → "44400.00" (UWAGA: tu kropka to separator tysięcy, przecinek to dziesiętny!)
+  - "€ 138.800,00" → "138800.00"
+  - "44,400.00" → "44400.00" (format angielski: przecinek = tysiące, kropka = dziesiętne)
+  - "1.234.567,89" → "1234567.89" (wiele kropek = separatory tysięcy)
 
 KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
 1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę → supplier_name, supplier_nip
@@ -610,7 +618,35 @@ Deno.serve(async (req: Request) => {
 
     const parseAmount = (val: unknown): number | null => {
       if (val === null || val === undefined || val === '') return null;
-      const s = String(val).replace(/\s/g, '').replace(',', '.');
+      let s = String(val).replace(/\s/g, '').replace(/[€$£]/g, '');
+
+      const dotCount = (s.match(/\./g) || []).length;
+      const commaCount = (s.match(/,/g) || []).length;
+
+      if (dotCount >= 1 && commaCount === 1) {
+        const commaIdx = s.lastIndexOf(',');
+        const dotIdx = s.lastIndexOf('.');
+        if (dotIdx < commaIdx) {
+          s = s.replace(/\./g, '').replace(',', '.');
+        } else {
+          s = s.replace(/,/g, '');
+        }
+      } else if (commaCount >= 1 && dotCount === 0) {
+        const parts = s.split(',');
+        if (parts.length === 2 && parts[1].length <= 2) {
+          s = s.replace(',', '.');
+        } else {
+          s = s.replace(/,/g, '');
+        }
+      } else if (dotCount >= 2) {
+        s = s.replace(/\./g, '');
+      } else if (dotCount === 1 && commaCount === 0) {
+        const afterDot = s.split('.')[1] || '';
+        if (afterDot.length === 3) {
+          s = s.replace('.', '');
+        }
+      }
+
       const n = parseFloat(s);
       return isNaN(n) ? null : n;
     };
