@@ -329,6 +329,19 @@ function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDet
         }
       }
     }
+  const dashMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const [, a, b, yearStr] = dashMatch;
+    const year = Number(yearStr);
+    const aNum = Number(a);
+    const bNum = Number(b);
+    const day = isUS ? bNum : aNum;
+    const month = isUS ? aNum : bNum;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
   }
 
   const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
@@ -371,6 +384,164 @@ function createFallback() {
     supplier_name: null,
     supplier_nip: null,
     buyer_name: null,
+function parseInvoiceFromText(text: string): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...createFallback(), supplier_country: null, date_format_detected: null };
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+  const isLabelLine = (l: string) => /[:\s]+$/.test(l) || /^[A-Za-z\s]{3,30}:$/.test(l);
+  const dateRe = /^(\d{2}[-.\/ ]\d{2}[-.\/ ]\d{4})$/;
+
+  const findAfterLabel = (labelRe: RegExp, valueRe: RegExp): string | null => {
+    for (let i = 0; i < lines.length; i++) {
+      if (!labelRe.test(lines[i])) continue;
+      const afterColon = lines[i].replace(labelRe, '').replace(/^[:\s]+/, '').trim();
+      if (afterColon) {
+        const m = afterColon.match(valueRe);
+        if (m) return m[1] ?? m[0];
+      }
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        const m = lines[j].match(valueRe);
+        if (m) return m[1] ?? m[0];
+        if (isLabelLine(lines[j]) && !valueRe.test(lines[j])) break;
+      }
+    }
+    return null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/(?:invoice\s+(?:number|nr|no)|numer\s+faktury|faktura\s+nr)/i.test(lines[i])) {
+      const inline = lines[i].match(/(?:invoice\s+(?:number|nr|no)|numer\s+faktury|faktura\s+nr)[.:\s]+([A-Z][A-Z0-9\-\/\.]{2,25})/i);
+      if (inline) { result.invoice_number = inline[1]; break; }
+      for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+        if (/^[A-Z][A-Z0-9\-\/\.]{2,25}$/.test(lines[j]) && !/^\d+$/.test(lines[j])) {
+          result.invoice_number = lines[j];
+          break;
+        }
+      }
+      if (result.invoice_number) break;
+    }
+  }
+  if (!result.invoice_number) {
+    const m = text.match(/\b([A-Z]{1,4}[-\/]?\d{6,12})\b/);
+    if (m) result.invoice_number = m[1];
+  }
+
+  const invDateLabelIdx = lines.findIndex(l => /invoice\s+date|data\s+(?:wystawienia|faktury)|rechnungsdatum/i.test(l));
+  const dueDateLabelIdx = lines.findIndex(l => /due\s+date|termin\s+(?:p[łl]atno|zap[łl]aty)|f[äa]lligkeitsdatum/i.test(l));
+
+  const allDateLines: { idx: number; val: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(dateRe);
+    if (m) allDateLines.push({ idx: i, val: m[1] });
+  }
+
+  if (invDateLabelIdx >= 0 || dueDateLabelIdx >= 0) {
+    const firstLabel = Math.min(
+      invDateLabelIdx >= 0 ? invDateLabelIdx : 9999,
+      dueDateLabelIdx >= 0 ? dueDateLabelIdx : 9999
+    );
+    const lastLabel = Math.max(invDateLabelIdx, dueDateLabelIdx);
+    const datesAfterLabels = allDateLines.filter(d => d.idx > firstLabel && d.idx <= lastLabel + 8);
+
+    if (invDateLabelIdx >= 0 && dueDateLabelIdx >= 0 && datesAfterLabels.length >= 2) {
+      if (invDateLabelIdx < dueDateLabelIdx) {
+        result.issue_date = datesAfterLabels[0].val;
+        result.due_date = datesAfterLabels[1].val;
+      } else {
+        result.due_date = datesAfterLabels[0].val;
+        result.issue_date = datesAfterLabels[1].val;
+      }
+    } else if (datesAfterLabels.length >= 1) {
+      if (invDateLabelIdx >= 0) result.issue_date = datesAfterLabels[0].val;
+      else result.due_date = datesAfterLabels[0].val;
+      if (datesAfterLabels.length >= 2) {
+        if (!result.due_date) result.due_date = datesAfterLabels[1].val;
+        else if (!result.issue_date) result.issue_date = datesAfterLabels[1].val;
+      }
+    }
+  }
+  if (!result.issue_date && !result.due_date && allDateLines.length > 0) {
+    result.issue_date = allDateLines[0].val;
+    if (allDateLines.length > 1) result.due_date = allDateLines[1].val;
+  }
+
+  if (/€|\bEUR\b/.test(text)) result.currency = 'EUR';
+  else if (/\$|\bUSD\b/.test(text)) result.currency = 'USD';
+  else if (/£|\bGBP\b/.test(text)) result.currency = 'GBP';
+  else if (/\bPLN\b|\bzł\b/i.test(text)) result.currency = 'PLN';
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^total\b/i.test(l) && !/total\s+vat/i.test(l) && !result.gross_amount) {
+      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
+      if (m) result.gross_amount = m[1].trim();
+    }
+    if (/total\s+vat|vat\s+amount|podatek\s+vat/i.test(l) && !result.tax_amount) {
+      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
+      if (m) result.tax_amount = m[1].trim();
+    }
+    if (/^(?:subtotal|netto|kwota\s+netto|net\s+amount)\b/i.test(l) && !result.net_amount) {
+      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
+      if (m) result.net_amount = m[1].trim();
+    }
+  }
+
+  const plNip = text.match(/\bPL\d{10}\b/);
+  if (plNip) result.buyer_nip = plNip[0];
+
+  if (!result.buyer_nip) {
+    result.buyer_nip = findAfterLabel(
+      /vat\s+id|btw\s+id|customer\s+(?:vat|nip)/i,
+      /([A-Z]{2}\d{8,12})/
+    );
+  }
+
+  const nlVat = text.match(/\bNL\s*\d{9}B\d{2}\b/);
+  if (nlVat) result.supplier_nip = nlVat[0].replace(/\s/g, '');
+
+  if (!result.supplier_nip) {
+    const allVat = [...text.matchAll(/(?:^|\s)VAT[:\s]+([A-Z]{2}\s*[\dA-Z]{8,15})/gm)];
+    if (allVat.length > 0) {
+      const last = allVat[allVat.length - 1][1].replace(/\s/g, '');
+      if (last !== (result.buyer_nip as string ?? '')) result.supplier_nip = last;
+    }
+  }
+  if (!result.supplier_nip) {
+    result.supplier_nip = findAfterLabel(
+      /(?:sprzedawca|dostawca|supplier|nip sprzedawcy)/i,
+      /([A-Z\d]{8,20})/
+    );
+  }
+
+  if (/(?:netherlands|nederland|barneveld|amsterdam)/i.test(text) || /\bNL\d{9}B\d{2}\b/.test(text.replace(/\s/g,''))) result.supplier_country = 'NL';
+  else if (/(?:germany|deutschland)/i.test(text)) result.supplier_country = 'DE';
+  else if (/(?:united\s+states|u\.s\.a\.?|usa)\b/i.test(text)) result.supplier_country = 'US';
+  else if (/(?:united\s+kingdom|england)/i.test(text)) result.supplier_country = 'GB';
+  else if (/(?:france|frankreich)/i.test(text)) result.supplier_country = 'FR';
+  else if (/(?:sp\.\s*z\s*o\.o|poland|polska)/i.test(text)) result.supplier_country = 'PL';
+
+  result.date_format_detected = result.supplier_country === 'US' ? 'US (MM/DD/YYYY)' : 'EU (DD.MM.YYYY lub DD/MM/YYYY)';
+
+  console.log('Text-based parse result:', JSON.stringify(result));
+  return result;
+}
+
+async function tryPdfTextParsing(base64Data: string): Promise<Record<string, unknown> | null> {
+  try {
+    console.log('Attempting pdf-parse text extraction...');
+    const pdfParse = await import('npm:pdf-parse@1.1.1');
+    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    const pdfData = await (pdfParse as any).default(buffer);
+    const text = pdfData?.text || '';
+    console.log(`pdf-parse extracted ${text.length} chars`);
+    if (text.length < 30) return null;
+    return parseInvoiceFromText(text);
+  } catch (e: any) {
+    console.error('pdf-parse failed:', e?.message || e);
+    return null;
+  }
+}
+
     buyer_nip: null,
     issue_date: null,
     due_date: null,
@@ -550,6 +721,21 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Used API: ${usedApi}`);
     console.log(`Raw response (first 300 chars): ${content.substring(0, 300)}`);
+
+    const hasAnyExtractedData = (d: Record<string, unknown>) =>
+      d.invoice_number || d.supplier_name || d.gross_amount || d.issue_date;
+
+    if (!hasAnyExtractedData(parsedData) && isPDF) {
+      console.log("AI returned no data for PDF, trying pdf-parse text extraction...");
+      const textResult = await tryPdfTextParsing(base64Data);
+      if (textResult && hasAnyExtractedData(textResult)) {
+        parsedData = textResult;
+        usedApi = "pdf-parse (text extraction, no AI)";
+        console.log("✓ Text extraction succeeded");
+      } else {
+        console.log("Text extraction also returned no data");
+      }
+    }
 
     let parsedData: Record<string, unknown>;
     try {
