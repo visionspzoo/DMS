@@ -384,6 +384,16 @@ function createFallback() {
     supplier_name: null,
     supplier_nip: null,
     buyer_name: null,
+    buyer_nip: null,
+    issue_date: null,
+    due_date: null,
+    net_amount: null,
+    tax_amount: null,
+    gross_amount: null,
+    currency: "PLN",
+  };
+}
+
 function parseInvoiceFromText(text: string): Record<string, unknown> {
   const result: Record<string, unknown> = { ...createFallback(), supplier_country: null, date_format_detected: null };
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -540,16 +550,6 @@ async function tryPdfTextParsing(base64Data: string): Promise<Record<string, unk
     console.error('pdf-parse failed:', e?.message || e);
     return null;
   }
-}
-
-    buyer_nip: null,
-    issue_date: null,
-    due_date: null,
-    net_amount: null,
-    tax_amount: null,
-    gross_amount: null,
-    currency: "PLN",
-  };
 }
 
 async function fetchFileFromUrl(url: string, fallbackMimeType: string): Promise<{ base64: string; mimeType: string }> {
@@ -722,6 +722,16 @@ Deno.serve(async (req: Request) => {
     console.log(`Used API: ${usedApi}`);
     console.log(`Raw response (first 300 chars): ${content.substring(0, 300)}`);
 
+    let parsedData: Record<string, unknown>;
+    try {
+      const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsedData = JSON.parse(clean);
+    } catch (e) {
+      console.error("JSON parse failed:", content);
+      parsedData = createFallback();
+      usedApi = `${usedApi} (parse error)`;
+    }
+
     const hasAnyExtractedData = (d: Record<string, unknown>) =>
       d.invoice_number || d.supplier_name || d.gross_amount || d.issue_date;
 
@@ -735,16 +745,6 @@ Deno.serve(async (req: Request) => {
       } else {
         console.log("Text extraction also returned no data");
       }
-    }
-
-    let parsedData: Record<string, unknown>;
-    try {
-      const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsedData = JSON.parse(clean);
-    } catch (e) {
-      console.error("JSON parse failed:", content);
-      parsedData = createFallback();
-      usedApi = `${usedApi} (parse error)`;
     }
 
     console.log("Parsed OCR data:", JSON.stringify(parsedData));
