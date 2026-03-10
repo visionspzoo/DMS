@@ -331,27 +331,6 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
     const winner = group.invoices.find(inv => inv.id === winnerId) || group.winner;
     const losers = group.invoices.filter(inv => inv.id !== winnerId);
 
-    const updateData: Record<string, any> = {};
-
-    for (const loser of losers) {
-      if (!winner.description || winner.description === 'Faktura z KSEF - wersja robocza') {
-        if (loser.description && loser.description.trim() && loser.description !== 'Faktura z KSEF - wersja robocza') {
-          updateData.description = loser.description;
-        }
-      }
-      if (!(winner as any).mpk_description && (loser as any).mpk_description) {
-        updateData.mpk_description = (loser as any).mpk_description;
-      }
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      const { error } = await supabase
-        .from('invoices')
-        .update(updateData)
-        .eq('id', winner.id);
-      if (error) throw new Error(`Nie udało się zaktualizować faktury głównej: ${error.message}`);
-    }
-
     for (const loser of losers) {
       if ((loser as any).invoice_tags && (loser as any).invoice_tags.length > 0) {
         const winnerTagIds = ((winner as any).invoice_tags || []).map((t: any) => t.tags?.id || t.tag_id);
@@ -371,17 +350,13 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
     }
 
     for (const loser of losers) {
-      if (loser.source === 'ksef') {
-        continue;
+      if (loser.source === 'ksef') continue;
+      if ((loser as any).google_drive_id) {
+        await deleteFromDrive((loser as any).google_drive_id);
       }
-
-      if (loser.google_drive_id) {
-        await deleteFromDrive(loser.google_drive_id);
-      }
-      if (loser.user_drive_file_id && loser.user_drive_file_id !== loser.google_drive_id) {
+      if (loser.user_drive_file_id && loser.user_drive_file_id !== (loser as any).google_drive_id) {
         await deleteFromDrive(loser.user_drive_file_id, (loser as any).drive_owner_user_id);
       }
-
       if (loser.file_url) {
         try {
           const filePath = loser.file_url.split('/').pop();
@@ -391,12 +366,19 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
         } catch {
         }
       }
+    }
 
-      const { error } = await supabase
-        .from('invoices')
-        .delete()
-        .eq('id', loser.id);
-      if (error) throw new Error(`Nie udało się usunąć duplikatu ${loser.invoice_number}: ${error.message}`);
+    const loserIds = losers.map(l => l.id);
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('merge_duplicate_invoices', {
+      p_winner_id: winner.id,
+      p_loser_ids: loserIds,
+    });
+
+    if (rpcError) throw new Error(`Błąd scalania: ${rpcError.message}`);
+
+    const result = rpcResult as { success: boolean; error?: string };
+    if (!result?.success) {
+      throw new Error(result?.error || 'Nieznany błąd scalania');
     }
   };
 
