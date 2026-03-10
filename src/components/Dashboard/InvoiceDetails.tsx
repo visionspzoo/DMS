@@ -586,6 +586,68 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
+      // Kierownik uses a dedicated RPC function to avoid RLS issues
+      if (action === 'approved' && profile.role === 'Kierownik') {
+        const { data: result, error: rpcError } = await supabase
+          .rpc('accept_invoice_as_manager', {
+            p_invoice_id: currentInvoice.id,
+            p_comment: overrideComment || null,
+          });
+
+        if (rpcError) throw rpcError;
+
+        const newStatus = result?.status ?? 'accepted';
+        const { data: updatedInvoice } = await supabase
+          .from('invoices')
+          .select()
+          .eq('id', currentInvoice.id)
+          .single();
+
+        if (updatedInvoice) {
+          Object.assign(invoice, updatedInvoice);
+          setCurrentInvoice(updatedInvoice);
+
+          const fileId = updatedInvoice.google_drive_id || updatedInvoice.user_drive_file_id;
+          if (newStatus === 'accepted' && fileId && updatedInvoice.department_id) {
+            const session = await getValidSession();
+            const { data: deptData } = await supabase
+              .from('departments')
+              .select('google_drive_unpaid_folder_id')
+              .eq('id', updatedInvoice.department_id)
+              .single();
+
+            if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
+              try {
+                await fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/move-file-on-google-drive`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${session.access_token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      fileId,
+                      targetFolderId: deptData.google_drive_unpaid_folder_id,
+                      issueDate: updatedInvoice.issue_date || null,
+                      invoiceNumber: updatedInvoice.invoice_number || null,
+                    }),
+                  }
+                );
+              } catch (moveError) {
+                console.error('Error moving file on Google Drive:', moveError);
+              }
+            }
+          }
+        }
+
+        await loadApprovals();
+        await loadAuditLogs();
+        setComment('');
+        onUpdate();
+        return;
+      }
+
       const { error: approvalError } = await supabase
         .from('approvals')
         .insert({
@@ -604,34 +666,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (action === 'approved' && currentInvoice.department_id) {
         const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
 
-        if (profile.role === 'Kierownik') {
-          const { data: limitsResult } = await supabase
-            .rpc('check_department_limits', {
-              p_department_id: currentInvoice.department_id,
-              p_invoice_amount: invoiceAmount,
-              p_invoice_date: currentInvoice.issue_date ?? new Date().toISOString().split('T')[0],
-              p_exclude_invoice_id: currentInvoice.id,
-            });
-
-          if (limitsResult?.within_limits === true) {
-            newStatus = 'accepted';
-            nextApproverId = null;
-          } else {
-            const { data: dept } = await supabase
-              .from('departments')
-              .select('director_id')
-              .eq('id', currentInvoice.department_id)
-              .maybeSingle();
-
-            if (dept?.director_id) {
-              newStatus = 'waiting';
-              nextApproverId = dept.director_id;
-            } else {
-              newStatus = 'accepted';
-              nextApproverId = null;
-            }
-          }
-        } else if (profile.role === 'Dyrektor') {
+        if (profile.role === 'Dyrektor') {
           const { data: canApprove } = await supabase
             .rpc('check_director_can_approve', {
               p_director_id: profile.id,
