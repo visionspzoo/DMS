@@ -756,11 +756,27 @@ async function syncEmailAccount(
               const clean = (v: unknown) => v && String(v).trim().length > 1 && v !== 'null' && !String(v).startsWith('[');
               const hasInvoiceNumber = clean(d.invoice_number);
               const hasAmount = d.gross_amount && parseFloat(String(d.gross_amount)) > 0;
-              const hasSupplier = clean(d.supplier_name);
-              const hasBuyer = clean(d.buyer_name) || clean(d.buyer_nip);
+              const hasSupplierName = clean(d.supplier_name);
+              const hasSupplierNip = clean(d.supplier_nip);
+              const hasBuyerName = clean(d.buyer_name);
+              const hasBuyerNip = clean(d.buyer_nip);
               const hasDate = clean(d.issue_date);
-              const signals = [hasInvoiceNumber, hasAmount, hasSupplier, hasBuyer, hasDate].filter(Boolean).length;
-              isRealInvoice = signals >= 2;
+
+              // Strong signals are identifiers unique to invoices
+              const hasStrongSignal = !!(hasInvoiceNumber || hasBuyerNip || hasSupplierNip);
+
+              const signals = [
+                hasInvoiceNumber,
+                hasAmount,
+                hasSupplierName || hasSupplierNip,
+                hasBuyerName || hasBuyerNip,
+                hasDate,
+              ].filter(Boolean).length;
+
+              // Require a strong signal (invoice number or NIP) AND at least 3 total signals
+              isRealInvoice = hasStrongSignal && signals >= 3;
+
+              console.log(`Invoice check for "${part.filename}": strong=${hasStrongSignal}, signals=${signals}, result=${isRealInvoice} (invNr=${hasInvoiceNumber}, amt=${hasAmount}, supplier=${hasSupplierName || hasSupplierNip}, buyer=${hasBuyerName || hasBuyerNip}, date=${hasDate}, supplierNip=${hasSupplierNip}, buyerNip=${hasBuyerNip})`);
 
               if (!isRealInvoice) {
                 console.log(`Not an invoice (${part.filename}), deleting record and file`);
@@ -952,12 +968,16 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
     const SKIP_PATTERNS = [
       'specyfikacja', 'specification', 'packing_list', 'packing list',
       'waybill', 'way_bill', 'cmr', 'bill_of_lading', 'bill of lading',
-      'delivery_note', 'delivery note', 'delivery_order',
+      'delivery_note', 'delivery note', 'delivery_order', 'delivery_confirmation',
       'listy_przewozowy', 'list_przewozowy', 'list przewozowy',
       'certyfikat', 'certificate', 'cert_', '_cert.',
       'newsletter', 'brochure', 'katalog', 'catalog', 'catalogue',
-      'presentation', 'prezentacja', 'oferta_', '_oferta',
-      'price_list', 'cennik',
+      'presentation', 'prezentacja', 'oferta_', '_oferta', 'oferta.',
+      'price_list', 'cennik', 'regulamin', 'terms_and_conditions', 'terms-and-conditions',
+      'umowa', 'contract', 'agreement', 'protokol', 'protocol',
+      'raport', 'report', 'zestawienie', 'summary', 'statement',
+      'reklamacja', 'complaint', 'zamowienie', 'order_confirmation', 'order-confirmation',
+      'potwierdzenie_zamowienia', 'potwierdzenie_zam',
     ];
     for (const pattern of SKIP_PATTERNS) {
       if (fnLower.includes(pattern)) {
@@ -969,7 +989,7 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
     const INVOICE_FILENAME_HINTS = [
       'faktura', 'invoice', 'facture', 'rechnung', 'fattura', 'factura',
       'fakt_', 'fakt.', '_fakt', 'inv_', 'inv.', '_inv', 'fv_', 'fv.', '_fv',
-      'fac_', 'fac.', '_fac',
+      'fac_', 'fac.', '_fac', 'proforma',
     ];
     for (const hint of INVOICE_FILENAME_HINTS) {
       if (fnLower.includes(hint)) {
@@ -978,36 +998,63 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
       }
     }
 
+    // Extract PDF text via the dedicated edge function (more reliable than pdf-parse in Deno)
     try {
-      const pdfParse = await import('npm:pdf-parse@1.1.1');
-      const pdfData = await (pdfParse as any).default(pdfBytes);
-      const text = pdfData?.text || '';
+      const base64Content = uint8ToBase64(pdfBytes);
+      const extractResp = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ pdf_base64: base64Content }),
+        }
+      );
 
-      if (text.trim().length < 40) {
-        console.log(`Pre-check: PDF text too short (${text.trim().length} chars) - treating as invoice (scanned?)`);
+      if (!extractResp.ok) {
+        console.warn(`Pre-check extract-pdf-text failed (${extractResp.status}) for "${filename}" — allowing`);
+        return true;
+      }
+
+      const { text } = await extractResp.json();
+
+      if (!text || text.trim().length < 40) {
+        console.log(`Pre-check: PDF text too short (${(text || '').trim().length} chars) for "${filename}" - treating as invoice (scanned?)`);
         return true;
       }
 
       const lowerText = text.toLowerCase();
 
-      const INVOICE_KEYWORDS = [
+      // Strong invoice keywords — very specific to invoice documents
+      const STRONG_KEYWORDS = [
+        'faktura vat', 'faktura nr', 'numer faktury', 'nr faktury',
+        'invoice number', 'invoice no', 'invoice #', 'invoice nr',
+        'rechnung nr', 'rechnung number',
+        'facture n°', 'facture no',
+      ];
+
+      // Supporting invoice keywords
+      const SUPPORT_KEYWORDS = [
         'faktura', 'invoice', 'facture', 'rechnung', 'fattura', 'factura',
-        'faktura vat', 'nr faktury', 'numer faktury', 'invoice number', 'invoice no', 'invoice #',
-        'bill to', 'sold to', 'numer dokumentu',
-        'nip', 'tax id', 'vat number', 'vat no', 'vat id', 'siret', 'steuernummer', 'tvaintracom',
-        'sprzedawca', 'nabywca', 'seller', 'buyer', 'vendor',
-        'kwota brutto', 'kwota netto', 'amount due', 'total amount', 'total net', 'total vat',
+        'nip', 'tax id', 'vat number', 'vat no', 'vat id', 'steuernummer',
+        'sprzedawca', 'nabywca', 'seller', 'buyer', 'vendor', 'bill to', 'sold to',
+        'kwota brutto', 'kwota netto', 'amount due', 'total amount', 'total net',
         'termin platnosci', 'payment due', 'payment terms', 'due date',
         'netto', 'brutto', 'net amount', 'gross amount',
       ];
 
-      const found = INVOICE_KEYWORDS.filter(kw => lowerText.includes(kw));
-      const isInvoice = found.length >= 2;
+      const hasStrongKeyword = STRONG_KEYWORDS.some(kw => lowerText.includes(kw));
+      const supportFound = SUPPORT_KEYWORDS.filter(kw => lowerText.includes(kw));
 
-      console.log(`Pre-check "${filename}": ${isInvoice ? 'PASS' : 'FAIL'} (${found.length} keywords: ${found.slice(0, 6).join(', ')})`);
+      // Pass if there's a strong keyword, OR at least 3 supporting keywords
+      const isInvoice = hasStrongKeyword || supportFound.length >= 3;
+
+      console.log(`Pre-check "${filename}": ${isInvoice ? 'PASS' : 'FAIL'} (strong=${hasStrongKeyword}, support=${supportFound.length}: ${supportFound.slice(0, 5).join(', ')})`);
       return isInvoice;
-    } catch (parseErr: any) {
-      console.warn(`Pre-check pdf-parse failed for "${filename}": ${parseErr?.message} — allowing`);
+    } catch (extractErr: any) {
+      console.warn(`Pre-check text extraction failed for "${filename}": ${extractErr?.message} — allowing`);
       return true;
     }
   } catch (err: any) {
