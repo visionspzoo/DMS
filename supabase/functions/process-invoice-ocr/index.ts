@@ -35,6 +35,16 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "date_format_detected": "US (MM/DD/YYYY) lub EU (DD.MM.YYYY lub DD/MM/YYYY) lub ISO (YYYY-MM-DD) lub null"
 }
 
+KRYTYCZNA ZASADA - NUMER FAKTURY (invoice_number):
+- "Invoice number" / "Numer faktury" / "Faktura nr" = NUMER FAKTURY → to jest właściwy numer faktury
+- "Customer number" / "Numer klienta" / "Numer odbiorcy" = numer klienta u dostawcy → NIE jest numerem faktury
+- "Order number" / "PO number" / "Numer zamówienia" = numer zamówienia → NIE jest numerem faktury
+- "Reference number" = numer referencyjny → NIE jest numerem faktury
+- Numery faktur często zawierają litery + cyfry (np. VF01260119, FV/2024/001, INV-2024-001)
+- Jeśli dokument ma zarówno "Invoice number: VF01260119" jak i "Customer number: 45465", zwróć "VF01260119"
+- UWAGA: PDF często ekstrahuje tekst kolumnami - etykiety mogą być w innej kolejności niż wartości.
+  Patrz WIZUALNIE na dokument i dopasuj właściwe etykiety do wartości po ich pozycji na stronie.
+
 BARDZO WAŻNE - FORMATOWANIE KWOT:
 - ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
 - ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
