@@ -1027,6 +1027,36 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
 
       const lowerText = text.toLowerCase();
 
+      // Block invoices where WE are the seller (Aura Herbals NIP: 5851490834)
+      // These are outgoing invoices issued by us — they should not be imported
+      const OUR_COMPANY_NIPS = ['5851490834', '8222407812'];
+      const OUR_COMPANY_NAMES = ['aura herbals'];
+
+      const sellerBlockMatch = (() => {
+        for (const nip of OUR_COMPANY_NIPS) {
+          if (text.includes(nip)) {
+            // Check if it appears in seller/sprzedawca context
+            // Look for NIP near "sprzedawca" or at the top of the document
+            const nipIdx = text.indexOf(nip);
+            const surrounding = text.substring(Math.max(0, nipIdx - 400), nipIdx + 50).toLowerCase();
+            // If our NIP appears near "sprzedawca" (seller) or "wystawił" or in header area it's our outgoing invoice
+            if (surrounding.includes('sprzedawca') || surrounding.includes('wystawil') || surrounding.includes('wystawiajacy') || nipIdx < 600) {
+              return `OUR_NIP_AS_SELLER:${nip}`;
+            }
+          }
+        }
+        // Also check if Vendo.ERP watermark is present — this is our internal system
+        if (lowerText.includes('vendo.erp') || lowerText.includes('www.cfi.pl')) {
+          return 'VENDO_ERP_DOCUMENT';
+        }
+        return null;
+      })();
+
+      if (sellerBlockMatch) {
+        console.log(`Pre-check SKIP: "${filename}" is an outgoing invoice from our company (${sellerBlockMatch})`);
+        return false;
+      }
+
       // Strong invoice keywords — very specific to invoice documents
       const STRONG_KEYWORDS = [
         'faktura vat', 'faktura nr', 'numer faktury', 'nr faktury',
