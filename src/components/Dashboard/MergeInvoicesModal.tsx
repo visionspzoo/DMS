@@ -66,17 +66,31 @@ function normalizeNip(nip: string | null | undefined): string {
 }
 
 async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
-  const { data: allInvoices, error } = await supabase
-    .from('invoices')
-    .select(INVOICE_FIELDS)
-    .not('invoice_number', 'is', null)
-    .neq('invoice_number', '')
-    .order('created_at', { ascending: false });
+  const [allInvoicesRes, markedDuplicatesRes] = await Promise.all([
+    supabase
+      .from('invoices')
+      .select(INVOICE_FIELDS)
+      .not('invoice_number', 'is', null)
+      .neq('invoice_number', '')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('invoices')
+      .select(INVOICE_FIELDS)
+      .eq('is_duplicate', true)
+      .order('created_at', { ascending: false }),
+  ]);
 
-  if (error) throw error;
+  if (allInvoicesRes.error) throw allInvoicesRes.error;
 
-  const invoices = (allInvoices || []) as Invoice[];
+  const invoices = (allInvoicesRes.data || []) as Invoice[];
   const allIds = new Set(invoices.map(i => i.id));
+
+  for (const inv of (markedDuplicatesRes.data || []) as Invoice[]) {
+    if (!allIds.has(inv.id)) {
+      invoices.push(inv);
+      allIds.add(inv.id);
+    }
+  }
 
   const linkedIds = new Set<string>();
   for (const inv of invoices) {
@@ -113,8 +127,6 @@ async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
     groups.set(key, group);
   }
 
-  // Second pass: merge groups where one invoice has NIP and another doesn't
-  // but they share the same supplier name and invoice number
   const nipNumberToName = new Map<string, string>();
   for (const inv of invoices) {
     const num = inv.invoice_number?.trim();
@@ -249,10 +261,8 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
 
   const duplicateGroups = useMemo(() => {
     const groups = buildDuplicateGroups(allDuplicates);
-    if (isAdmin || !currentUserId) return groups;
-    return groups.filter(g =>
-      g.invoices.some(inv => inv.uploaded_by === currentUserId)
-    );
+    if (!currentUserId) return groups;
+    return groups;
   }, [allDuplicates, currentUserId, isAdmin]);
 
   useEffect(() => {
