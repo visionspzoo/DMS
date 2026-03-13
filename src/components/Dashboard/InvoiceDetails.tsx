@@ -791,7 +791,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       return false;
     }
 
-    return currentInvoice.status === 'pending' || currentInvoice.status === 'waiting';
+    return currentInvoice.status === 'pending' || currentInvoice.status === 'waiting' || currentInvoice.status === 'draft';
   };
 
   const canEdit = () => {
