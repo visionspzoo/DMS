@@ -1795,153 +1795,21 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      // Pobierz informacje o dziale
-      const { data: department, error: deptError } = await supabase
-        .from('departments')
-        .select('manager_id, director_id')
-        .eq('id', currentInvoice.department_id)
-        .single();
-
-      if (deptError) throw deptError;
-
-      const isManager = profile.role === 'Kierownik';
-      const isDirector = profile.role === 'Dyrektor';
-
-      if (!isManager && !isDirector) {
-        alert('Tylko Kierownik lub Dyrektor może użyć tej opcji');
-        setLoading(false);
-        return;
-      }
-
-      // Sprawdź czy użytkownik jest uprawniony do akceptacji tej faktury
-      const canApproveAsManager = isManager &&
-        department?.manager_id === profile.id &&
-        invoiceDepartmentInfo?.uploader_role === 'Specjalista';
-
-      const canApproveAsDirector = isDirector &&
-        department?.director_id === profile.id &&
-        (invoiceDepartmentInfo?.uploader_role === 'Specjalista' ||
-         invoiceDepartmentInfo?.uploader_role === 'Kierownik');
-
-      if (!canApproveAsManager && !canApproveAsDirector) {
-        alert('Nie masz uprawnień do bezpośredniej akceptacji tej faktury');
-        setLoading(false);
-        return;
-      }
-
-      // Dodaj wpisy approval dla pominiętych osób
-      const approvalsToInsert = [];
-
-      if (isDirector && invoiceDepartmentInfo?.uploader_role === 'Specjalista') {
-        // Dyrektor akceptuje fakturę Specjalisty - dodaj approval za Kierownika i Dyrektora
-        if (department?.manager_id) {
-          approvalsToInsert.push({
-            invoice_id: currentInvoice.id,
-            approver_id: department.manager_id,
-            approver_role: 'Kierownik',
-            action: 'approved',
-            comment: `Automatycznie zaakceptowane przez Dyrektora ${profile.full_name}`,
-          });
-        }
-        approvalsToInsert.push({
-          invoice_id: currentInvoice.id,
-          approver_id: profile.id,
-          approver_role: 'Dyrektor',
-          action: 'approved',
-          comment: comment || 'Bezpośrednia akceptacja przez Dyrektora',
+      const { data: result, error: rpcError } = await supabase
+        .rpc('direct_approve_invoice', {
+          p_invoice_id: currentInvoice.id,
+          p_comment: comment || null,
         });
-      } else if (isDirector && invoiceDepartmentInfo?.uploader_role === 'Kierownik') {
-        // Dyrektor akceptuje fakturę Kierownika - dodaj approval za Dyrektora
-        approvalsToInsert.push({
-          invoice_id: currentInvoice.id,
-          approver_id: profile.id,
-          approver_role: 'Dyrektor',
-          action: 'approved',
-          comment: comment || 'Bezpośrednia akceptacja przez Dyrektora',
-        });
-      } else if (isManager && invoiceDepartmentInfo?.uploader_role === 'Specjalista') {
-        // Kierownik akceptuje fakturę Specjalisty - dodaj approval za Kierownika
-        approvalsToInsert.push({
-          invoice_id: currentInvoice.id,
-          approver_id: profile.id,
-          approver_role: 'Kierownik',
-          action: 'approved',
-          comment: comment || 'Bezpośrednia akceptacja przez Kierownika',
-        });
-      }
 
-      if (approvalsToInsert.length > 0) {
-        const { error: approvalError } = await supabase
-          .from('approvals')
-          .insert(approvalsToInsert);
+      if (rpcError) throw rpcError;
+      if (!result?.success) throw new Error('Nieznany błąd podczas akceptacji');
 
-        if (approvalError) throw approvalError;
-      }
-
-      const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
-
-      let newStatus = 'accepted';
-      let nextApproverId = null;
-
-      if (isDirector) {
-        const { data: canApprove } = await supabase
-          .rpc('check_director_can_approve', {
-            p_director_id: profile.id,
-            p_invoice_id: currentInvoice.id,
-            p_invoice_amount: invoiceAmount,
-          });
-
-        if (canApprove !== true) {
-          const { data: ceoProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('role', 'CEO')
-            .maybeSingle();
-
-          if (ceoProfile?.id) {
-            newStatus = 'waiting';
-            nextApproverId = ceoProfile.id;
-          }
-        }
-      } else if (isManager) {
-        const { data: limitsResult } = await supabase
-          .rpc('check_department_limits', {
-            p_department_id: currentInvoice.department_id,
-            p_invoice_amount: invoiceAmount,
-            p_invoice_date: currentInvoice.issue_date ?? new Date().toISOString().split('T')[0],
-            p_exclude_invoice_id: currentInvoice.id,
-          });
-
-        if (limitsResult?.within_limits !== true) {
-          const { data: dept } = await supabase
-            .from('departments')
-            .select('director_id')
-            .eq('id', currentInvoice.department_id)
-            .maybeSingle();
-
-          if (dept?.director_id) {
-            newStatus = 'waiting';
-            nextApproverId = dept.director_id;
-          }
-        }
-      }
-
-      // Zaktualizuj fakturę
-      const { error: updateError } = await supabase
-        .from('invoices')
-        .update({
-          status: newStatus,
-          current_approver_id: nextApproverId
-        })
-        .eq('id', currentInvoice.id);
-
-      if (updateError) throw updateError;
-
+      const newStatus = result.status;
+      const nextApproverId = result.next_approver_id ?? null;
       const updatedInvoice = { ...currentInvoice, status: newStatus, current_approver_id: nextApproverId };
       Object.assign(invoice, updatedInvoice);
       setCurrentInvoice(updatedInvoice);
 
-      // Move file to unpaid folder when fully accepted
       const fileId = updatedInvoice.google_drive_id || updatedInvoice.user_drive_file_id;
       if (newStatus === 'accepted' && fileId && updatedInvoice.department_id) {
         const session = await getValidSession();
@@ -1967,11 +1835,8 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                 }),
               }
             );
-
             if (!moveResponse.ok) {
               console.error('Failed to move file to unpaid folder:', await moveResponse.text());
-            } else {
-              console.log('✓ File moved to unpaid folder on Google Drive');
             }
           } catch (moveError) {
             console.error('Error moving file on Google Drive:', moveError);
@@ -1986,9 +1851,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       alert('Faktura została zaakceptowana');
       onUpdate();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing direct approval:', error);
-      alert('Nie udało się zaakceptować faktury');
+      alert(`Nie udało się zaakceptować faktury: ${error?.message || ''}`);
     } finally {
       setLoading(false);
     }
