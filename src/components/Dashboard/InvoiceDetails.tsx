@@ -1114,7 +1114,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('invoices')
         .update({
           paid_at: new Date().toISOString(),
@@ -1122,18 +1122,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
           status: 'paid',
           payment_method: selectedPaymentMethod,
         })
-        .eq('id', currentInvoice.id)
-        .select('id, status, paid_at, paid_by')
-        .single();
+        .eq('id', currentInvoice.id);
 
       if (error) {
         console.error('Error updating invoice as paid:', error);
         throw error;
-      }
-
-      if (!data || data.status !== 'paid') {
-        console.error('Invoice status not updated correctly:', data);
-        throw new Error('Status faktury nie został zaktualizowany na "paid"');
       }
 
       // Move file to paid folder on Google Drive
@@ -1934,29 +1927,28 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       }
 
       // Zaktualizuj fakturę
-      const { data, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('invoices')
         .update({
           status: newStatus,
           current_approver_id: nextApproverId
         })
-        .eq('id', currentInvoice.id)
-        .select()
-        .single();
+        .eq('id', currentInvoice.id);
 
       if (updateError) throw updateError;
 
-      Object.assign(invoice, data);
-      setCurrentInvoice(data);
+      const updatedInvoice = { ...currentInvoice, status: newStatus, current_approver_id: nextApproverId };
+      Object.assign(invoice, updatedInvoice);
+      setCurrentInvoice(updatedInvoice);
 
       // Move file to unpaid folder when fully accepted
-      const fileId = data.google_drive_id || data.user_drive_file_id;
-      if (newStatus === 'accepted' && fileId && data.department_id) {
+      const fileId = updatedInvoice.google_drive_id || updatedInvoice.user_drive_file_id;
+      if (newStatus === 'accepted' && fileId && updatedInvoice.department_id) {
         const session = await getValidSession();
         const { data: deptData } = await supabase
           .from('departments')
           .select('google_drive_unpaid_folder_id')
-          .eq('id', data.department_id)
+          .eq('id', updatedInvoice.department_id)
           .single();
 
         if (deptData?.google_drive_unpaid_folder_id && session?.access_token) {
