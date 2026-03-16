@@ -64,10 +64,22 @@ function ManagerRow({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setSingleLimit(managerLimit?.single_invoice_limit ? String(managerLimit.single_invoice_limit) : '');
-    setMonthlyLimit(managerLimit?.monthly_limit ? String(managerLimit.monthly_limit) : '');
+    const mgrSingle = managerLimit?.single_invoice_limit ?? 0;
+    const mgrMonthly = managerLimit?.monthly_limit ?? 0;
+    const deptSingle = departmentLimits.length > 0
+      ? departmentLimits.reduce<number | null>((min, d) =>
+          d.max_invoice_amount == null ? min : min == null ? d.max_invoice_amount : Math.min(min, d.max_invoice_amount), null)
+      : null;
+    const deptMonthly = departmentLimits.length > 0
+      ? departmentLimits.reduce<number | null>((min, d) =>
+          d.max_monthly_amount == null ? min : min == null ? d.max_monthly_amount : Math.min(min, d.max_monthly_amount), null)
+      : null;
+    const effectiveSingle = mgrSingle > 0 ? mgrSingle : (deptSingle ?? 0);
+    const effectiveMonthly = mgrMonthly > 0 ? mgrMonthly : (deptMonthly ?? 0);
+    setSingleLimit(effectiveSingle > 0 ? String(effectiveSingle) : '');
+    setMonthlyLimit(effectiveMonthly > 0 ? String(effectiveMonthly) : '');
     setAutoApprove(prLimit?.auto_approve_limit != null ? String(prLimit.auto_approve_limit) : '');
-  }, [managerLimit, prLimit]);
+  }, [managerLimit, prLimit, departmentLimits]);
 
   const deptSingleCeiling = departmentLimits.length > 0
     ? departmentLimits.reduce<number | null>((min, d) => {
