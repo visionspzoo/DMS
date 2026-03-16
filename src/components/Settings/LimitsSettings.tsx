@@ -44,12 +44,14 @@ function ManagerRow({
   user,
   managerLimit,
   prLimit,
+  departmentLimits,
   currentUserId,
   onSaved,
 }: {
   user: Profile;
   managerLimit: ManagerLimit | undefined;
   prLimit: PurchaseRequestLimit | undefined;
+  departmentLimits: { id: string; max_invoice_amount: number | null; max_monthly_amount: number | null }[];
   currentUserId: string;
   onSaved: () => void;
 }) {
@@ -62,10 +64,24 @@ function ManagerRow({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setSingleLimit(managerLimit?.single_invoice_limit != null ? String(managerLimit.single_invoice_limit) : '');
-    setMonthlyLimit(managerLimit?.monthly_limit != null ? String(managerLimit.monthly_limit) : '');
+    setSingleLimit(managerLimit?.single_invoice_limit ? String(managerLimit.single_invoice_limit) : '');
+    setMonthlyLimit(managerLimit?.monthly_limit ? String(managerLimit.monthly_limit) : '');
     setAutoApprove(prLimit?.auto_approve_limit != null ? String(prLimit.auto_approve_limit) : '');
   }, [managerLimit, prLimit]);
+
+  const deptSingleCeiling = departmentLimits.length > 0
+    ? departmentLimits.reduce<number | null>((min, d) => {
+        if (d.max_invoice_amount == null) return min;
+        return min == null ? d.max_invoice_amount : Math.min(min, d.max_invoice_amount);
+      }, null)
+    : null;
+
+  const deptMonthlyCeiling = departmentLimits.length > 0
+    ? departmentLimits.reduce<number | null>((min, d) => {
+        if (d.max_monthly_amount == null) return min;
+        return min == null ? d.max_monthly_amount : Math.min(min, d.max_monthly_amount);
+      }, null)
+    : null;
 
   async function save() {
     const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
@@ -95,6 +111,16 @@ function ManagerRow({
           .insert({ manager_id: user.id, set_by: currentUserId, single_invoice_limit: single ?? 0, monthly_limit: monthly ?? 0 });
       }
 
+      for (const dept of departmentLimits) {
+        await supabase
+          .from('departments')
+          .update({
+            max_invoice_amount: single ?? null,
+            max_monthly_amount: monthly ?? null,
+          })
+          .eq('id', dept.id);
+      }
+
       const { data: existingPr } = await supabase
         .from('purchase_request_limits')
         .select('user_id')
@@ -117,7 +143,12 @@ function ManagerRow({
     }
   }
 
-  const hasLimits = managerLimit || prLimit?.auto_approve_limit != null;
+  const effectiveSingle = managerLimit?.single_invoice_limit
+    ? (deptSingleCeiling != null ? Math.min(managerLimit.single_invoice_limit, deptSingleCeiling) : managerLimit.single_invoice_limit)
+    : deptSingleCeiling;
+
+  const hasLimits = (managerLimit && (managerLimit.single_invoice_limit > 0 || managerLimit.monthly_limit > 0))
+    || prLimit?.auto_approve_limit != null;
 
   return (
     <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
@@ -145,9 +176,9 @@ function ManagerRow({
         <div className="flex items-center gap-3">
           {hasLimits ? (
             <div className="flex items-center gap-2 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-              {managerLimit && (
+              {effectiveSingle != null && (
                 <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full">
-                  {fmt(managerLimit.single_invoice_limit)} / faktura
+                  {fmt(effectiveSingle)} / faktura
                 </span>
               )}
               {prLimit?.auto_approve_limit != null && (
@@ -169,15 +200,32 @@ function ManagerRow({
 
       {expanded && (
         <div className="px-4 pb-4 pt-3 bg-light-surface-variant dark:bg-dark-surface-variant border-t border-slate-200 dark:border-slate-700/50 space-y-4">
+          {departmentLimits.length > 0 && (deptSingleCeiling != null || deptMonthlyCeiling != null) && (
+            <div className="rounded-lg p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <Building2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                Limit działu (sufit):
+                {deptSingleCeiling != null && <strong> {fmt(deptSingleCeiling)} / faktura</strong>}
+                {deptSingleCeiling != null && deptMonthlyCeiling != null && ','}
+                {deptMonthlyCeiling != null && <strong> {fmt(deptMonthlyCeiling)} / mies.</strong>}
+                . Efektywny limit kierownika nie może przekroczyć limitu działu.
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
                 Limit pojedynczej faktury (PLN)
+                {deptSingleCeiling != null && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400">max {fmt(deptSingleCeiling)}</span>
+                )}
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
+                max={deptSingleCeiling ?? undefined}
                 value={singleLimit}
                 onChange={e => setSingleLimit(e.target.value)}
                 className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
@@ -187,11 +235,15 @@ function ManagerRow({
             <div>
               <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
                 Limit miesięczny faktur (PLN)
+                {deptMonthlyCeiling != null && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400">max {fmt(deptMonthlyCeiling)}</span>
+                )}
               </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
+                max={deptMonthlyCeiling ?? undefined}
                 value={monthlyLimit}
                 onChange={e => setMonthlyLimit(e.target.value)}
                 className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
@@ -640,147 +692,6 @@ function SpecialistRow({
   );
 }
 
-function DepartmentRow({
-  dept,
-  onSaved,
-}: {
-  dept: Department;
-  onSaved: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [singleLimit, setSingleLimit] = useState('');
-  const [monthlyLimit, setMonthlyLimit] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSingleLimit(dept.max_invoice_amount != null ? String(dept.max_invoice_amount) : '');
-    setMonthlyLimit(dept.max_monthly_amount != null ? String(dept.max_monthly_amount) : '');
-  }, [dept]);
-
-  async function save() {
-    const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
-    const monthly = monthlyLimit.trim() !== '' ? parseFloat(monthlyLimit) : null;
-
-    if (single !== null && (isNaN(single) || single < 0)) { setErr('Nieprawidłowy limit faktury'); return; }
-    if (monthly !== null && (isNaN(monthly) || monthly < 0)) { setErr('Nieprawidłowy limit miesięczny'); return; }
-
-    setSaving(true); setErr(null);
-    try {
-      const { error } = await supabase
-        .from('departments')
-        .update({ max_invoice_amount: single, max_monthly_amount: monthly })
-        .eq('id', dept.id);
-      if (error) throw error;
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      onSaved();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Błąd zapisu');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const hasLimits = dept.max_invoice_amount != null || dept.max_monthly_amount != null;
-
-  return (
-    <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-light-surface dark:bg-dark-surface hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-            <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div className="text-left">
-            <div className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              {dept.name}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {hasLimits ? (
-            <div className="flex items-center gap-2 text-xs">
-              {dept.max_invoice_amount != null && (
-                <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full">
-                  {fmt(dept.max_invoice_amount)} / faktura
-                </span>
-              )}
-              {dept.max_monthly_amount != null && (
-                <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded-full">
-                  {fmt(dept.max_monthly_amount)} / mies.
-                </span>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Brak limitów</span>
-          )}
-          {expanded ? (
-            <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
-          )}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 pt-3 bg-light-surface-variant dark:bg-dark-surface-variant border-t border-slate-200 dark:border-slate-700/50 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                Limit pojedynczej faktury (PLN)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={singleLimit}
-                onChange={e => setSingleLimit(e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
-                placeholder="np. 5000 (puste = brak)"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                Limit miesięczny działu (PLN)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={monthlyLimit}
-                onChange={e => setMonthlyLimit(e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
-                placeholder="np. 50000 (puste = brak)"
-              />
-            </div>
-          </div>
-
-          {err && <p className="text-xs text-red-600 dark:text-red-400">{err}</p>}
-
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
-              saved
-                ? 'bg-emerald-500 text-white'
-                : 'bg-brand-primary text-white hover:bg-brand-primary/90'
-            }`}
-          >
-            <Save className="w-3.5 h-3.5" />
-            {saving ? 'Zapisywanie...' : saved ? 'Zapisano!' : 'Zapisz limity'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function LimitsSettings() {
   const { profile } = useAuth();
   const [managers, setManagers] = useState<Profile[]>([]);
@@ -791,7 +702,7 @@ export default function LimitsSettings() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeSection, setActiveSection] = useState<'managers' | 'directors' | 'specialists' | 'departments'>('managers');
+  const [activeSection, setActiveSection] = useState<'managers' | 'directors' | 'specialists'>('managers');
 
   useEffect(() => {
     loadAll();
@@ -845,6 +756,11 @@ export default function LimitsSettings() {
       department: depts.length > 0
         ? { id: depts[0].id, name: depts.map(d => d.name).join(', ') }
         : m.department as { id: string; name: string } | null,
+      departmentLimits: depts.map(d => ({
+        id: d.id,
+        max_invoice_amount: d.max_invoice_amount,
+        max_monthly_amount: d.max_monthly_amount,
+      })),
     };
   });
 
@@ -934,24 +850,6 @@ export default function LimitsSettings() {
                 {specialists.length}
               </span>
             </button>
-            <button
-              onClick={() => setActiveSection('departments')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                activeSection === 'departments'
-                  ? 'bg-brand-primary text-white shadow-sm'
-                  : 'text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              Dzialy
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                activeSection === 'departments'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-text-secondary-light dark:text-text-secondary-dark'
-              }`}>
-                {departments.length}
-              </span>
-            </button>
           </div>
 
           {activeSection === 'managers' && (
@@ -967,6 +865,7 @@ export default function LimitsSettings() {
                     user={user}
                     managerLimit={managerLimits.find(l => l.manager_id === user.id)}
                     prLimit={prLimits.find(l => l.user_id === user.id)}
+                    departmentLimits={user.departmentLimits}
                     currentUserId={profile?.id ?? ''}
                     onSaved={loadAll}
                   />
@@ -1018,26 +917,6 @@ export default function LimitsSettings() {
             </div>
           )}
 
-          {activeSection === 'departments' && (
-            <div className="space-y-2">
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
-                Ustaw limity faktur dla każdego działu. Limit pojedynczej faktury i limit miesięczny dotyczą łącznej kwoty faktur zatwierdzanych w ramach działu.
-              </p>
-              {departments.length === 0 ? (
-                <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark text-center py-8">
-                  Brak działów
-                </p>
-              ) : (
-                departments.map(dept => (
-                  <DepartmentRow
-                    key={dept.id}
-                    dept={dept}
-                    onSaved={loadAll}
-                  />
-                ))
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
