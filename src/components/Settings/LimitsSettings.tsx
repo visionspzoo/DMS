@@ -438,40 +438,68 @@ function DirectorRow({
 
 function SpecialistRow({
   user,
+  managerLimit,
   prLimit,
   currentUserId,
   onSaved,
 }: {
   user: Profile;
+  managerLimit: ManagerLimit | undefined;
   prLimit: PurchaseRequestLimit | undefined;
   currentUserId: string;
   onSaved: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [singleLimit, setSingleLimit] = useState('');
+  const [monthlyLimit, setMonthlyLimit] = useState('');
   const [autoApprove, setAutoApprove] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    setSingleLimit(managerLimit?.single_invoice_limit != null ? String(managerLimit.single_invoice_limit) : '');
+    setMonthlyLimit(managerLimit?.monthly_limit != null ? String(managerLimit.monthly_limit) : '');
     setAutoApprove(prLimit?.auto_approve_limit != null ? String(prLimit.auto_approve_limit) : '');
-  }, [prLimit]);
+  }, [managerLimit, prLimit]);
 
   async function save() {
+    const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
+    const monthly = monthlyLimit.trim() !== '' ? parseFloat(monthlyLimit) : null;
     const auto = autoApprove.trim() !== '' ? parseFloat(autoApprove) : null;
-    if (auto !== null && (isNaN(auto) || auto < 0)) { setErr('Nieprawidłowa kwota'); return; }
+
+    if (single !== null && (isNaN(single) || single < 0)) { setErr('Nieprawidłowy limit faktury'); return; }
+    if (monthly !== null && (isNaN(monthly) || monthly < 0)) { setErr('Nieprawidłowy limit miesięczny'); return; }
+    if (auto !== null && (isNaN(auto) || auto < 0)) { setErr('Nieprawidłowy limit wniosku'); return; }
 
     setSaving(true); setErr(null);
     try {
       const { data: existing } = await supabase
+        .from('manager_limits')
+        .select('manager_id')
+        .eq('manager_id', user.id)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('manager_limits')
+          .update({ single_invoice_limit: single ?? 0, monthly_limit: monthly ?? 0 })
+          .eq('manager_id', user.id);
+      } else if (single !== null || monthly !== null) {
+        await supabase
+          .from('manager_limits')
+          .insert({ manager_id: user.id, set_by: currentUserId, single_invoice_limit: single ?? 0, monthly_limit: monthly ?? 0 });
+      }
+
+      const { data: existingPr } = await supabase
         .from('purchase_request_limits')
         .select('user_id')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (existing) {
+      if (existingPr) {
         await supabase.from('purchase_request_limits').update({ auto_approve_limit: auto }).eq('user_id', user.id);
-      } else {
+      } else if (auto !== null) {
         await supabase.from('purchase_request_limits').insert({ user_id: user.id, set_by: currentUserId, auto_approve_limit: auto });
       }
 
@@ -484,6 +512,8 @@ function SpecialistRow({
       setSaving(false);
     }
   }
+
+  const hasLimits = managerLimit || prLimit?.auto_approve_limit != null;
 
   return (
     <div className="border border-slate-200 dark:border-slate-700/50 rounded-lg overflow-hidden">
@@ -509,12 +539,21 @@ function SpecialistRow({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {prLimit?.auto_approve_limit != null ? (
-            <span className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-full text-xs">
-              {fmt(prLimit.auto_approve_limit)} auto-WZ
-            </span>
+          {hasLimits ? (
+            <div className="flex items-center gap-2 text-xs">
+              {managerLimit && (
+                <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full">
+                  {fmt(managerLimit.single_invoice_limit)} / faktura
+                </span>
+              )}
+              {prLimit?.auto_approve_limit != null && (
+                <span className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-full">
+                  {fmt(prLimit.auto_approve_limit)} auto-WZ
+                </span>
+              )}
+            </div>
           ) : (
-            <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Brak limitu</span>
+            <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Brak limitów</span>
           )}
           {expanded ? (
             <ChevronUp className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
@@ -525,7 +564,38 @@ function SpecialistRow({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 pt-3 bg-light-surface-variant dark:bg-dark-surface-variant border-t border-slate-200 dark:border-slate-700/50 space-y-3">
+        <div className="px-4 pb-4 pt-3 bg-light-surface-variant dark:bg-dark-surface-variant border-t border-slate-200 dark:border-slate-700/50 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                Limit pojedynczej faktury (PLN)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={singleLimit}
+                onChange={e => setSingleLimit(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
+                placeholder="np. 5000 (puste = brak)"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
+                Limit miesięczny faktur (PLN)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={monthlyLimit}
+                onChange={e => setMonthlyLimit(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
+                placeholder="np. 20000 (puste = brak)"
+              />
+            </div>
+          </div>
+
           <div className="rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -560,7 +630,7 @@ function SpecialistRow({
             }`}
           >
             <Save className="w-3.5 h-3.5" />
-            {saving ? 'Zapisywanie...' : saved ? 'Zapisano!' : 'Zapisz limit'}
+            {saving ? 'Zapisywanie...' : saved ? 'Zapisano!' : 'Zapisz limity'}
           </button>
         </div>
       )}
@@ -777,6 +847,7 @@ export default function LimitsSettings() {
                   <SpecialistRow
                     key={user.id}
                     user={user}
+                    managerLimit={managerLimits.find(l => l.manager_id === user.id)}
                     prLimit={prLimits.find(l => l.user_id === user.id)}
                     currentUserId={profile?.id ?? ''}
                     onSaved={loadAll}
