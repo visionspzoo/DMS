@@ -459,62 +459,6 @@ export function PurchaseRequestDetail({
           )}
         </div>
 
-        {/* Approval timeline */}
-        {approvals.length > 0 && (
-          <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm bg-light-surface dark:bg-dark-surface">
-            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/40">
-              <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">Historia akceptacji</h3>
-            </div>
-            <div className="p-4 space-y-0">
-              {approvals.map((approval, idx) => {
-                const isApproved = approval.action === 'approved';
-                return (
-                  <div key={approval.id} className="relative flex gap-3">
-                    {/* Timeline line */}
-                    {idx < approvals.length - 1 && (
-                      <div className="absolute left-4 top-8 bottom-0 w-px bg-slate-100 dark:bg-slate-700/50" />
-                    )}
-                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
-                      isApproved
-                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                    }`}>
-                      {isApproved ? <ThumbsUp className="w-3.5 h-3.5" /> : <ThumbsDown className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className={`flex-1 min-w-0 ${idx < approvals.length - 1 ? 'pb-4' : 'pb-1'}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-                          {approval.approver?.full_name || 'Nieznany'}
-                        </span>
-                        <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
-                          {new Date(approval.created_at).toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                      </div>
-                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-                        <span className={`font-medium ${isApproved ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {isApproved ? 'Zaakceptował' : 'Odrzucił'}
-                        </span>
-                        {' · '}
-                        {approval.role === 'Kierownik' ? 'Kierownik' : approval.role === 'Dyrektor' ? 'Dyrektor' : approval.role}
-                      </p>
-                      {approval.comment && (
-                        <div className="mt-1.5 px-3 py-2 rounded-lg bg-light-bg dark:bg-dark-bg border border-slate-100 dark:border-slate-700/40 text-xs text-text-primary-light dark:text-text-primary-dark italic">
-                          "{approval.comment}"
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Comments */}
-        <div>
-          <PurchaseRequestComments requestId={requestId} />
-        </div>
-
         {/* Approver action panel */}
         {canApprove && (
           <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm bg-light-surface dark:bg-dark-surface">
@@ -588,6 +532,62 @@ export function PurchaseRequestDetail({
             </div>
           </div>
         )}
+
+        {/* Approval timeline */}
+        {approvals.length > 0 && (
+          <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm bg-light-surface dark:bg-dark-surface">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/40">
+              <h3 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">Historia akceptacji</h3>
+            </div>
+            <div className="p-4 space-y-0">
+              {approvals.map((approval, idx) => {
+                const isApproved = approval.action === 'approved';
+                return (
+                  <div key={approval.id} className="relative flex gap-3">
+                    {/* Timeline line */}
+                    {idx < approvals.length - 1 && (
+                      <div className="absolute left-4 top-8 bottom-0 w-px bg-slate-100 dark:bg-slate-700/50" />
+                    )}
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
+                      isApproved
+                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                    }`}>
+                      {isApproved ? <ThumbsUp className="w-3.5 h-3.5" /> : <ThumbsDown className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className={`flex-1 min-w-0 ${idx < approvals.length - 1 ? 'pb-4' : 'pb-1'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
+                          {approval.approver?.full_name || 'Nieznany'}
+                        </span>
+                        <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark flex-shrink-0">
+                          {new Date(approval.created_at).toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
+                        <span className={`font-medium ${isApproved ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {isApproved ? 'Zaakceptował' : 'Odrzucił'}
+                        </span>
+                        {' · '}
+                        {approval.role === 'Kierownik' ? 'Kierownik' : approval.role === 'Dyrektor' ? 'Dyrektor' : approval.role}
+                      </p>
+                      {approval.comment && (
+                        <div className="mt-1.5 px-3 py-2 rounded-lg bg-light-bg dark:bg-dark-bg border border-slate-100 dark:border-slate-700/40 text-xs text-text-primary-light dark:text-text-primary-dark italic">
+                          "{approval.comment}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Comments */}
+        <div>
+          <PurchaseRequestComments requestId={requestId} />
+        </div>
 
         {/* Withdraw panel */}
         {canWithdraw && (
