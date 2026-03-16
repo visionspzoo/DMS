@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, getValidSession } from '../../lib/supabase';
-import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive, CheckSquare } from 'lucide-react';
+import { Settings, Users, Shield, AlertCircle, Save, Trash2, UserPlus, X, Building2, Plus, Sparkles, MessageSquare, Mail, Hash, Code2, HardDrive, CheckSquare, DollarSign } from 'lucide-react';
 import DepartmentManagement from './DepartmentManagement';
 import AIPromptsSettings from './AIPromptsSettings';
 import SlackSettings from './SlackSettings';
@@ -9,6 +9,7 @@ import { CostCentersManagement } from './CostCentersManagement';
 import APISettings from './APISettings';
 import GoogleDriveSync from './GoogleDriveSync';
 import ClickUpSettings from './ClickUpSettings';
+import LimitsSettings from './LimitsSettings';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Profile {
@@ -75,7 +76,7 @@ export default function SettingsPanel() {
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk' | 'api' | 'google_drive' | 'clickup'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'invitations' | 'ai_prompts' | 'slack' | 'mpk' | 'api' | 'google_drive' | 'clickup' | 'limits'>('users');
 const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
   const [selectedAccessDept, setSelectedAccessDept] = useState('');
   const [selectedAccessType, setSelectedAccessType] = useState<'view' | 'workflow'>('view');
@@ -457,6 +458,19 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
           >
             <Building2 className="w-4 h-4" />
             Dzialy
+          </button>
+        )}
+        {profile?.is_admin && (
+          <button
+            onClick={() => setActiveTab('limits')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
+              activeTab === 'limits'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Limity
           </button>
         )}
         <button
@@ -1084,6 +1098,10 @@ const [userAccess, setUserAccess] = useState<DepartmentAccess[]>([]);
           <ReadOnlyWrapper readOnly={isReadOnly}>
             <APISettings />
           </ReadOnlyWrapper>
+        )}
+
+        {activeTab === 'limits' && profile?.is_admin && (
+          <LimitsSettings />
         )}
 
         {activeTab === 'google_drive' && profile?.is_admin && (

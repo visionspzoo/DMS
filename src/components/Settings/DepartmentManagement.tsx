@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Building2, Plus, CreditCard as Edit2, Trash2, Users, ChevronRight, ChevronDown, X, Save, Search, DollarSign, Zap } from 'lucide-react';
+import { Building2, Plus, CreditCard as Edit2, Trash2, Users, ChevronRight, ChevronDown, X, Save, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import DepartmentFlowChart from './DepartmentFlowChart';
 
@@ -56,161 +56,6 @@ const fmt = (val: number | null | undefined) =>
   val !== null && val !== undefined
     ? new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 2 }).format(val)
     : null;
-
-function ManagerLimitsInline({
-  managerId,
-  setByUserId,
-}: {
-  managerId: string;
-  setByUserId: string;
-}) {
-  const [singleLimit, setSingleLimit] = useState('');
-  const [monthlyLimit, setMonthlyLimit] = useState('');
-  const [autoApprove, setAutoApprove] = useState('');
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!managerId) { setLoaded(false); return; }
-    setLoaded(false);
-    setSaved(false);
-    setErr(null);
-
-    Promise.all([
-      supabase.from('manager_limits').select('single_invoice_limit, monthly_limit').eq('manager_id', managerId).maybeSingle(),
-      supabase.from('purchase_request_limits').select('auto_approve_limit').eq('user_id', managerId).maybeSingle(),
-    ]).then(([limRes, prRes]) => {
-      setSingleLimit(limRes.data?.single_invoice_limit != null ? String(limRes.data.single_invoice_limit) : '');
-      setMonthlyLimit(limRes.data?.monthly_limit != null ? String(limRes.data.monthly_limit) : '');
-      setAutoApprove(prRes.data?.auto_approve_limit != null ? String(prRes.data.auto_approve_limit) : '');
-      setLoaded(true);
-    });
-  }, [managerId]);
-
-  async function save() {
-    const single = singleLimit.trim() !== '' ? parseFloat(singleLimit) : null;
-    const monthly = monthlyLimit.trim() !== '' ? parseFloat(monthlyLimit) : null;
-    const auto = autoApprove.trim() !== '' ? parseFloat(autoApprove) : null;
-
-    if (single !== null && (isNaN(single) || single < 0)) { setErr('Nieprawidłowy limit faktury'); return; }
-    if (monthly !== null && (isNaN(monthly) || monthly < 0)) { setErr('Nieprawidłowy limit miesięczny'); return; }
-    if (auto !== null && (isNaN(auto) || auto < 0)) { setErr('Nieprawidłowy limit wniosku'); return; }
-
-    setSaving(true); setErr(null);
-    try {
-      const { data: existing } = await supabase.from('manager_limits').select('manager_id').eq('manager_id', managerId).maybeSingle();
-      if (existing) {
-        await supabase.from('manager_limits').update({ single_invoice_limit: single ?? 0, monthly_limit: monthly }).eq('manager_id', managerId);
-      } else if (single !== null || monthly !== null) {
-        await supabase.from('manager_limits').insert({ manager_id: managerId, set_by: setByUserId, single_invoice_limit: single ?? 0, monthly_limit: monthly });
-      }
-
-      const { data: existingPr } = await supabase.from('purchase_request_limits').select('user_id').eq('user_id', managerId).maybeSingle();
-      if (existingPr) {
-        await supabase.from('purchase_request_limits').update({ auto_approve_limit: auto }).eq('user_id', managerId);
-      } else {
-        await supabase.from('purchase_request_limits').insert({ user_id: managerId, set_by: setByUserId, auto_approve_limit: auto });
-      }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Błąd zapisu');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!managerId) return null;
-
-  return (
-    <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
-      <div className="flex items-center gap-2 mb-3">
-        <DollarSign className="w-4 h-4 text-brand-primary" />
-        <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark">
-          Limity kierownika
-        </h4>
-      </div>
-      {!loaded ? (
-        <div className="h-8 flex items-center">
-          <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                Limit pojedynczej faktury (PLN)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={singleLimit}
-                onChange={e => setSingleLimit(e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                placeholder="np. 5000.00 (puste = brak)"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                Limit miesięczny faktur (PLN)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={monthlyLimit}
-                onChange={e => setMonthlyLimit(e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                placeholder="np. 20000.00 (puste = brak)"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                Auto-akceptacja wniosku zakupowego (PLN)
-              </span>
-            </div>
-            <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">
-              Wnioski zakupowe do tej kwoty będą akceptowane bez akceptacji dyrektora. Pozostaw puste, aby wymagać zawsze.
-            </p>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={autoApprove}
-              onChange={e => setAutoApprove(e.target.value)}
-              className="w-full px-3 py-1.5 border border-emerald-300 dark:border-emerald-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 bg-white dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark"
-              placeholder="np. 3000.00 (puste = zawsze wymaga akceptacji)"
-            />
-          </div>
-
-          {err && <p className="text-xs text-red-600 dark:text-red-400">{err}</p>}
-
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
-              saved
-                ? 'bg-emerald-500 text-white'
-                : 'bg-brand-primary text-white hover:bg-brand-primary/90'
-            }`}
-          >
-            <Save className="w-3.5 h-3.5" />
-            {saving ? 'Zapisywanie...' : saved ? 'Zapisano!' : 'Zapisz limity kierownika'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function DepartmentManagement() {
   const { profile } = useAuth();
@@ -1035,13 +880,6 @@ export default function DepartmentManagement() {
                   </div>
                 </div>
               </div>
-
-              {canManageDepartments && editingDept.manager_id && (
-                <ManagerLimitsInline
-                  managerId={editingDept.manager_id}
-                  setByUserId={profile?.id ?? ''}
-                />
-              )}
 
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
