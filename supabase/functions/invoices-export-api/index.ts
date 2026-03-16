@@ -45,6 +45,38 @@ async function authenticateToken(supabase: any, authHeader: string | null) {
   return tokenRow;
 }
 
+function getMimeTypeFromUrl(url: string): string {
+  const lower = url.toLowerCase().split('?')[0];
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return 'application/octet-stream';
+}
+
+async function fetchFileAsBase64(fileUrl: string): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      console.error(`Failed to fetch file: ${fileUrl}, status: ${response.status}`);
+      return null;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
+    }
+    const base64 = btoa(binary);
+    const mimeType = getMimeTypeFromUrl(fileUrl);
+    return { base64, mimeType };
+  } catch (err) {
+    console.error(`Error fetching file as base64: ${err}`);
+    return null;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -139,6 +171,7 @@ Deno.serve(async (req: Request) => {
         },
       });
     }
+
     const statusParam = url.searchParams.get('status');
     const limitParam = url.searchParams.get('limit');
     const offsetParam = url.searchParams.get('offset');
@@ -187,6 +220,7 @@ Deno.serve(async (req: Request) => {
         created_at,
         updated_at,
         pdf_base64,
+        file_url,
         pz_number,
         uploaded_by,
         department:department_id (
@@ -247,7 +281,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const result = (invoices || []).map((inv: any) => {
+    const result = await Promise.all((invoices || []).map(async (inv: any) => {
       const realDeptName = inv.department?.name || null;
       const realMpkCode = inv.department?.mpk_code || null;
       const mpkCode = realMpkCode || null;
@@ -294,11 +328,26 @@ Deno.serve(async (req: Request) => {
       };
 
       if (includePdf) {
-        entry.pdf_base64 = inv.pdf_base64;
+        if (inv.pdf_base64) {
+          entry.pdf_base64 = inv.pdf_base64;
+          entry.file_mime_type = 'application/pdf';
+        } else if (inv.file_url) {
+          const fetched = await fetchFileAsBase64(inv.file_url);
+          if (fetched) {
+            entry.pdf_base64 = fetched.base64;
+            entry.file_mime_type = fetched.mimeType;
+          } else {
+            entry.pdf_base64 = null;
+            entry.file_mime_type = null;
+          }
+        } else {
+          entry.pdf_base64 = null;
+          entry.file_mime_type = null;
+        }
       }
 
       return entry;
-    });
+    }));
 
     return json({
       success: true,
