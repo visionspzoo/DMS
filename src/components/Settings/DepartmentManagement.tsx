@@ -846,42 +846,6 @@ export default function DepartmentManagement() {
               </div>
 
               <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-3">
-                  Limit zatwierdzania faktur działu
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Max kwota pojedynczej faktury (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editingDept.max_invoice_amount || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, max_invoice_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 5000.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                      Limit miesięczny działu (PLN)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editingDept.max_monthly_amount || ''}
-                      onChange={(e) => setEditingDept({ ...editingDept, max_monthly_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark"
-                      placeholder="np. 50000.00"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
                   Foldery Google Drive
                 </h4>
