@@ -365,20 +365,21 @@ export function MyPurchaseRequests() {
   const isManagerOrDirector = profile?.role === 'Kierownik' || profile?.role === 'Dyrektor' || profile?.is_admin;
 
   useEffect(() => {
-    if (!user) return;
-    loadAll();
-  }, [user]);
+    if (!user || !profile) return;
+    loadAll(profile.role === 'Kierownik' || profile.role === 'Dyrektor' || !!profile.is_admin);
+  }, [user, profile?.id, profile?.role, profile?.is_admin]);
 
   useEffect(() => {
     setPage(1);
   }, [filter, search, deptFilter, monthFilter, yearFilter]);
 
-  async function loadAll() {
+  async function loadAll(canApprove?: boolean) {
     setLoading(true);
+    const shouldFetchApprovals = canApprove !== undefined ? canApprove : isManagerOrDirector;
 
     const [myRes, approveRes, deptRes] = await Promise.all([
       supabase.from('purchase_requests').select('*').order('created_at', { ascending: false }),
-      isManagerOrDirector
+      shouldFetchApprovals
         ? supabase.rpc('get_purchase_requests_for_approval')
         : Promise.resolve({ data: [], error: null }),
       supabase.from('departments').select('id, name').order('name'),
