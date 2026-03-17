@@ -119,11 +119,11 @@ function AppContent() {
 
   const menuItems: { id: string; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'invoices', label: 'Moje Faktury', icon: FileText, badge: isManagerOrDirector && pendingInvoicesCount > 0 ? pendingInvoicesCount : undefined },
+    { id: 'invoices', label: 'Moje Faktury', icon: FileText, badge: isManagerOrDirector ? pendingInvoicesCount : undefined },
     { id: 'ksef', label: 'Faktury KSEF', icon: Download },
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
-    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList, badge: pendingPurchaseRequestsCount > 0 ? pendingPurchaseRequestsCount : undefined },
+    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList, badge: pendingPurchaseRequestsCount },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
     { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
