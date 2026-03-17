@@ -59,33 +59,7 @@ function AppContent() {
     saveThemePreference();
   }, [darkMode, user]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent"></div>
-          <p className="mt-4 text-white text-lg">Ładowanie...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user || !profile) {
-    if (window.location.pathname === '/accept-invitation') {
-      return <AcceptInvitation />;
-    }
-    return <LoginForm />;
-  }
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
-
-  const isManagerOrDirector = profile.role === 'Kierownik' || profile.role === 'Dyrektor' || profile.is_admin;
+  const isManagerOrDirector = !!(profile?.role === 'Kierownik' || profile?.role === 'Dyrektor' || profile?.is_admin);
 
   const loadPendingCounts = useCallback(async () => {
     if (!profile?.id) return;
@@ -116,6 +90,32 @@ function AppContent() {
     const interval = setInterval(loadPendingCounts, 60000);
     return () => clearInterval(interval);
   }, [loadPendingCounts]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent"></div>
+          <p className="mt-4 text-white text-lg">Ładowanie...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !profile) {
+    if (window.location.pathname === '/accept-invitation') {
+      return <AcceptInvitation />;
+    }
+    return <LoginForm />;
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   const menuItems: { id: string; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
