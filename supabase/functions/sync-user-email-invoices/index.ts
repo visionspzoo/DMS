@@ -837,7 +837,7 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
       "oferta_", "_oferta", "oferta.", "price_list", "cennik", "regulamin", "terms_and_conditions", "terms-and-conditions",
       "umowa", "contract", "agreement", "protokol", "protocol", "raport", "report", "zestawienie", "summary", "statement",
       "reklamacja", "complaint", "zamowienie", "order_confirmation", "order-confirmation",
-      "potwierdzenie_zamowienia", "potwierdzenie_zam",
+      "potwierdzenie_zamowienia", "potwierdzenie_zam", "potwierdzenie",
     ];
     for (const pattern of SKIP_PATTERNS) {
       if (fnLower.includes(pattern)) return false;
