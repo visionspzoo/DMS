@@ -56,21 +56,56 @@ Deno.serve(async (req: Request) => {
     for (const job of pendingJobs || []) {
       try {
         console.log(`[cron] Resuming pending email sync job ${job.id} for user ${job.user_id}`);
-        const res = await fetch(
-          `${supabaseUrl}/functions/v1/sync-user-email-invoices?resume_chunk=1`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ user_id: job.user_id, resume_job_id: job.id }),
+
+        let hasMore = true;
+        let chunkCount = 0;
+        const MAX_CHUNKS = 50;
+        let totalProcessed = 0;
+        let totalSynced = 0;
+
+        while (hasMore && chunkCount < MAX_CHUNKS) {
+          chunkCount++;
+
+          const { data: currentJob } = await supabase
+            .from("email_sync_jobs")
+            .select("status")
+            .eq("id", job.id)
+            .maybeSingle();
+
+          if (!currentJob || currentJob.status === "completed" || currentJob.status === "failed") {
+            hasMore = false;
+            break;
           }
-        );
-        const body = await res.json().catch(() => ({}));
+
+          const res = await fetch(
+            `${supabaseUrl}/functions/v1/sync-user-email-invoices?resume_chunk=1`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ user_id: job.user_id, resume_job_id: job.id }),
+            }
+          );
+          const body = await res.json().catch(() => ({}));
+          console.log(`[cron] chunk ${chunkCount} for job ${job.id}: processed=${body.processed}, synced=${body.synced}, hasMore=${body.hasMore}`);
+
+          if (!res.ok) {
+            console.error(`[cron] chunk error for job ${job.id}:`, body.error);
+            break;
+          }
+
+          totalProcessed += body.processed || 0;
+          totalSynced += body.synced || 0;
+          hasMore = body.hasMore === true;
+
+          if (hasMore) await new Promise(r => setTimeout(r, 500));
+        }
+
         results.push({
           type: "resume_job",
           job_id: job.id,
           user_id: job.user_id,
-          status: res.ok ? "ok" : "error",
-          detail: res.ok ? `processed: ${body.processed || 0}, synced: ${body.synced || 0}, hasMore: ${body.hasMore}` : body.error,
+          status: "ok",
+          detail: `chunks: ${chunkCount}, processed: ${totalProcessed}, synced: ${totalSynced}`,
         });
       } catch (err: any) {
         results.push({ type: "resume_job", job_id: job.id, status: "error", detail: err.message });
