@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
+const STALL_TIMEOUT_MS = 10 * 60 * 1000;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -22,6 +23,59 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const cutoff = new Date(Date.now() - SYNC_INTERVAL_MS).toISOString();
+    const stallCutoff = new Date(Date.now() - STALL_TIMEOUT_MS).toISOString();
+
+    const headers = {
+      Authorization: `Bearer ${supabaseServiceKey}`,
+      "Content-Type": "application/json",
+    };
+
+    const results: any[] = [];
+
+    const { data: stalledJobs } = await supabase
+      .from("email_sync_jobs")
+      .select("id, user_id, email_config_id, status, last_chunk_at")
+      .eq("status", "running")
+      .lt("last_chunk_at", stallCutoff);
+
+    for (const job of stalledJobs || []) {
+      console.log(`[cron] Marking stalled job ${job.id} as pending for resume`);
+      await supabase
+        .from("email_sync_jobs")
+        .update({ status: "pending", error_message: "Wznowione po timeout" })
+        .eq("id", job.id);
+    }
+
+    const { data: pendingJobs } = await supabase
+      .from("email_sync_jobs")
+      .select("id, user_id, email_config_id")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(10);
+
+    for (const job of pendingJobs || []) {
+      try {
+        console.log(`[cron] Resuming pending email sync job ${job.id} for user ${job.user_id}`);
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/sync-user-email-invoices?resume_chunk=1`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ user_id: job.user_id, resume_job_id: job.id }),
+          }
+        );
+        const body = await res.json().catch(() => ({}));
+        results.push({
+          type: "resume_job",
+          job_id: job.id,
+          user_id: job.user_id,
+          status: res.ok ? "ok" : "error",
+          detail: res.ok ? `processed: ${body.processed || 0}, synced: ${body.synced || 0}, hasMore: ${body.hasMore}` : body.error,
+        });
+      } catch (err: any) {
+        results.push({ type: "resume_job", job_id: job.id, status: "error", detail: err.message });
+      }
+    }
 
     const { data: emailUsers } = await supabase
       .from("user_email_configs")
@@ -38,17 +92,11 @@ Deno.serve(async (req: Request) => {
       .select("user_id, last_sync_at")
       .eq("is_active", true);
 
-    const usersNeedingSync = new Map<
-      string,
-      { email: boolean; drive: boolean }
-    >();
+    const usersNeedingSync = new Map<string, { email: boolean; drive: boolean }>();
 
     for (const config of emailUsers || []) {
       if (!config.last_sync_at || config.last_sync_at < cutoff) {
-        const existing = usersNeedingSync.get(config.user_id) || {
-          email: false,
-          drive: false,
-        };
+        const existing = usersNeedingSync.get(config.user_id) || { email: false, drive: false };
         existing.email = true;
         usersNeedingSync.set(config.user_id, existing);
       }
@@ -56,42 +104,40 @@ Deno.serve(async (req: Request) => {
 
     for (const config of [...(driveUsers || []), ...(legacyDriveUsers || [])]) {
       if (!config.last_sync_at || config.last_sync_at < cutoff) {
-        const existing = usersNeedingSync.get(config.user_id) || {
-          email: false,
-          drive: false,
-        };
+        const existing = usersNeedingSync.get(config.user_id) || { email: false, drive: false };
         existing.drive = true;
         usersNeedingSync.set(config.user_id, existing);
       }
     }
 
-    const results: { user_id: string; email?: string; drive?: string }[] = [];
-    const headers = {
-      Authorization: `Bearer ${supabaseServiceKey}`,
-      "Content-Type": "application/json",
-    };
-
     for (const [userId, needs] of usersNeedingSync) {
-      const entry: { user_id: string; email?: string; drive?: string } = {
-        user_id: userId,
-      };
+      const entry: any = { user_id: userId };
 
       if (needs.email) {
-        try {
-          const res = await fetch(
-            `${supabaseUrl}/functions/v1/sync-user-email-invoices`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ user_id: userId }),
-            }
-          );
-          const body = await res.json();
-          entry.email = res.ok
-            ? `ok, synced: ${body.synced || 0}`
-            : `error: ${body.error}`;
-        } catch (err: any) {
-          entry.email = `error: ${err.message}`;
+        const { data: activeJobs } = await supabase
+          .from("email_sync_jobs")
+          .select("id")
+          .eq("user_id", userId)
+          .in("status", ["pending", "running"])
+          .limit(1);
+
+        if (activeJobs && activeJobs.length > 0) {
+          entry.email = `skipped: active job already running (${activeJobs[0].id})`;
+        } else {
+          try {
+            const res = await fetch(
+              `${supabaseUrl}/functions/v1/sync-user-email-invoices`,
+              {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ user_id: userId }),
+              }
+            );
+            const body = await res.json().catch(() => ({}));
+            entry.email = res.ok ? `ok, synced: ${body.synced || 0}` : `error: ${body.error}`;
+          } catch (err: any) {
+            entry.email = `error: ${err.message}`;
+          }
         }
       }
 
@@ -105,10 +151,8 @@ Deno.serve(async (req: Request) => {
               body: JSON.stringify({ user_id: userId }),
             }
           );
-          const body = await res.json();
-          entry.drive = res.ok
-            ? `ok, synced: ${body.total_synced || 0}`
-            : `error: ${body.error}`;
+          const body = await res.json().catch(() => ({}));
+          entry.drive = res.ok ? `ok, synced: ${body.total_synced || 0}` : `error: ${body.error}`;
         } catch (err: any) {
           entry.drive = `error: ${err.message}`;
         }
@@ -120,7 +164,9 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        users_processed: results.length,
+        users_processed: usersNeedingSync.size,
+        resumed_jobs: (pendingJobs || []).length,
+        stalled_reset: (stalledJobs || []).length,
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -129,10 +175,7 @@ Deno.serve(async (req: Request) => {
     console.error("Cron sync error:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
