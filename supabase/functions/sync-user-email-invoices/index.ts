@@ -881,6 +881,18 @@ async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Pro
       }
       if (lowerText.includes("vendo.erp") || lowerText.includes("www.cfi.pl")) return false;
 
+      const DOCUMENT_TYPE_KEYWORDS = [
+        "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
+        "rachun", "receipt", "reçu", "quittung", "ricevuta", "recibo",
+        "nota księgowa", "nota korygująca", "credit note", "debit note",
+        "nota debito", "nota credito", "avoir", "gutschrift",
+        "proforma", "pro forma",
+        "paragon fiskalny", "paragon",
+      ];
+
+      const hasDocumentTypeKeyword = DOCUMENT_TYPE_KEYWORDS.some(kw => lowerText.includes(kw));
+      if (!hasDocumentTypeKeyword) return false;
+
       const STRONG_KEYWORDS = [
         "faktura vat", "faktura nr", "numer faktury", "nr faktury",
         "invoice number", "invoice no", "invoice #", "invoice nr",
