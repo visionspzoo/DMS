@@ -66,103 +66,45 @@ function normalizeNip(nip: string | null | undefined): string {
 }
 
 async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
-  const [allInvoicesRes, markedDuplicatesRes] = await Promise.all([
-    supabase
-      .from('invoices')
-      .select(INVOICE_FIELDS)
-      .not('invoice_number', 'is', null)
-      .neq('invoice_number', '')
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('invoices')
-      .select(INVOICE_FIELDS)
-      .eq('is_duplicate', true)
-      .order('created_at', { ascending: false }),
-  ]);
+  const { data, error } = await supabase.rpc('get_user_duplicate_invoice_groups');
+  if (error) throw error;
 
-  if (allInvoicesRes.error) throw allInvoicesRes.error;
-
-  const invoices = (allInvoicesRes.data || []) as Invoice[];
-  const allIds = new Set(invoices.map(i => i.id));
-
-  for (const inv of (markedDuplicatesRes.data || []) as Invoice[]) {
-    if (!allIds.has(inv.id)) {
-      invoices.push(inv);
-      allIds.add(inv.id);
-    }
-  }
-
-  const linkedIds = new Set<string>();
-  for (const inv of invoices) {
-    const ids = (inv.duplicate_invoice_ids as string[] | null) || [];
-    for (const id of ids) linkedIds.add(id);
-  }
-  const missingIds = [...linkedIds].filter(id => !allIds.has(id));
-
-  if (missingIds.length > 0) {
-    const { data: linked } = await supabase
-      .from('invoices')
-      .select(INVOICE_FIELDS)
-      .in('id', missingIds);
-    if (linked) {
-      for (const inv of linked as Invoice[]) {
-        if (!allIds.has(inv.id)) {
-          invoices.push(inv);
-          allIds.add(inv.id);
-        }
-      }
-    }
-  }
-
-  const groups = new Map<string, Invoice[]>();
-
-  for (const inv of invoices) {
-    const num = inv.invoice_number?.trim();
-    if (!num) continue;
-    const nip = normalizeNip(inv.supplier_nip);
-    const name = inv.supplier_name?.toLowerCase().trim() || '';
-    const key = nip ? `${nip}__${num}` : `name__${name}__${num}`;
-    const group = groups.get(key) || [];
-    if (!group.some(i => i.id === inv.id)) group.push(inv);
-    groups.set(key, group);
-  }
-
-  const nipNumberToName = new Map<string, string>();
-  for (const inv of invoices) {
-    const num = inv.invoice_number?.trim();
-    const nip = normalizeNip(inv.supplier_nip);
-    const name = inv.supplier_name?.toLowerCase().trim() || '';
-    if (nip && num && name) nipNumberToName.set(`${nip}__${num}`, name);
-  }
-
-  for (const inv of invoices) {
-    const num = inv.invoice_number?.trim();
-    if (!num) continue;
-    const nip = normalizeNip(inv.supplier_nip);
-    if (nip) continue;
-    const name = inv.supplier_name?.toLowerCase().trim() || '';
-    if (!name) continue;
-    const nameKey = `name__${name}__${num}`;
-    for (const [nipKey, nipName] of nipNumberToName.entries()) {
-      if (!nipKey.endsWith(`__${num}`)) continue;
-      if (nipName !== name) continue;
-      const nipGroup = groups.get(nipKey) || [];
-      const nameGroup = groups.get(nameKey) || [];
-      const merged = [...nipGroup];
-      for (const i of nameGroup) {
-        if (!merged.some(x => x.id === i.id)) merged.push(i);
-      }
-      groups.set(nipKey, merged);
-      groups.delete(nameKey);
-    }
-  }
-
-  const duplicateIds = new Set<string>();
-  for (const group of groups.values()) {
-    if (group.length >= 2) group.forEach(i => duplicateIds.add(i.id));
-  }
-
-  return invoices.filter(i => i.is_duplicate || duplicateIds.has(i.id));
+  return ((data || []) as any[]).map((row: any) => ({
+    id: row.id,
+    invoice_number: row.invoice_number,
+    supplier_name: row.supplier_name,
+    supplier_nip: row.supplier_nip,
+    issue_date: row.issue_date,
+    due_date: row.due_date,
+    net_amount: row.net_amount,
+    tax_amount: row.tax_amount,
+    gross_amount: row.gross_amount,
+    pln_gross_amount: row.pln_gross_amount,
+    exchange_rate: row.exchange_rate,
+    currency: row.currency,
+    status: row.status,
+    description: row.description,
+    uploaded_by: row.uploaded_by,
+    current_approver_id: row.current_approver_id,
+    department_id: row.department_id,
+    cost_center_id: row.cost_center_id,
+    file_url: row.file_url,
+    paid_at: row.paid_at,
+    paid_by: row.paid_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    source: row.source,
+    is_duplicate: row.is_duplicate,
+    duplicate_invoice_ids: row.duplicate_invoice_ids,
+    file_hash: row.file_hash,
+    user_drive_file_id: row.user_drive_file_id,
+    drive_owner_user_id: row.drive_owner_user_id,
+    pz_number: row.pz_number,
+    bez_mpk: row.bez_mpk,
+    internal_comment: row.internal_comment,
+    uploader: row.uploader_name ? { full_name: row.uploader_name, role: row.uploader_role } : null,
+    department: row.department_name ? { id: row.department_id, name: row.department_name } : null,
+  })) as Invoice[];
 }
 
 function scoreInvoice(inv: Invoice): number {
