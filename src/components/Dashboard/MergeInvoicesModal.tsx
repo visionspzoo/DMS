@@ -65,8 +65,8 @@ function normalizeNip(nip: string | null | undefined): string {
   return (nip || '').replace(/[^0-9]/g, '');
 }
 
-async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
-  const { data, error } = await supabase.rpc('get_user_duplicate_invoice_groups');
+async function loadAllDuplicateInvoices(userId?: string): Promise<Invoice[]> {
+  const { data, error } = await supabase.rpc('get_user_duplicate_invoice_groups', userId ? { p_user_id: userId } : {});
   if (error) {
     console.error('[MergeInvoicesModal] RPC error:', error);
     throw error;
@@ -193,7 +193,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   useEffect(() => {
     setLoadingDuplicates(true);
     setLoadError(null);
-    loadAllDuplicateInvoices()
+    loadAllDuplicateInvoices(currentUserId)
       .then(data => {
         const combined = [...data];
         for (const inv of invoices) {
@@ -453,7 +453,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
                 onClick={() => {
                   setLoadingDuplicates(true);
                   setLoadError(null);
-                  loadAllDuplicateInvoices()
+                  loadAllDuplicateInvoices(currentUserId)
                     .then(data => {
                       const combined = [...data];
                       for (const inv of invoices) {
