@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight, Search, X } from 'lucide-react';
+import { RefreshCw, FileText, AlertCircle, CheckCircle, Settings, ChevronUp, ChevronDown, Clock, Wand2, Calendar, ChevronRight, Search, X, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, getValidSession } from '../../lib/supabase';
 import { KSEFInvoiceModal } from './KSEFInvoiceModal';
@@ -10,6 +10,7 @@ import { getAccessibleDepartments } from '../../lib/departmentUtils';
 const AURA_HERBALS_NIP = '5851490834';
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_SYNC_DAYS = 5;
+const PAGE_SIZE = 30;
 
 interface KSEFInvoice {
   id: string;
@@ -68,6 +69,7 @@ export function KSEFInvoicesPage() {
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement | null>(null);
   const today = new Date().toISOString().split('T')[0];
@@ -141,8 +143,23 @@ export function KSEFInvoicesPage() {
     });
   };
 
+  const getPaginatedInvoices = () => {
+    const sorted = getSortedInvoices();
+    const usePagination = invoiceTab === 'assigned' || invoiceTab === 'ignored';
+    if (!usePagination) return sorted;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sorted.slice(start, start + PAGE_SIZE);
+  };
+
+  const getTotalPages = () => {
+    const usePagination = invoiceTab === 'assigned' || invoiceTab === 'ignored';
+    if (!usePagination) return 1;
+    return Math.max(1, Math.ceil(getSortedInvoices().length / PAGE_SIZE));
+  };
+
   useEffect(() => {
     setSearchQuery('');
+    setCurrentPage(1);
   }, [invoiceTab]);
 
   useEffect(() => {
@@ -1212,7 +1229,7 @@ export function KSEFInvoicesPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               placeholder="Szukaj po dostawcy, NIP lub numerze faktury..."
               className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40 transition"
             />
@@ -1356,7 +1373,7 @@ export function KSEFInvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {getSortedInvoices().map((invoice) => {
+                {getPaginatedInvoices().map((invoice) => {
                   const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
                   const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
                   const hasError = isSupplierInvalid || isBuyerInvalid;
@@ -1464,6 +1481,75 @@ export function KSEFInvoicesPage() {
               </tbody>
             </table>
           </div>
+          {(invoiceTab === 'assigned' || invoiceTab === 'ignored') && getTotalPages() > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-700/50">
+              <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Strona <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{currentPage}</span> z <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{getTotalPages()}</span>
+                {' '}· {getSortedInvoices().length} rekordów
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  title="Pierwsza strona"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Poprzednia
+                </button>
+                <div className="flex items-center gap-1 mx-1">
+                  {Array.from({ length: getTotalPages() }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === getTotalPages() || Math.abs(p - currentPage) <= 2)
+                    .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+                      if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((item, idx) =>
+                      item === 'ellipsis' ? (
+                        <span key={`e-${idx}`} className="px-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">…</span>
+                      ) : (
+                        <button
+                          key={item}
+                          onClick={() => setCurrentPage(item as number)}
+                          className={`w-7 h-7 rounded-lg text-xs font-medium transition ${
+                            currentPage === item
+                              ? 'bg-brand-primary text-white'
+                              : 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      )
+                    )
+                  }
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
+                  disabled={currentPage === getTotalPages()}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  Następna
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(getTotalPages())}
+                  disabled={currentPage === getTotalPages()}
+                  className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  title="Ostatnia strona"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
           </>
         )}
       </div>
