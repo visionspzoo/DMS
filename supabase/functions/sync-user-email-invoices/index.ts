@@ -549,6 +549,7 @@ async function processEmailChunk(
       if (!messageResponse.ok) continue;
 
       const message = await messageResponse.json();
+      const threadId: string | null = message.threadId || null;
 
       const pdfParts = collectPdfParts(message.payload);
       const subject = message.payload?.headers?.find((h: any) => h.name === "Subject")?.value || "";
@@ -600,6 +601,20 @@ async function processEmailChunk(
             if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
             seenHashesThisChunk.add(fileHash);
             continue;
+          }
+
+          if (threadId && part.filename) {
+            const { data: threadFileExists } = await supabase
+              .from("processed_email_thread_files")
+              .select("id")
+              .eq("email_config_id", config.id)
+              .eq("thread_id", threadId)
+              .eq("filename", part.filename)
+              .maybeSingle();
+            if (threadFileExists) {
+              if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+              continue;
+            }
           }
         }
 
@@ -750,6 +765,19 @@ async function processEmailChunk(
         }
 
         if (!isRealInvoice) continue;
+
+        if (!job.force_reimport && threadId && part.filename) {
+          await supabase.from("processed_email_thread_files").insert({
+            email_config_id: config.id,
+            thread_id: threadId,
+            filename: part.filename,
+            message_id: messageId,
+          }).then(({ error: tErr }: { error: any }) => {
+            if (tErr && !tErr.message?.includes("idx_thread_file_unique")) {
+              console.error("Error recording thread file:", tErr.message);
+            }
+          });
+        }
 
         invoiceCount++;
         syncedCount++;
