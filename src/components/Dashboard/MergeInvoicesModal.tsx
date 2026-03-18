@@ -193,14 +193,19 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   useEffect(() => {
     setLoadingDuplicates(true);
     setLoadError(null);
+    console.log('[MergeInvoicesModal] Opening, currentUserId=', currentUserId, 'isAdmin=', isAdmin);
     loadAllDuplicateInvoices(currentUserId)
       .then(data => {
+        console.log('[MergeInvoicesModal] RPC data sample:', data.slice(0, 3).map(d => ({ id: d.id, num: d.invoice_number, nip: d.supplier_nip })));
         const combined = [...data];
         for (const inv of invoices) {
           if (!combined.some(d => d.id === inv.id)) {
             combined.push(inv);
           }
         }
+        console.log('[MergeInvoicesModal] Combined count:', combined.length);
+        const groups = buildDuplicateGroups(combined);
+        console.log('[MergeInvoicesModal] Groups found:', groups.length, groups.map(g => g.key));
         setAllDuplicates(combined);
       })
       .catch((err) => {
@@ -212,8 +217,9 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   }, []);
 
   const duplicateGroups = useMemo(() => {
+    console.log('[MergeInvoicesModal] Building groups from', allDuplicates.length, 'invoices');
     const groups = buildDuplicateGroups(allDuplicates);
-    if (!currentUserId) return groups;
+    console.log('[MergeInvoicesModal] Built', groups.length, 'groups:', groups.map(g => ({ key: g.key, count: g.invoices.length })));
     return groups;
   }, [allDuplicates, currentUserId, isAdmin]);
 
