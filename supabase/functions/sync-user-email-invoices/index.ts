@@ -827,92 +827,64 @@ async function getValidAccessToken(supabase: any, config: EmailConfig): Promise<
 
 async function quickInvoicePreCheck(pdfBytes: Uint8Array, filename: string): Promise<boolean> {
   try {
-    const fnLower = filename.toLowerCase();
+    const base64Content = uint8ToBase64(pdfBytes);
+    const extractResp = await fetch(
+      `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ pdf_base64: base64Content }),
+      }
+    );
 
-    const SKIP_PATTERNS = [
-      "specyfikacja", "specification", "packing_list", "packing list", "waybill", "way_bill", "cmr",
-      "bill_of_lading", "bill of lading", "delivery_note", "delivery note", "delivery_order", "delivery_confirmation",
-      "listy_przewozowy", "list_przewozowy", "list przewozowy", "certyfikat", "certificate", "cert_", "_cert.",
-      "newsletter", "brochure", "katalog", "catalog", "catalogue", "presentation", "prezentacja",
-      "oferta_", "_oferta", "oferta.", "price_list", "cennik", "regulamin", "terms_and_conditions", "terms-and-conditions",
-      "umowa", "contract", "agreement", "protokol", "protocol", "raport", "report", "zestawienie", "summary", "statement",
-      "reklamacja", "complaint", "zamowienie", "order_confirmation", "order-confirmation",
-      "potwierdzenie_zamowienia", "potwierdzenie_zam", "potwierdzenie",
-    ];
-    for (const pattern of SKIP_PATTERNS) {
-      if (fnLower.includes(pattern)) return false;
-    }
+    if (!extractResp.ok) return true;
 
-    const INVOICE_FILENAME_HINTS = [
-      "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
-      "fakt_", "fakt.", "_fakt", "inv_", "inv.", "_inv", "fv_", "fv.", "_fv", "fac_", "fac.", "_fac", "proforma",
-    ];
-    for (const hint of INVOICE_FILENAME_HINTS) {
-      if (fnLower.includes(hint)) return true;
-    }
+    const { text } = await extractResp.json();
+    if (!text || text.trim().length < 40) return true;
 
-    try {
-      const base64Content = uint8ToBase64(pdfBytes);
-      const extractResp = await fetch(
-        `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ pdf_base64: base64Content }),
-        }
-      );
+    const lowerText = text.toLowerCase();
 
-      if (!extractResp.ok) return true;
-
-      const { text } = await extractResp.json();
-      if (!text || text.trim().length < 40) return true;
-
-      const lowerText = text.toLowerCase();
-
-      const OUR_COMPANY_NIPS = ["5851490834", "8222407812"];
-      for (const nip of OUR_COMPANY_NIPS) {
-        if (text.includes(nip)) {
-          const nipIdx = text.indexOf(nip);
-          const surrounding = text.substring(Math.max(0, nipIdx - 400), nipIdx + 50).toLowerCase();
-          if (surrounding.includes("sprzedawca") || surrounding.includes("wystawil") || surrounding.includes("wystawiajacy") || nipIdx < 600) {
-            return false;
-          }
+    const OUR_COMPANY_NIPS = ["5851490834", "8222407812"];
+    for (const nip of OUR_COMPANY_NIPS) {
+      if (text.includes(nip)) {
+        const nipIdx = text.indexOf(nip);
+        const surrounding = text.substring(Math.max(0, nipIdx - 400), nipIdx + 50).toLowerCase();
+        if (surrounding.includes("sprzedawca") || surrounding.includes("wystawil") || surrounding.includes("wystawiajacy") || nipIdx < 600) {
+          return false;
         }
       }
-      if (lowerText.includes("vendo.erp") || lowerText.includes("www.cfi.pl")) return false;
-
-      const DOCUMENT_TYPE_KEYWORDS = [
-        "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
-        "rachun", "receipt", "reçu", "quittung", "ricevuta", "recibo",
-        "nota księgowa", "nota korygująca", "credit note", "debit note",
-        "nota debito", "nota credito", "avoir", "gutschrift",
-        "proforma", "pro forma",
-        "paragon fiskalny", "paragon",
-      ];
-
-      const hasDocumentTypeKeyword = DOCUMENT_TYPE_KEYWORDS.some(kw => lowerText.includes(kw));
-      if (!hasDocumentTypeKeyword) return false;
-
-      const STRONG_KEYWORDS = [
-        "faktura vat", "faktura nr", "numer faktury", "nr faktury",
-        "invoice number", "invoice no", "invoice #", "invoice nr",
-        "rechnung nr", "rechnung number", "facture n°", "facture no",
-      ];
-      const SUPPORT_KEYWORDS = [
-        "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
-        "nip", "tax id", "vat number", "vat no", "vat id",
-        "sprzedawca", "nabywca", "seller", "buyer", "vendor", "bill to", "sold to",
-        "kwota brutto", "kwota netto", "amount due", "total amount", "total net",
-        "termin platnosci", "payment due", "payment terms", "due date",
-        "netto", "brutto", "net amount", "gross amount",
-      ];
-
-      const hasStrongKeyword = STRONG_KEYWORDS.some(kw => lowerText.includes(kw));
-      const supportFound = SUPPORT_KEYWORDS.filter(kw => lowerText.includes(kw));
-      return hasStrongKeyword || supportFound.length >= 3;
-    } catch {
-      return true;
     }
+    if (lowerText.includes("vendo.erp") || lowerText.includes("www.cfi.pl")) return false;
+
+    const DOCUMENT_TYPE_KEYWORDS = [
+      "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
+      "rachun", "receipt", "reçu", "quittung", "ricevuta", "recibo",
+      "nota księgowa", "nota korygująca", "credit note", "debit note",
+      "nota debito", "nota credito", "avoir", "gutschrift",
+      "proforma", "pro forma",
+      "paragon fiskalny", "paragon",
+    ];
+
+    const hasDocumentTypeKeyword = DOCUMENT_TYPE_KEYWORDS.some(kw => lowerText.includes(kw));
+    if (!hasDocumentTypeKeyword) return false;
+
+    const STRONG_KEYWORDS = [
+      "faktura vat", "faktura nr", "numer faktury", "nr faktury",
+      "invoice number", "invoice no", "invoice #", "invoice nr",
+      "rechnung nr", "rechnung number", "facture n°", "facture no",
+    ];
+    const SUPPORT_KEYWORDS = [
+      "faktura", "invoice", "facture", "rechnung", "fattura", "factura",
+      "nip", "tax id", "vat number", "vat no", "vat id",
+      "sprzedawca", "nabywca", "seller", "buyer", "vendor", "bill to", "sold to",
+      "kwota brutto", "kwota netto", "amount due", "total amount", "total net",
+      "termin platnosci", "payment due", "payment terms", "due date",
+      "netto", "brutto", "net amount", "gross amount",
+    ];
+
+    const hasStrongKeyword = STRONG_KEYWORDS.some(kw => lowerText.includes(kw));
+    const supportFound = SUPPORT_KEYWORDS.filter(kw => lowerText.includes(kw));
+    return hasStrongKeyword || supportFound.length >= 3;
   } catch (err: any) {
     console.error(`Pre-check error for "${filename}":`, err?.message);
     return true;
