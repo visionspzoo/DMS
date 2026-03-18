@@ -3,6 +3,7 @@ import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calend
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PurchaseRequestDetail } from './PurchaseRequestDetail';
+import { PurchaseRequestForm } from './PurchaseRequestForm';
 
 interface PurchaseRequest {
   id: string;
@@ -344,6 +345,7 @@ export function MyPurchaseRequests() {
   const [filter, setFilterState] = useState<FilterTab>(filterStore.filter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isApproverView, setIsApproverView] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [search, setSearchState] = useState(filterStore.search);
   const [deptFilter, setDeptFilterState] = useState(filterStore.deptFilter);
@@ -485,6 +487,18 @@ export function MyPurchaseRequests() {
     setYearFilter('');
   }
 
+  if (editingId) {
+    return (
+      <PurchaseRequestForm
+        editRequestId={editingId}
+        onEditComplete={() => {
+          setEditingId(null);
+          loadAll();
+        }}
+      />
+    );
+  }
+
   if (selectedId) {
     return (
       <PurchaseRequestDetail
@@ -495,6 +509,10 @@ export function MyPurchaseRequests() {
           loadAll();
         }}
         isApprover={isApproverView}
+        onEdit={(id) => {
+          setSelectedId(null);
+          setEditingId(id);
+        }}
       />
     );
   }

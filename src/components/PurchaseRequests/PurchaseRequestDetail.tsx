@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, CheckCircle, XCircle, CreditCard, FileText, ExternalLink, MapPin, Zap, Package, Calendar, Building2, User, MessageSquare, ThumbsUp, ThumbsDown, Trash2, AlertTriangle, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, XCircle, CreditCard, FileText, ExternalLink, MapPin, Zap, Package, Calendar, Building2, User, MessageSquare, ThumbsUp, ThumbsDown, Trash2, AlertTriangle, ChevronRight, Pencil } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PurchaseRequestComments } from './PurchaseRequestComments';
@@ -96,10 +96,12 @@ export function PurchaseRequestDetail({
   requestId,
   onBack,
   isApprover = false,
+  onEdit,
 }: {
   requestId: string;
   onBack: () => void;
   isApprover?: boolean;
+  onEdit?: (id: string) => void;
 }) {
   const { profile } = useAuth();
   const [request, setRequest] = useState<PurchaseRequest | null>(null);
@@ -251,6 +253,7 @@ export function PurchaseRequestDetail({
   const isAdmin = profile?.is_admin === true;
   const canApprove = isApprover && request?.current_approver_id === profile?.id && request?.status === 'pending';
   const canWithdraw = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected');
+  const canEdit = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected') && !!onEdit;
 
   if (loading) {
     return (
@@ -588,6 +591,21 @@ export function PurchaseRequestDetail({
         <div>
           <PurchaseRequestComments requestId={requestId} />
         </div>
+
+        {/* Edit panel */}
+        {canEdit && (
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-light-surface dark:bg-dark-surface overflow-hidden shadow-sm">
+            <div className="p-4">
+              <button
+                onClick={() => onEdit!(request!.id)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-brand-primary/30 dark:border-brand-primary/40 text-brand-primary hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 font-semibold text-sm transition-all"
+              >
+                <Pencil className="w-4 h-4" />
+                Edytuj wniosek
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Withdraw panel */}
         {canWithdraw && (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle, Building2, FileText, ToggleLeft, ToggleRight, Upload, X } from 'lucide-react';
+import { Plus, Trash2, Send, Link, DollarSign, AlignLeft, Hash, MapPin, Zap, CheckCircle, AlertCircle, Building2, FileText, ToggleLeft, ToggleRight, Upload, X, ArrowLeft, Save } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -24,6 +24,7 @@ interface RequestItem {
   isProforma: boolean;
   proformaFile: File | null;
   proformaBase64: string | null;
+  existingProformaFilename: string | null;
   link: string;
   gross_amount: string;
   description: string;
@@ -39,6 +40,7 @@ function createEmptyItem(defaultDepartmentId: string): RequestItem {
     isProforma: false,
     proformaFile: null,
     proformaBase64: null,
+    existingProformaFilename: null,
     link: '',
     gross_amount: '',
     description: '',
@@ -132,6 +134,19 @@ function ItemCard({
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
+            ) : item.existingProformaFilename ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-sky-200 dark:border-sky-700/50 bg-sky-50 dark:bg-sky-900/20">
+                <FileText className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                <span className="text-sm text-text-primary-light dark:text-text-primary-dark flex-1 truncate">{item.existingProformaFilename}</span>
+                <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">Bez zmian</span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-brand-primary hover:underline"
+                >
+                  Zmień
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -183,9 +198,9 @@ function ItemCard({
             value={item.gross_amount}
             onChange={e => onChange(item.id, 'gross_amount', e.target.value)}
             placeholder={item.isProforma ? 'Z proformy' : '0.00'}
-            disabled={item.isProforma}
+            disabled={item.isProforma && !item.gross_amount}
             className={`w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors ${
-              item.isProforma
+              item.isProforma && !item.gross_amount
                 ? 'bg-slate-100 dark:bg-slate-800/50 opacity-60 cursor-not-allowed'
                 : 'bg-light-bg dark:bg-dark-bg'
             }`}
@@ -205,7 +220,6 @@ function ItemCard({
               value={item.quantity}
               onChange={e => onChange(item.id, 'quantity', e.target.value)}
               placeholder="1"
-              disabled={item.isProforma}
               className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition-colors"
             />
           </div>
@@ -310,14 +324,22 @@ function clearDraft() {
   try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
 }
 
-export function PurchaseRequestForm() {
+interface PurchaseRequestFormProps {
+  editRequestId?: string;
+  onEditComplete?: () => void;
+}
+
+export function PurchaseRequestForm({ editRequestId, onEditComplete }: PurchaseRequestFormProps = {}) {
   const { user, profile } = useAuth();
+  const isEditMode = !!editRequestId;
+
   const [departments, setDepartments] = useState<Department[]>([]);
   const [defaultDepartmentId, setDefaultDepartmentId] = useState<string>('');
   const [items, setItems] = useState<RequestItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(isEditMode);
   const departmentsLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -343,18 +365,64 @@ export function PurchaseRequestForm() {
 
     setDefaultDepartmentId(resolvedDefault);
 
-    const draft = loadDraft();
-    if (draft) {
-      setItems(draft);
+    if (isEditMode) {
+      await loadEditData(resolvedDefault, depts);
     } else {
-      setItems([createEmptyItem(resolvedDefault)]);
+      const draft = loadDraft();
+      if (draft) {
+        setItems(draft);
+      } else {
+        setItems([createEmptyItem(resolvedDefault)]);
+      }
     }
+  }
+
+  async function loadEditData(fallbackDeptId: string, depts: Department[]) {
+    if (!editRequestId) return;
+    setLoadingEdit(true);
+    const { data, error: fetchError } = await supabase
+      .from('purchase_requests')
+      .select('*')
+      .eq('id', editRequestId)
+      .maybeSingle();
+
+    setLoadingEdit(false);
+
+    if (fetchError || !data) {
+      setError('Nie udało się załadować danych wniosku.');
+      return;
+    }
+
+    const deptId = data.department_id && depts.some(d => d.id === data.department_id)
+      ? data.department_id
+      : fallbackDeptId;
+
+    const item: RequestItem = {
+      id: data.id,
+      isProforma: !!data.proforma_filename,
+      proformaFile: null,
+      proformaBase64: null,
+      existingProformaFilename: data.proforma_filename || null,
+      link: data.link || '',
+      gross_amount: data.gross_amount > 0 ? String(data.gross_amount) : '',
+      description: data.description || '',
+      quantity: String(data.quantity || 1),
+      delivery_location: (DELIVERY_LOCATIONS as readonly string[]).includes(data.delivery_location)
+        ? data.delivery_location as DeliveryLocation
+        : 'Botaniczna',
+      priority: (['niski', 'normalny', 'wysoki', 'pilny'] as Priority[]).includes(data.priority)
+        ? data.priority as Priority
+        : 'normalny',
+      department_id: deptId,
+    };
+
+    setItems([item]);
   }
 
   function handleChange(id: string, field: keyof RequestItem, value: string) {
     setItems(prev => {
       const updated = prev.map(item => item.id === id ? { ...item, [field]: value } : item);
-      saveDraft(updated);
+      if (!isEditMode) saveDraft(updated);
       return updated;
     });
   }
@@ -363,10 +431,10 @@ export function PurchaseRequestForm() {
     setItems(prev => {
       const updated = prev.map(item =>
         item.id === id
-          ? { ...item, isProforma: !item.isProforma, proformaFile: null, proformaBase64: null, link: '', gross_amount: '', quantity: '1' }
+          ? { ...item, isProforma: !item.isProforma, proformaFile: null, proformaBase64: null, existingProformaFilename: null, link: '', gross_amount: '', quantity: '1' }
           : item
       );
-      saveDraft(updated);
+      if (!isEditMode) saveDraft(updated);
       return updated;
     });
   }
@@ -375,7 +443,7 @@ export function PurchaseRequestForm() {
     if (!file) {
       setItems(prev => {
         const updated = prev.map(item => item.id === id ? { ...item, proformaFile: null, proformaBase64: null } : item);
-        saveDraft(updated);
+        if (!isEditMode) saveDraft(updated);
         return updated;
       });
       return;
@@ -383,7 +451,7 @@ export function PurchaseRequestForm() {
     const base64 = await fileToBase64(file);
     setItems(prev => {
       const updated = prev.map(item => item.id === id ? { ...item, proformaFile: file, proformaBase64: base64 } : item);
-      saveDraft(updated);
+      if (!isEditMode) saveDraft(updated);
       return updated;
     });
   }
@@ -391,7 +459,7 @@ export function PurchaseRequestForm() {
   function addItem() {
     setItems(prev => {
       const updated = [...prev, createEmptyItem(defaultDepartmentId)];
-      saveDraft(updated);
+      if (!isEditMode) saveDraft(updated);
       return updated;
     });
   }
@@ -399,7 +467,7 @@ export function PurchaseRequestForm() {
   function removeItem(id: string) {
     setItems(prev => {
       const updated = prev.filter(item => item.id !== id);
-      saveDraft(updated);
+      if (!isEditMode) saveDraft(updated);
       return updated;
     });
   }
@@ -410,7 +478,7 @@ export function PurchaseRequestForm() {
 
     for (const item of items) {
       if (item.isProforma) {
-        if (!item.proformaFile) { setError('Dodaj plik PDF proformy w każdej pozycji proforma.'); return; }
+        if (!item.proformaFile && !item.existingProformaFilename) { setError('Dodaj plik PDF proformy w każdej pozycji proforma.'); return; }
         if (!item.description.trim()) { setError('Uzupełnij opis w każdej pozycji.'); return; }
       } else {
         if (!item.link.trim()) { setError('Uzupełnij link do zakupu w każdej pozycji.'); return; }
@@ -422,6 +490,40 @@ export function PurchaseRequestForm() {
 
     setSubmitting(true);
     setError(null);
+
+    if (isEditMode) {
+      const item = items[0];
+      const updateData: Record<string, unknown> = {
+        link: item.isProforma ? '' : item.link.trim(),
+        gross_amount: item.isProforma ? (item.gross_amount ? parseFloat(item.gross_amount) : 0) : parseFloat(item.gross_amount),
+        description: item.description.trim(),
+        quantity: item.isProforma ? 1 : parseInt(item.quantity),
+        delivery_location: item.delivery_location,
+        priority: item.priority,
+        department_id: item.department_id || null,
+      };
+
+      if (item.proformaFile && item.proformaBase64) {
+        updateData.proforma_pdf_base64 = item.proformaBase64;
+        updateData.proforma_filename = item.proformaFile.name;
+      }
+
+      const { error: updateError } = await supabase
+        .from('purchase_requests')
+        .update(updateData)
+        .eq('id', editRequestId!)
+        .eq('user_id', user.id);
+
+      setSubmitting(false);
+
+      if (updateError) {
+        setError('Błąd podczas zapisywania zmian. Spróbuj ponownie.');
+        return;
+      }
+
+      onEditComplete?.();
+      return;
+    }
 
     const rows = items.map(item => ({
       user_id: user.id,
@@ -458,7 +560,7 @@ export function PurchaseRequestForm() {
     return sum + (isNaN(amount) ? 0 : amount);
   }, 0);
 
-  if (items.length === 0) {
+  if (loadingEdit || items.length === 0) {
     return (
       <div className="h-full bg-light-bg dark:bg-dark-bg flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
@@ -469,10 +571,25 @@ export function PurchaseRequestForm() {
   return (
     <div className="h-full bg-light-bg dark:bg-dark-bg overflow-y-auto">
       <div className="p-4">
+        {isEditMode && (
+          <button
+            type="button"
+            onClick={onEditComplete}
+            className="group inline-flex items-center gap-1.5 text-sm text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark transition-colors mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+            Powrót do wniosku
+          </button>
+        )}
+
         <div className="mb-4">
-          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">Wniosek zakupowy</h1>
+          <h1 className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            {isEditMode ? 'Edytuj wniosek zakupowy' : 'Wniosek zakupowy'}
+          </h1>
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-            Wypełnij formularz i wyślij wniosek do akceptacji.
+            {isEditMode
+              ? 'Wprowadź zmiany i zapisz wniosek.'
+              : 'Wypełnij formularz i wyślij wniosek do akceptacji.'}
           </p>
         </div>
 
@@ -508,14 +625,16 @@ export function PurchaseRequestForm() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={addItem}
-            className="mt-3 w-full py-2.5 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 text-text-secondary-light dark:text-text-secondary-dark hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-primary dark:hover:text-brand-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            Dodaj kolejną pozycję
-          </button>
+          {!isEditMode && (
+            <button
+              type="button"
+              onClick={addItem}
+              className="mt-3 w-full py-2.5 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 text-text-secondary-light dark:text-text-secondary-dark hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-primary dark:hover:text-brand-primary transition-all flex items-center justify-center gap-2 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Dodaj kolejną pozycję
+            </button>
+          )}
 
           <div className="mt-4 bg-light-surface dark:bg-dark-surface border border-slate-200 dark:border-slate-700/50 rounded-lg px-4 py-3 flex items-center justify-between">
             <div>
@@ -526,34 +645,53 @@ export function PurchaseRequestForm() {
                   : items.some(i => i.isProforma) ? 'Z proformy' : '0,00 PLN'
                 }
               </p>
-              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                {items.length} {items.length === 1 ? 'pozycja' : items.length < 5 ? 'pozycje' : 'pozycji'}
-                {items.some(i => i.isProforma) && (
-                  <span className="ml-1 text-sky-500">· zawiera proformy</span>
-                )}
-              </p>
+              {!isEditMode && (
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                  {items.length} {items.length === 1 ? 'pozycja' : items.length < 5 ? 'pozycje' : 'pozycji'}
+                  {items.some(i => i.isProforma) && (
+                    <span className="ml-1 text-sky-500">· zawiera proformy</span>
+                  )}
+                </p>
+              )}
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-            >
-              {submitting ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Wysyłanie...
-                </span>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  Wyślij wniosek
-                </>
+            <div className="flex items-center gap-2">
+              {isEditMode && (
+                <button
+                  type="button"
+                  onClick={onEditComplete}
+                  disabled={submitting}
+                  className="px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-text-secondary-light dark:text-text-secondary-dark hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant text-sm font-semibold transition-all disabled:opacity-60"
+                >
+                  Anuluj
+                </button>
               )}
-            </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+              >
+                {submitting ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    {isEditMode ? 'Zapisywanie...' : 'Wysyłanie...'}
+                  </span>
+                ) : isEditMode ? (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Zapisz zmiany
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Wyślij wniosek
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
