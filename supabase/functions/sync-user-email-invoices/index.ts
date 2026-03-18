@@ -674,6 +674,36 @@ async function processEmailChunk(
             const signals = [hasInvoiceNumber, hasAmount, hasSupplierName || hasSupplierNip, hasBuyerName || hasBuyerNip, hasDate].filter(Boolean).length;
             isRealInvoice = hasStrongSignal && signals >= 3;
 
+            if (isRealInvoice) {
+              const INVOICE_KEYWORDS = [
+                "faktura", "invoice", "rechnung", "facture", "fattura", "factura",
+                "nota księgowa", "nota korygująca", "credit note", "debit note",
+                "proforma", "pro forma", "receipt", "paragon",
+              ];
+              try {
+                const base64Content = uint8ToBase64(pdfData);
+                const textResp = await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
+                  {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ pdf_base64: base64Content }),
+                  }
+                );
+                if (textResp.ok) {
+                  const { text } = await textResp.json();
+                  if (text && text.trim().length >= 40) {
+                    const lowerText = text.toLowerCase();
+                    const hasInvoiceKeyword = INVOICE_KEYWORDS.some(kw => lowerText.includes(kw));
+                    if (!hasInvoiceKeyword) {
+                      isRealInvoice = false;
+                      console.log(`Rejected "${part.filename}": no invoice keyword found in extracted text`);
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+
             if (!isRealInvoice) {
               await supabase.from("invoices").delete().eq("id", invoiceData.id);
               await supabase.storage.from("documents").remove([filePath]);
