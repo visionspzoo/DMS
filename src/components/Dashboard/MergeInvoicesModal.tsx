@@ -67,7 +67,11 @@ function normalizeNip(nip: string | null | undefined): string {
 
 async function loadAllDuplicateInvoices(): Promise<Invoice[]> {
   const { data, error } = await supabase.rpc('get_user_duplicate_invoice_groups');
-  if (error) throw error;
+  if (error) {
+    console.error('[MergeInvoicesModal] RPC error:', error);
+    throw error;
+  }
+  console.log('[MergeInvoicesModal] RPC returned', (data || []).length, 'rows');
 
   return ((data || []) as any[]).map((row: any) => ({
     id: row.id,
@@ -183,10 +187,12 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   const [selectedWinners, setSelectedWinners] = useState<Map<string, string>>(new Map());
   const [allDuplicates, setAllDuplicates] = useState<Invoice[]>([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [mergedKeys, setMergedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoadingDuplicates(true);
+    setLoadError(null);
     loadAllDuplicateInvoices()
       .then(data => {
         const combined = [...data];
@@ -197,7 +203,11 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
         }
         setAllDuplicates(combined);
       })
-      .catch(() => setAllDuplicates(invoices))
+      .catch((err) => {
+        console.error('[MergeInvoicesModal] Failed to load duplicates:', err);
+        setLoadError(err?.message || 'Błąd ładowania duplikatów');
+        setAllDuplicates(invoices);
+      })
       .finally(() => setLoadingDuplicates(false));
   }, []);
 
@@ -433,6 +443,34 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
           {loadingDuplicates ? (
             <div className="flex items-center justify-center py-12">
               <Loader className="w-8 h-8 animate-spin text-brand-primary" />
+            </div>
+          ) : loadError ? (
+            <div className="text-center py-12">
+              <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+              <p className="text-text-primary-light dark:text-text-primary-dark font-medium">Błąd ładowania duplikatów</p>
+              <p className="text-xs text-red-500 mt-1">{loadError}</p>
+              <button
+                onClick={() => {
+                  setLoadingDuplicates(true);
+                  setLoadError(null);
+                  loadAllDuplicateInvoices()
+                    .then(data => {
+                      const combined = [...data];
+                      for (const inv of invoices) {
+                        if (!combined.some(d => d.id === inv.id)) combined.push(inv);
+                      }
+                      setAllDuplicates(combined);
+                    })
+                    .catch((err) => {
+                      setLoadError(err?.message || 'Błąd ładowania duplikatów');
+                      setAllDuplicates(invoices);
+                    })
+                    .finally(() => setLoadingDuplicates(false));
+                }}
+                className="mt-4 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition font-medium text-sm"
+              >
+                Spróbuj ponownie
+              </button>
             </div>
           ) : visibleGroups.length === 0 ? (
             <div className="text-center py-12">
