@@ -527,6 +527,7 @@ async function processEmailChunk(
 
   let syncedCount = 0;
   let processedCount = 0;
+  const seenHashesThisChunk = new Set<string>();
 
   for (const msg of newMessages) {
     try {
@@ -584,6 +585,11 @@ async function processEmailChunk(
         const fileHash = await computeFileHash(pdfData);
 
         if (!job.force_reimport) {
+          if (seenHashesThisChunk.has(fileHash)) {
+            if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+            continue;
+          }
+
           const { data: existingInvoice } = await supabase
             .from("invoices")
             .select("id")
@@ -592,9 +598,12 @@ async function processEmailChunk(
             .maybeSingle();
           if (existingInvoice) {
             if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+            seenHashesThisChunk.add(fileHash);
             continue;
           }
         }
+
+        seenHashesThisChunk.add(fileHash);
 
         const preCheckPass = await quickInvoicePreCheck(pdfData, part.filename);
         if (!preCheckPass) {
