@@ -84,10 +84,7 @@ Deno.serve(async (req: Request) => {
       userId = bodyData.user_id;
     } else {
       bodyData = await req.json().catch(() => ({}));
-      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       if (userError || !user) {
         return new Response(
           JSON.stringify({ success: false, error: "Nieautoryzowany: " + (userError?.message || "brak użytkownika") }),
