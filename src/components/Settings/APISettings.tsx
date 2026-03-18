@@ -131,6 +131,7 @@ export default function APISettings() {
   "data": [
     {
       "invoice_number": "FV/2024/001",
+      "owner_name": "Jan Kowalski",
       "supplier_name": "Przykładowa Sp. z o.o.",
       "supplier_nip": "1234567890",
       "buyer_name": "Kupujacy Sp. z o.o.",
@@ -526,6 +527,7 @@ export default function APISettings() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
                       {[
                         { field: 'invoice_number', desc: 'Numer faktury' },
+                        { field: 'owner_name', desc: 'Imie i nazwisko wlasciciela faktury (osoby, ktora fakture przeslala)' },
                         { field: 'supplier_name', desc: 'Nazwa dostawcy' },
                         { field: 'supplier_nip', desc: 'NIP dostawcy' },
                         { field: 'buyer_name', desc: 'Nazwa nabywcy (null jesli brak)' },

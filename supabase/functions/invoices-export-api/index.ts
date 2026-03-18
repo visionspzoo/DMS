@@ -223,6 +223,11 @@ Deno.serve(async (req: Request) => {
         file_url,
         pz_number,
         uploaded_by,
+        owner:uploaded_by (
+          id,
+          full_name,
+          email
+        ),
         department:department_id (
           id,
           name,
@@ -299,6 +304,7 @@ Deno.serve(async (req: Request) => {
 
       const entry: Record<string, unknown> = {
         invoice_number: inv.invoice_number,
+        owner_name: inv.owner?.full_name || null,
         supplier_name: inv.supplier_name,
         supplier_nip: inv.supplier_nip,
         buyer_name: inv.buyer_name || null,
