@@ -123,7 +123,7 @@ function AppContent() {
     { id: 'ksef', label: 'Faktury KSEF', icon: Download },
     { id: 'contracts', label: 'Moje Umowy', icon: FileSignature },
     { id: 'purchase-request', label: 'Wniosek zakupowy', icon: ShoppingCart },
-    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList, badge: pendingPurchaseRequestsCount },
+    { id: 'my-purchase-requests', label: 'Moje wnioski zakupowe', icon: ClipboardList, badge: isManagerOrDirector ? pendingPurchaseRequestsCount : undefined },
     { id: 'ai-agent', label: 'AuruśAI', icon: Bot },
     { id: 'configuration', label: 'Konfiguracja', icon: Cog },
     { id: 'instructions', label: 'Instrukcje', icon: BookOpen },
