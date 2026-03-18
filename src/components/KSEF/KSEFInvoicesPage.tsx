@@ -88,15 +88,20 @@ export function KSEFInvoicesPage() {
   }, [canAccessKSEFConfig]);
 
   const handleSort = (column: SortColumn) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
+    if (column === 'department' && useServerPagination) return;
+    const newDir = sortColumn === column && sortDirection === 'asc' ? 'desc' : 'asc';
+    const newSort = sortColumn === column ? sortColumn : column;
+    setSortColumn(newSort);
+    setSortDirection(newDir);
+    if (useServerPagination) {
+      setCurrentPage(1);
+      loadPaginatedInvoices(1, searchQuery, newSort, newDir);
     }
   };
 
-  const getFilteredInvoices = () => {
+  const useServerPagination = invoiceTab === 'assigned' || invoiceTab === 'ignored';
+
+  const getUnassignedFiltered = () => {
     if (!searchQuery.trim()) return invoices;
     const q = searchQuery.trim().toLowerCase();
     return invoices.filter(inv =>
@@ -106,14 +111,12 @@ export function KSEFInvoicesPage() {
     );
   };
 
-  const getSortedInvoices = () => {
-    const filtered = getFilteredInvoices();
-    if (!sortColumn) return filtered;
-
+  const getUnassignedSorted = () => {
+    const filtered = getUnassignedFiltered();
+    if (!sortColumn || sortColumn === 'department') return filtered;
     return [...filtered].sort((a, b) => {
       let aValue: any;
       let bValue: any;
-
       switch (sortColumn) {
         case 'issue_date':
           aValue = a.issue_date ? new Date(a.issue_date).getTime() : 0;
@@ -127,40 +130,30 @@ export function KSEFInvoicesPage() {
           aValue = (a.supplier_name || '').toLowerCase();
           bValue = (b.supplier_name || '').toLowerCase();
           break;
-        case 'department':
-          const aDept = departments.find(d => d.id === a.transferred_to_department_id)?.name || '';
-          const bDept = departments.find(d => d.id === b.transferred_to_department_id)?.name || '';
-          aValue = aDept.toLowerCase();
-          bValue = bDept.toLowerCase();
-          break;
         default:
           return 0;
       }
-
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
   };
 
-  const getPaginatedInvoices = () => {
-    const sorted = getSortedInvoices();
-    const usePagination = invoiceTab === 'assigned' || invoiceTab === 'ignored';
-    if (!usePagination) return sorted;
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return sorted.slice(start, start + PAGE_SIZE);
-  };
+  const getDisplayedInvoices = () => useServerPagination ? invoices : getUnassignedSorted();
 
   const getTotalPages = () => {
-    const usePagination = invoiceTab === 'assigned' || invoiceTab === 'ignored';
-    if (!usePagination) return 1;
-    return Math.max(1, Math.ceil(getSortedInvoices().length / PAGE_SIZE));
+    if (!useServerPagination) return 1;
+    if (invoiceTab === 'assigned') return Math.max(1, Math.ceil(assignedCount / PAGE_SIZE));
+    return Math.max(1, Math.ceil(ignoredCount / PAGE_SIZE));
   };
 
   useEffect(() => {
     setSearchQuery('');
     setCurrentPage(1);
+    setSortColumn(null);
+    setSortDirection('asc');
   }, [invoiceTab]);
+
 
   useEffect(() => {
     loadInvoices();
@@ -269,57 +262,91 @@ export function KSEFInvoicesPage() {
     setInvoices([]);
 
     try {
-      const { count: unassigned } = await supabase
-        .from('ksef_invoices')
-        .select('*', { count: 'exact', head: true })
-        .is('transferred_to_invoice_id', null)
-        .is('transferred_to_department_id', null)
-        .is('ignored_at', null);
-
-      const { count: assigned } = await supabase
-        .from('ksef_invoices')
-        .select('*', { count: 'exact', head: true })
-        .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
-        .is('ignored_at', null);
-
-      const { count: ignored } = await supabase
-        .from('ksef_invoices')
-        .select('*', { count: 'exact', head: true })
-        .not('ignored_at', 'is', null);
+      const [{ count: unassigned }, { count: assigned }, { count: ignored }] = await Promise.all([
+        supabase.from('ksef_invoices').select('*', { count: 'exact', head: true })
+          .is('transferred_to_invoice_id', null)
+          .is('transferred_to_department_id', null)
+          .is('ignored_at', null),
+        supabase.from('ksef_invoices').select('*', { count: 'exact', head: true })
+          .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
+          .is('ignored_at', null),
+        supabase.from('ksef_invoices').select('*', { count: 'exact', head: true })
+          .not('ignored_at', 'is', null),
+      ]);
 
       setUnassignedCount(unassigned || 0);
       setAssignedCount(assigned || 0);
       setIgnoredCount(ignored || 0);
 
-      let query = supabase
-        .from('ksef_invoices')
-        .select('*');
-
       if (invoiceTab === 'unassigned') {
-        query = query
+        const { data, error } = await supabase
+          .from('ksef_invoices')
+          .select('*')
           .is('transferred_to_invoice_id', null)
           .is('transferred_to_department_id', null)
           .is('ignored_at', null)
           .order('created_at', { ascending: false });
-      } else if (invoiceTab === 'assigned') {
+        if (error) throw error;
+        setInvoices(data || []);
+      } else {
+        await loadPaginatedInvoices(1, '', null, 'asc');
+      }
+    } catch (error) {
+      console.error('Error loading KSEF invoices:', error);
+      setError('Nie udało się załadować faktur KSEF');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPaginatedInvoices = async (
+    page: number,
+    search: string,
+    sort: SortColumn | null,
+    dir: SortDirection,
+  ) => {
+    setLoading(true);
+    try {
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase.from('ksef_invoices').select('*');
+
+      if (invoiceTab === 'assigned') {
         query = query
           .or('transferred_to_invoice_id.not.is.null,transferred_to_department_id.not.is.null')
-          .is('ignored_at', null)
+          .is('ignored_at', null);
+      } else {
+        query = query.not('ignored_at', 'is', null);
+      }
+
+      if (search.trim()) {
+        const q = `%${search.trim()}%`;
+        query = query.or(`supplier_name.ilike.${q},supplier_nip.ilike.${q},invoice_number.ilike.${q}`);
+      }
+
+      if (sort === 'issue_date') {
+        query = query.order('issue_date', { ascending: dir === 'asc', nullsFirst: false });
+      } else if (sort === 'gross_amount') {
+        query = query.order('gross_amount', { ascending: dir === 'asc' });
+      } else if (sort === 'supplier_name') {
+        query = query.order('supplier_name', { ascending: dir === 'asc', nullsFirst: false });
+      } else if (invoiceTab === 'assigned') {
+        query = query
           .order('assigned_to_department_at', { ascending: false, nullsFirst: false })
           .order('transferred_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false });
       } else {
-        query = query
-          .not('ignored_at', 'is', null)
-          .order('ignored_at', { ascending: false });
+        query = query.order('ignored_at', { ascending: false });
       }
 
-      const { data, error } = await query;
+      query = query.range(from, to);
 
+      const { data, error } = await query;
       if (error) throw error;
       setInvoices(data || []);
     } catch (error) {
-      console.error('Error loading KSEF invoices:', error);
+      console.error('Error loading paginated KSEF invoices:', error);
       setError('Nie udało się załadować faktur KSEF');
     } finally {
       setLoading(false);
@@ -1276,7 +1303,7 @@ export function KSEFInvoicesPage() {
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
           </div>
-        ) : getSortedInvoices().length === 0 ? (
+        ) : getDisplayedInvoices().length === 0 ? (
           <div className="p-6 text-center">
             <FileText className="w-12 h-12 text-text-secondary-light dark:text-text-secondary-dark mx-auto mb-3" />
             {searchQuery ? (
@@ -1306,7 +1333,7 @@ export function KSEFInvoicesPage() {
           <>
             {searchQuery && (
               <div className="px-3 py-2 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                Znaleziono <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{getSortedInvoices().length}</span> wyników dla "<span className="italic">{searchQuery}</span>"
+                Znaleziono <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{getDisplayedInvoices().length}</span> wyników dla "<span className="italic">{searchQuery}</span>"
               </div>
             )}
             <div className="overflow-x-auto">
@@ -1350,12 +1377,12 @@ export function KSEFInvoicesPage() {
                     </div>
                   </th>
                   <th
-                    className="px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider cursor-pointer hover:bg-light-surface dark:hover:bg-dark-surface transition"
-                    onClick={() => handleSort('department')}
+                    className={`px-3 py-2 text-left text-[10px] font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider transition ${!useServerPagination ? 'cursor-pointer hover:bg-light-surface dark:hover:bg-dark-surface' : ''}`}
+                    onClick={() => !useServerPagination && handleSort('department')}
                   >
                     <div className="flex items-center gap-1">
                       Dział
-                      {sortColumn === 'department' && (
+                      {!useServerPagination && sortColumn === 'department' && (
                         sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                       )}
                     </div>
@@ -1373,7 +1400,7 @@ export function KSEFInvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {getPaginatedInvoices().map((invoice) => {
+                {getDisplayedInvoices().map((invoice) => {
                   const isSupplierInvalid = invoice.supplier_nip === AURA_HERBALS_NIP;
                   const isBuyerInvalid = invoice.buyer_nip !== AURA_HERBALS_NIP;
                   const hasError = isSupplierInvalid || isBuyerInvalid;
@@ -1485,11 +1512,11 @@ export function KSEFInvoicesPage() {
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-700/50">
               <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
                 Strona <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{currentPage}</span> z <span className="font-semibold text-text-primary-light dark:text-text-primary-dark">{getTotalPages()}</span>
-                {' '}· {getSortedInvoices().length} rekordów
+                {' '}· {invoiceTab === 'assigned' ? assignedCount : ignoredCount} rekordów
               </span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentPage(1)}
+                  onClick={() => { setCurrentPage(1); loadPaginatedInvoices(1, searchQuery, sortColumn, sortDirection); }}
                   disabled={currentPage === 1}
                   className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
                   title="Pierwsza strona"
@@ -1497,7 +1524,7 @@ export function KSEFInvoicesPage() {
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); loadPaginatedInvoices(p, searchQuery, sortColumn, sortDirection); }}
                   disabled={currentPage === 1}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
                 >
@@ -1518,7 +1545,7 @@ export function KSEFInvoicesPage() {
                       ) : (
                         <button
                           key={item}
-                          onClick={() => setCurrentPage(item as number)}
+                          onClick={() => { setCurrentPage(item as number); loadPaginatedInvoices(item as number, searchQuery, sortColumn, sortDirection); }}
                           className={`w-7 h-7 rounded-lg text-xs font-medium transition ${
                             currentPage === item
                               ? 'bg-brand-primary text-white'
@@ -1532,7 +1559,7 @@ export function KSEFInvoicesPage() {
                   }
                 </div>
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
+                  onClick={() => { const p = Math.min(getTotalPages(), currentPage + 1); setCurrentPage(p); loadPaginatedInvoices(p, searchQuery, sortColumn, sortDirection); }}
                   disabled={currentPage === getTotalPages()}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
                 >
@@ -1540,7 +1567,7 @@ export function KSEFInvoicesPage() {
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => setCurrentPage(getTotalPages())}
+                  onClick={() => { const p = getTotalPages(); setCurrentPage(p); loadPaginatedInvoices(p, searchQuery, sortColumn, sortDirection); }}
                   disabled={currentPage === getTotalPages()}
                   className="p-1.5 rounded-lg text-text-secondary-light dark:text-text-secondary-dark hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
                   title="Ostatnia strona"
