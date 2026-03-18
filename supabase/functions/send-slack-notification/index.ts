@@ -48,6 +48,8 @@ function getTypeEmoji(type: string): string {
       return ":moneybag:";
     case "purchase_request_rejected":
       return ":x:";
+    case "purchase_request_comment":
+      return ":speech_balloon:";
     default:
       return ":bell:";
   }
@@ -85,6 +87,8 @@ function getTypeLabel(type: string): string {
       return "Wniosek zakupowy opłacony";
     case "purchase_request_rejected":
       return "Wniosek zakupowy odrzucony";
+    case "purchase_request_comment":
+      return "Komentarz do wniosku zakupowego";
     default:
       return "Powiadomienie";
   }
