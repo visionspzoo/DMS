@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data = { ...data, full_name: googleName };
         }
 
-        supabase.rpc('update_last_login').catch(() => {});
+        await supabase.rpc('update_last_login');
 
         // Wyczyść token zaproszenia jeśli był zapisany
         const invitationToken = localStorage.getItem('invitation_token');
