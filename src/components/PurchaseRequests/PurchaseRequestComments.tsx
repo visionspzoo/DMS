@@ -29,7 +29,17 @@ export function PurchaseRequestComments({ requestId }: { requestId: string }) {
       .channel(`pr-comments-${requestId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'purchase_request_comments', filter: `purchase_request_id=eq.${requestId}` },
+        { event: 'INSERT', schema: 'public', table: 'purchase_request_comments', filter: `purchase_request_id=eq.${requestId}` },
+        (payload) => {
+          const newRow = payload.new as Comment;
+          if (newRow.user_id !== user?.id) {
+            loadComments();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'purchase_request_comments', filter: `purchase_request_id=eq.${requestId}` },
         () => { loadComments(); }
       )
       .subscribe();
@@ -68,21 +78,49 @@ export function PurchaseRequestComments({ requestId }: { requestId: string }) {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
     setSending(true);
-    const { error } = await supabase.from('purchase_request_comments').insert({
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticComment: Comment = {
+      id: tempId,
       purchase_request_id: requestId,
       user_id: user!.id,
       content: trimmed,
-    });
+      created_at: new Date().toISOString(),
+      author: { full_name: profile?.full_name || null, email: user?.email || null },
+    };
+    setComments(prev => [...prev, optimisticComment]);
+    setText('');
+    textareaRef.current?.focus();
+
+    const { data, error } = await supabase
+      .from('purchase_request_comments')
+      .insert({
+        purchase_request_id: requestId,
+        user_id: user!.id,
+        content: trimmed,
+      })
+      .select('*')
+      .single();
+
     setSending(false);
-    if (!error) {
-      setText('');
-      textareaRef.current?.focus();
+
+    if (error) {
+      setComments(prev => prev.filter(c => c.id !== tempId));
+      setText(trimmed);
+    } else if (data) {
+      setComments(prev =>
+        prev.map(c => c.id === tempId ? { ...data, author: optimisticComment.author } : c)
+      );
     }
   }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
-    await supabase.from('purchase_request_comments').delete().eq('id', id);
+    setComments(prev => prev.filter(c => c.id !== id));
+    const { error } = await supabase.from('purchase_request_comments').delete().eq('id', id);
+    if (error) {
+      await loadComments();
+    }
     setDeletingId(null);
   }
 
