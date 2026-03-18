@@ -718,8 +718,29 @@ async function processEmailChunk(
               await supabase.storage.from("documents").remove([filePath]);
               if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "not_invoice" });
             } else {
-              if (ocrData.validationError) warnings.push(`${part.filename}: ${ocrData.validationError}`);
-              if (send) await send({ type: "ocr_done", filename: part.filename });
+              if (!job.force_reimport && d.invoice_number && (d.supplier_nip || d.supplier_name)) {
+                const nipClean = d.supplier_nip ? String(d.supplier_nip).replace(/[^0-9]/g, "") : null;
+                let dupQuery = supabase
+                  .from("invoices")
+                  .select("id")
+                  .eq("invoice_number", d.invoice_number)
+                  .neq("id", invoiceData.id);
+                if (nipClean) {
+                  dupQuery = dupQuery.not("supplier_nip", "is", null);
+                }
+                const { data: existingByNumber } = await dupQuery.maybeSingle();
+                if (existingByNumber) {
+                  await supabase.from("invoices").delete().eq("id", invoiceData.id);
+                  await supabase.storage.from("documents").remove([filePath]);
+                  if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+                  isRealInvoice = false;
+                }
+              }
+
+              if (isRealInvoice) {
+                if (ocrData.validationError) warnings.push(`${part.filename}: ${ocrData.validationError}`);
+                if (send) await send({ type: "ocr_done", filename: part.filename });
+              }
             }
           } else {
             isRealInvoice = true;
