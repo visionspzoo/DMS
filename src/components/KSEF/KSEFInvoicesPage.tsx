@@ -68,6 +68,7 @@ export function KSEFInvoicesPage() {
   const [nextSyncIn, setNextSyncIn] = useState<number>(SYNC_INTERVAL_MS);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -1256,13 +1257,30 @@ export function KSEFInvoicesPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              onChange={e => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                setCurrentPage(1);
+                if (useServerPagination) {
+                  if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                  searchDebounceRef.current = setTimeout(() => {
+                    loadPaginatedInvoices(1, val, sortColumn, sortDirection);
+                  }, 400);
+                }
+              }}
               placeholder="Szukaj po dostawcy, NIP lub numerze faktury..."
               className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700/50 bg-light-surface dark:bg-dark-surface text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/40 transition"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('');
+                  setCurrentPage(1);
+                  if (useServerPagination) {
+                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                    loadPaginatedInvoices(1, '', sortColumn, sortDirection);
+                  }
+                }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark transition"
               >
                 <X className="w-4 h-4" />
@@ -1312,7 +1330,14 @@ export function KSEFInvoicesPage() {
                   Brak wyników dla "{searchQuery}"
                 </p>
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                    if (useServerPagination) {
+                      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                      loadPaginatedInvoices(1, '', sortColumn, sortDirection);
+                    }
+                  }}
                   className="mt-2 text-sm text-brand-primary hover:underline"
                 >
                   Wyczyść wyszukiwanie
