@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase, getValidSession } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
-  Send, Loader2, UserCheck, Trash2, RefreshCw, Copy, Check, Upload, Bell
+  Send, Loader2, UserCheck, Trash2, RefreshCw, Copy, Check, Upload, Bell, UserPlus, Users
 } from 'lucide-react';
+
+const SLACK_MEMBERS = [
+  {"id":"UGA2RGNSG","name":"Karol Majcherski"},{"id":"UGAQY9WC8","name":"Adrian Konrad"},{"id":"UGBGV6E6A","name":"Adrian Tkaczyk"},{"id":"UGC1R2E5B","name":"Aga"},{"id":"UGD9310VC","name":"Dominik"},{"id":"UGDRAPA15","name":"Kasia Zaucha"},{"id":"UGEB4AP61","name":"Jarek Paul"},{"id":"UGMCREJK1","name":"Maria"},{"id":"UH82HNE6T","name":"Natalia Michalak"},{"id":"ULZVBGXB6","name":"Karina"},{"id":"UPP1300RZ","name":"Kamila"},{"id":"U01422K2QJ3","name":"Emilia Zaniewska"},{"id":"U01C0R17Z8U","name":"Andrzej Piepiórka"},{"id":"U01C0U0QN68","name":"Andrzej Chrapek"},{"id":"U01R6LBJ5KL","name":"Kasia Pietkiewicz"},{"id":"U027ASUEZB4","name":"Marek Stasiak"},{"id":"U02NHM6JR4N","name":"Dominika Leśnikowska"},{"id":"U02RBQHDF16","name":"Magdalena Wiczkowska"},{"id":"U0399Q0LH99","name":"Mateusz Chwesiuk"},{"id":"U03AA4LR741","name":"Ewa Oszmian"},{"id":"U03BCD0PXKM","name":"Monika Nurzyńska"},{"id":"U03F1869GBE","name":"Alicja Szymańska"},{"id":"U03F4RFTCB0","name":"Paweł Dereszewski"},{"id":"U04BG79UE7J","name":"Sebastian Hoffman"},{"id":"U04DX5VLD4N","name":"Barbara Chomicz"},{"id":"U04G83W1D4L","name":"Ania Grzędzińska"},{"id":"U051H8C1ZFG","name":"Izabela Kowalczyk"},{"id":"U0535NNTWBF","name":"Patrycja Baltrukas"},{"id":"U053X8US3R6","name":"Ada Renk-Górska"},{"id":"U05L4N59KJ7","name":"Klaudia Stolarczyk"},{"id":"U05NB31GHS9","name":"Łukasz Szulc"},{"id":"U05NHQ0CM8E","name":"Dorota Kubacka"},{"id":"U05PTJ5V3PG","name":"Marta Kozuń"},{"id":"U064B5JUZ45","name":"Agata Tomczak"},{"id":"U064U3VAGJ2","name":"Monika Woss"},{"id":"U06NXNGCQ4U","name":"Paulina Żmuda-Trzebiatowska"},{"id":"U06SDC4PFT4","name":"Nina Wawryszuk"},{"id":"U0736U64KT2","name":"Agata Tomaszewska"},{"id":"U0762M0EUT0","name":"Grzegorz Barwiński"},{"id":"U076885EEE6","name":"Paulina"},{"id":"U07CU8NFD8E","name":"Weronika Łazarewicz"},{"id":"U07HDEB48TZ","name":"Kinga Warkusz"},{"id":"U07JPJCM31R","name":"Weronika Dukat"},{"id":"U07KE11851D","name":"Emilia Czerniak"},{"id":"U07PPEWKR8C","name":"Karolina Urbańczyk"},{"id":"U07U4BG5ETY","name":"Aneta Chojnacka"},{"id":"U082CK4CSSU","name":"Adrian Szostek"},{"id":"U082P5U32RF","name":"Agata Pachulska"},{"id":"U085GJECAG2","name":"Grażyna Cieszyńska"},{"id":"U087VC1F5BP","name":"Weronika"},{"id":"U08B62FTWEN","name":"Bartosz Tomulewicz"},{"id":"U08C478JTNC","name":"Magdalena Matusiak"},{"id":"U08CA0F7P8F","name":"Kamil Brzozowski"},{"id":"U08EB6K2961","name":"Mateusz Kuczkowski"},{"id":"U08HRAHAY8P","name":"Andrzej Polaczek"},{"id":"U08JUVBK8UQ","name":"Adrian Szulc"},{"id":"U08L95E5XPV","name":"Sonia Żarska-Wereszko"},{"id":"U08P77VGRBM","name":"Inez Zielińska"},{"id":"U08PBKAAZ6G","name":"Dorota Lubowicka"},{"id":"U093W59MWKW","name":"Marta Narloch"},{"id":"U094GH95FNC","name":"Patrycja Princ"},{"id":"U095GKPF9D4","name":"Paweł Dudek"},{"id":"U09EKQFGN5T","name":"Natalia Parzych"},{"id":"U09EP0699J6","name":"Michał Oryl"},{"id":"U09F32WHS8Z","name":"Piotr Urban"},{"id":"U09HWSK1Q83","name":"Wiesław Parulski"},{"id":"U09L5L1DC5Q","name":"Jagoda Wajer"},{"id":"U09QP9N9ZL2","name":"Tetiana Hudz"},{"id":"U0A0JV4QPPT","name":"Katarzyna Kudyba"},{"id":"U0A2ZJU6535","name":"Marek Kowalski"},{"id":"U0A4TCJ1ZV1","name":"Anastasiia Poletaieva"},{"id":"U0A50J9T68J","name":"Karolina Mrawiec"},{"id":"U0A6QJCJ32Q","name":"Marcin Pietrasiuk"},{"id":"U0A98DSAFCZ","name":"Mariya Yelfimova-Reutt"},{"id":"U0AAQKQRTK5","name":"Marcin Bucholski"},{"id":"U0ABV062DEV","name":"Mariusz Błaszczyk"},{"id":"U0ACCVBKKL1","name":"Jakub Sulima"},{"id":"U0ACK4QMEC8","name":"Aleksandra Sowińska"}
+] as const;
 
 interface SlackConfig {
   id?: string;
@@ -51,6 +55,9 @@ export default function SlackSettings() {
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [sendingSummary, setSendingSummary] = useState(false);
   const [summaryResult, setSummaryResult] = useState<{ notified: number } | null>(null);
+  const [quickMapSelections, setQuickMapSelections] = useState<Record<string, string>>({});
+  const [quickMapSaving, setQuickMapSaving] = useState<Record<string, boolean>>({});
+  const [quickMapDone, setQuickMapDone] = useState<Set<string>>(new Set());
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/slack-invoice-bot`;
 
@@ -314,6 +321,34 @@ export default function SlackSettings() {
   const unmappedUsers = users.filter(
     (u) => !mappings.some((m) => m.user_id === u.id)
   );
+
+  const unmappedSlackMembers = useMemo(() => {
+    const mappedSlackIds = new Set(mappings.map((m) => m.slack_user_id));
+    const donIds = quickMapDone;
+    return SLACK_MEMBERS.filter(
+      (sm) => !mappedSlackIds.has(sm.id) && !donIds.has(sm.id)
+    );
+  }, [mappings, quickMapDone]);
+
+  async function saveQuickMap(slackId: string) {
+    const userId = quickMapSelections[slackId];
+    if (!userId) return;
+    setQuickMapSaving((prev) => ({ ...prev, [slackId]: true }));
+    setError(null);
+    try {
+      const { error: err } = await supabase
+        .from('slack_user_mappings')
+        .upsert({ user_id: userId, slack_user_id: slackId }, { onConflict: 'user_id' });
+      if (err) throw err;
+      setQuickMapDone((prev) => new Set(prev).add(slackId));
+      setQuickMapSelections((prev) => { const n = { ...prev }; delete n[slackId]; return n; });
+      loadMappings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nie udalo sie dodac przypisania');
+    } finally {
+      setQuickMapSaving((prev) => ({ ...prev, [slackId]: false }));
+    }
+  }
 
   if (loading) {
     return (
@@ -672,6 +707,75 @@ export default function SlackSettings() {
               <strong>Jak znalezc Slack Member ID?</strong> W Slacku kliknij na profil uzytkownika, potem "..." (Wiecej) i "Kopiuj ID uczestnika". Format: U0123456789.
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark" />
+            <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+              Niezmapowani uzytkownicy Slack
+            </h2>
+            <span className="ml-auto text-xs px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full font-medium">
+              {unmappedSlackMembers.length} osob
+            </span>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {unmappedSlackMembers.length === 0 ? (
+            <div className="text-center py-6 text-text-secondary-light dark:text-text-secondary-dark text-sm">
+              <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+              Wszyscy uzytkownicy Slack zostali zmapowani.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-3">
+                Przypisz konta aplikacji do ponizszych uzytkownikow Slack. Osoby bez konta w systemie mozesz pomin.
+              </p>
+              {unmappedSlackMembers.map((sm) => {
+                const isSaving = quickMapSaving[sm.id];
+                const selectedUserId = quickMapSelections[sm.id] || '';
+                return (
+                  <div
+                    key={sm.id}
+                    className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition-colors"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                      <span className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark">
+                        {sm.name.charAt(0)}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark truncate">{sm.name}</p>
+                      <code className="text-[10px] text-text-secondary-light dark:text-text-secondary-dark font-mono">{sm.id}</code>
+                    </div>
+                    <select
+                      value={selectedUserId}
+                      onChange={(e) => setQuickMapSelections((prev) => ({ ...prev, [sm.id]: e.target.value }))}
+                      className="flex-shrink-0 w-48 px-2 py-1.5 border border-slate-300 dark:border-slate-600/50 rounded-lg text-xs bg-light-surface dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                    >
+                      <option value="">Brak konta / Pomi</option>
+                      {unmappedUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => saveQuickMap(sm.id)}
+                      disabled={!selectedUserId || isSaving}
+                      className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-brand-primary text-white rounded-lg text-xs font-medium hover:bg-brand-primary-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+                      Przypisz
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
