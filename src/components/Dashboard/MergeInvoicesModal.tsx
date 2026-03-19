@@ -182,6 +182,7 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   const [merging, setMerging] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
   const [mergeResults, setMergeResults] = useState<{ key: string; success: boolean; error?: string }[]>([]);
+  const [mergeGroupError, setMergeGroupError] = useState<{ key: string; message: string } | null>(null);
   const [done, setDone] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedWinners, setSelectedWinners] = useState<Map<string, string>>(new Map());
@@ -353,12 +354,21 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
   const handleMergeSingle = async (group: DuplicateGroup) => {
     const winnerId = selectedWinners.get(group.key) || group.winner.id;
     setMergingGroupKey(group.key);
+    setMergeGroupError(null);
     try {
       await mergeGroup(group, winnerId);
       setMergedKeys(prev => new Set(prev).add(group.key));
       onGroupMerged?.();
     } catch (err: any) {
-      alert(`Błąd scalania: ${err.message}`);
+      const msg: string = err.message || '';
+      if (msg.includes('Access denied') || msg.includes('own at least one')) {
+        setMergeGroupError({
+          key: group.key,
+          message: 'Nie jesteś właścicielem żadnej z faktur w tej grupie. Tylko właściciel faktury może ją łączyć.',
+        });
+      } else {
+        setMergeGroupError({ key: group.key, message: `Błąd scalania: ${msg}` });
+      }
     } finally {
       setMergingGroupKey(null);
     }
@@ -548,6 +558,13 @@ export function MergeInvoicesModal({ invoices, onClose, onMergeComplete, onGroup
                         </button>
                       </div>
                     </div>
+
+                    {mergeGroupError?.key === group.key && (
+                      <div className="border-t border-red-200 dark:border-red-700/50 px-3 py-2.5 bg-red-50 dark:bg-red-900/20 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700 dark:text-red-300">{mergeGroupError.message}</p>
+                      </div>
+                    )}
 
                     {isExpanded && (
                       <div className="border-t border-slate-200 dark:border-slate-700/50 p-3 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">

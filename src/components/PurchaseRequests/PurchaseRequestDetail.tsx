@@ -479,10 +479,14 @@ export function PurchaseRequestDetail({
 
               {showRejectForm ? (
                 <div className="space-y-3">
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 text-amber-700 dark:text-amber-400 text-xs">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    Uzupelnij powod odrzucenia — wnioskodawca zobaczy ten komentarz i bedzie wiedzial co poprawic.
+                  </div>
                   <textarea
                     value={comment}
                     onChange={e => setComment(e.target.value)}
-                    placeholder="Podaj powód odrzucenia (opcjonalnie)..."
+                    placeholder="Wpisz powod odrzucenia..."
                     rows={3}
                     className="w-full px-3 py-2.5 rounded-xl border border-red-200 dark:border-red-700/50 bg-light-bg dark:bg-dark-bg text-sm text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none transition-colors"
                   />
