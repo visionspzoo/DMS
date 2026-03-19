@@ -567,8 +567,15 @@ async function processEmailChunk(
       let attachmentCount = 0;
       let invoiceCount = 0;
 
+      const MAX_ATTACHMENT_BYTES = 1 * 1024 * 1024;
+
       for (const part of pdfParts) {
         attachmentCount++;
+
+        if (part.body?.size && part.body.size > MAX_ATTACHMENT_BYTES) {
+          if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "too_large", size: part.body.size });
+          continue;
+        }
 
         if (send) {
           await send({ type: "processing_attachment", email: config.email_address, filename: part.filename, subject });
@@ -583,6 +590,11 @@ async function processEmailChunk(
         const attachmentData = await attachmentResponse.json();
         const rawData = attachmentData.data.replace(/-/g, "+").replace(/_/g, "/");
         const pdfData = Uint8Array.from(atob(rawData), (c) => c.charCodeAt(0));
+
+        if (pdfData.length > MAX_ATTACHMENT_BYTES) {
+          if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "too_large", size: pdfData.length });
+          continue;
+        }
         const fileHash = await computeFileHash(pdfData);
 
         if (!job.force_reimport) {
