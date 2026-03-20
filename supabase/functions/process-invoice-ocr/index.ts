@@ -735,19 +735,22 @@ Deno.serve(async (req: Request) => {
     let buyerErrorMessage: string | null = null;
     let isOutgoingInvoice = false;
 
+    const rawTextLower = (raw.text || '').toLowerCase();
+    const isVendoDocument = rawTextLower.includes('vendo') && rawTextLower.includes('erp');
+
+    let isAuraAsSeller = false;
     if (parsedData.supplier_nip) {
       const clean = String(parsedData.supplier_nip).replace(/[^0-9]/g, '');
-      if (COMPANY_NIPS.some(n => clean === n)) {
-        isOutgoingInvoice = true;
-        supplierErrorMessage = `FAKTURA WYCHODZĄCA: Aura Herbals (NIP: ${clean}) jest SPRZEDAWCĄ na tej fakturze - dokument wystawiony przez nas dla kontrahenta.`;
-      }
+      if (COMPANY_NIPS.some(n => clean === n)) isAuraAsSeller = true;
     }
-    if (!isOutgoingInvoice && parsedData.supplier_name) {
+    if (!isAuraAsSeller && parsedData.supplier_name) {
       const sn = String(parsedData.supplier_name).toLowerCase();
-      if (sn.includes('aura herbals') || sn.includes('aura herbals sp')) {
-        isOutgoingInvoice = true;
-        supplierErrorMessage = `FAKTURA WYCHODZĄCA: Aura Herbals jest SPRZEDAWCĄ na tej fakturze - dokument wystawiony przez nas dla kontrahenta.`;
-      }
+      if (sn.includes('aura herbals')) isAuraAsSeller = true;
+    }
+
+    if (isAuraAsSeller && isVendoDocument) {
+      isOutgoingInvoice = true;
+      supplierErrorMessage = `FAKTURA WYCHODZĄCA: Aura Herbals jest SPRZEDAWCĄ na tej fakturze (dokument z systemu VENDO ERP) - wystawiona przez nas dla kontrahenta.`;
     }
     if (!isOutgoingInvoice) {
       if (parsedData.buyer_nip) {
