@@ -20,17 +20,25 @@ interface OCRRequest {
 // STEP 1: EXTRACT TEXT WITHOUT AI
 // ─────────────────────────────────────────────
 
-async function extractTextFromPdf(base64Data: string): Promise<string | null> {
+interface PdfExtractResult {
+  text: string | null;
+  pageCount: number | null;
+}
+
+async function extractTextFromPdf(base64Data: string): Promise<PdfExtractResult> {
   try {
     const pdfParse = await import('npm:pdf-parse@1.1.1');
     const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
     const pdfData = await (pdfParse as any).default(buffer);
     const text = pdfData?.text || '';
-    if (text.trim().length < 30) return null;
-    return text;
+    const pageCount = pdfData?.numpages ?? null;
+    return {
+      text: text.trim().length < 30 ? null : text,
+      pageCount,
+    };
   } catch (e: any) {
     console.error('pdf-parse failed:', e?.message || e);
-    return null;
+    return { text: null, pageCount: null };
   }
 }
 
@@ -39,18 +47,20 @@ interface ExtractedRawData {
   isScanned: boolean;
   mimeType: string;
   base64: string;
+  pageCount: number | null;
 }
 
 async function extractRawData(base64Data: string, mimeType: string): Promise<ExtractedRawData> {
   const isPDF = mimeType === 'application/pdf';
 
   if (isPDF) {
-    const text = await extractTextFromPdf(base64Data);
+    const { text, pageCount } = await extractTextFromPdf(base64Data);
     return {
       text,
       isScanned: text === null,
       mimeType,
       base64: base64Data,
+      pageCount,
     };
   }
 
@@ -59,6 +69,7 @@ async function extractRawData(base64Data: string, mimeType: string): Promise<Ext
     isScanned: false,
     mimeType,
     base64: base64Data,
+    pageCount: null,
   };
 }
 
@@ -129,9 +140,18 @@ const NIP_PATTERN = /\b\d{3}[-\s]?\d{3}[-\s]?\d{2}[-\s]?\d{2}\b|\b\d{10}\b/;
 const DATE_PATTERN = /\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\b|\b\d{4}[.\/-]\d{2}[.\/-]\d{2}\b/;
 const INVOICE_NUMBER_PATTERN = /(?:faktura\s*(?:nr|no|vat)?|invoice\s*(?:no|number|nr)?|rechnung(?:snr)?|nr\s+faktury)[:\s#]*([A-Z0-9\/\-_]+)/i;
 
-export function runInvoiceFilter(text: string | null, filename?: string): FilterResult {
+export function runInvoiceFilter(text: string | null, filename?: string, pageCount?: number | null): FilterResult {
   const reasons: string[] = [];
   let score = 0;
+
+  if (pageCount != null && pageCount > 3) {
+    return {
+      isInvoice: false,
+      confidence: 0,
+      reasons: [`PDF has ${pageCount} pages (max 3 allowed)`],
+      rejectionReason: 'too_many_pages',
+    };
+  }
 
   if (!text || text.trim().length < 30) {
     if (filename) {
@@ -665,7 +685,7 @@ Deno.serve(async (req: Request) => {
         ? invoiceRow.file_url.split('/').pop()?.split('?')[0] || undefined
         : undefined;
 
-      filterResult = runInvoiceFilter(raw.text, filename);
+      filterResult = runInvoiceFilter(raw.text, filename, raw.pageCount);
       console.log('Filter result:', filterResult);
 
       if (!filterResult.isInvoice && !raw.isScanned) {
