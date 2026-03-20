@@ -691,6 +691,8 @@ export function MyPurchaseRequests() {
 
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1" />
 
+            <label className="text-xs font-semibold text-text-secondary-light dark:text-text-secondary-dark whitespace-nowrap">Dodatkowe Filtry:</label>
+
             <button
               onClick={() => setOwnerOnly(!ownerOnly)}
               className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
