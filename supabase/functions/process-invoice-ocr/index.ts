@@ -733,23 +733,31 @@ Deno.serve(async (req: Request) => {
     const CORRECT_BUYER_NIP = '5851490834';
     let supplierErrorMessage: string | null = null;
     let buyerErrorMessage: string | null = null;
+    let isOutgoingInvoice = false;
 
     if (parsedData.supplier_nip) {
       const clean = String(parsedData.supplier_nip).replace(/[^0-9]/g, '');
       if (COMPANY_NIPS.some(n => clean === n)) {
-        const name = clean === '5851490834' ? 'Aura Herbals' : 'firma';
-        supplierErrorMessage = `BŁĄD: AI pomyliło strony faktury - ${name} (NIP: ${clean}) to NABYWCA, nie SPRZEDAWCA.`;
-        parsedData.supplier_name = `[BŁĄD: TO NABYWCA] ${parsedData.supplier_name || ''}`;
-        parsedData.supplier_nip = `[BŁĄD] ${parsedData.supplier_nip}`;
+        isOutgoingInvoice = true;
+        supplierErrorMessage = `FAKTURA WYCHODZĄCA: Aura Herbals (NIP: ${clean}) jest SPRZEDAWCĄ na tej fakturze - dokument wystawiony przez nas dla kontrahenta.`;
       }
     }
-    if (parsedData.buyer_nip) {
-      const clean = String(parsedData.buyer_nip).replace(/[^0-9]/g, '');
-      if (clean !== CORRECT_BUYER_NIP) buyerErrorMessage = `BŁĘDNY ODBIORCA: NIP ${parsedData.buyer_nip}`;
-    } else if (parsedData.buyer_name) {
-      const bn = String(parsedData.buyer_name).toLowerCase();
-      if (!bn.includes('aura') || !bn.includes('herbals'))
-        buyerErrorMessage = `BŁĘDNY ODBIORCA: ${parsedData.buyer_name}`;
+    if (!isOutgoingInvoice && parsedData.supplier_name) {
+      const sn = String(parsedData.supplier_name).toLowerCase();
+      if (sn.includes('aura herbals') || sn.includes('aura herbals sp')) {
+        isOutgoingInvoice = true;
+        supplierErrorMessage = `FAKTURA WYCHODZĄCA: Aura Herbals jest SPRZEDAWCĄ na tej fakturze - dokument wystawiony przez nas dla kontrahenta.`;
+      }
+    }
+    if (!isOutgoingInvoice) {
+      if (parsedData.buyer_nip) {
+        const clean = String(parsedData.buyer_nip).replace(/[^0-9]/g, '');
+        if (clean !== CORRECT_BUYER_NIP) buyerErrorMessage = `BŁĘDNY ODBIORCA: NIP ${parsedData.buyer_nip}`;
+      } else if (parsedData.buyer_name) {
+        const bn = String(parsedData.buyer_name).toLowerCase();
+        if (!bn.includes('aura') || !bn.includes('herbals'))
+          buyerErrorMessage = `BŁĘDNY ODBIORCA: ${parsedData.buyer_name}`;
+      }
     }
 
     const supplierCountry = typeof parsedData.supplier_country === 'string'
@@ -865,6 +873,7 @@ Deno.serve(async (req: Request) => {
         filterResult,
         suggestedTags,
         suggestedDescription,
+        isOutgoingInvoice,
         validationError: supplierErrorMessage,
         buyerError: buyerErrorMessage,
       }),

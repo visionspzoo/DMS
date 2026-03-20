@@ -719,6 +719,13 @@ async function processEmailChunk(
             ocrData = await ocrResponse.json();
             const d = ocrData.data || {};
 
+            if (ocrData.isOutgoingInvoice) {
+              await supabase.from("invoices").delete().eq("id", invoiceData.id);
+              await supabase.storage.from("documents").remove([filePath]);
+              if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "outgoing_invoice" });
+              continue;
+            }
+
             if (!job.force_reimport && d.invoice_number && (d.supplier_nip || d.supplier_name)) {
               const nipClean = d.supplier_nip ? String(d.supplier_nip).replace(/[^0-9]/g, "") : null;
               let dupQuery = supabase
