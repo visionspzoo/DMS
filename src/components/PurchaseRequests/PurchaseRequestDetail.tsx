@@ -38,6 +38,7 @@ interface Approval {
 interface Department {
   id: string;
   name: string;
+  director_id: string | null;
 }
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; pill: string; banner: string; dot: string }> = {
@@ -145,7 +146,7 @@ export function PurchaseRequestDetail({
       if (req.department_id) {
         const { data: dept } = await supabase
           .from('departments')
-          .select('id, name')
+          .select('id, name, director_id')
           .eq('id', req.department_id)
           .maybeSingle();
         setDepartment(dept);
@@ -251,7 +252,10 @@ export function PurchaseRequestDetail({
   }
 
   const isAdmin = profile?.is_admin === true;
-  const canApprove = isApprover && request?.current_approver_id === profile?.id && request?.status === 'pending';
+  const isDeptDirector = department?.director_id === profile?.id;
+  const canApprove = isApprover && request?.status === 'pending' && (
+    request?.current_approver_id === profile?.id || isDeptDirector || isAdmin
+  );
   const canWithdraw = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected');
   const canEdit = request?.user_id === profile?.id && (request?.status === 'pending' || request?.status === 'rejected') && !!onEdit;
 
