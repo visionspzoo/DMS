@@ -903,7 +903,10 @@ async function getValidAccessToken(supabase: any, config: EmailConfig): Promise<
 
 // ─────────────────────────────────────────────
 // INVOICE FILTER ALGORITHM (NO AI)
-// Algorytm filtracji — rozwijać o kolejne zmienne
+// Twarde wymagania:
+//  1. Dokument musi zawierać słowo "faktura" (lub odpowiednik w innym języku)
+//  2. Słowo "faktura" musi być na PIERWSZEJ stronie
+//  3. Dokument musi zawierać kwotę pieniężną
 // ─────────────────────────────────────────────
 
 interface LocalFilterResult {
@@ -914,46 +917,49 @@ interface LocalFilterResult {
   rejectionReason?: string;
 }
 
-const INVOICE_KEYWORDS_STRONG = [
-  'faktura vat', 'faktura nr', 'faktura pro', 'faktura korygująca',
-  'nota księgowa', 'nota korygująca',
-  'invoice', 'invoice no', 'invoice number', 'inv no',
-  'rechnung', 'rechnungsnummer',
-  'facture', 'numéro de facture',
-  'fattura', 'factura',
-];
-
-const INVOICE_KEYWORDS_MEDIUM = [
-  'nip', 'vat', 'brutto', 'netto', 'gross', 'net amount',
-  'tax', 'podatek', 'vat rate', 'stawka vat',
-  'płatność', 'zapłata', 'payment', 'due date', 'termin płatności',
-  'sprzedawca', 'nabywca', 'seller', 'buyer', 'bill to',
-  'suma', 'razem', 'total', 'subtotal', 'amount due',
-  'data wystawienia', 'issue date', 'data sprzedaży',
-  'konto bankowe', 'bank account', 'iban', 'swift',
-  'proforma', 'pro forma', 'credit note', 'debit note',
-];
-
-const EXCLUDE_KEYWORDS = [
-  'newsletter', 'unsubscribe', 'wypisz się', 'zapisz się',
-  'regulamin', 'terms and conditions', 'privacy policy',
-  'polityka prywatności', 'oferta handlowa', 'katalog', 'brochure',
-];
-
 const HARD_SKIP_FILENAMES = [
   'newsletter', 'brochure', 'katalog', 'catalog', 'catalogue',
   'presentation', 'prezentacja', 'regulamin', 'terms_and_conditions',
   'terms-and-conditions', 'vendo.erp',
 ];
 
-const AMOUNT_PATTERNS = [
-  /\d[\d\s]*[,.]\d{2}\s*(pln|eur|usd|gbp|chf|czk|huf)/i,
-  /\d[\d\s]*[,.]\d{2}\s*(zł|€|\$|£)/i,
-  /(pln|eur|usd|gbp|zł)\s*\d[\d\s]*[,.]\d{2}/i,
+const INVOICE_WORD_PATTERNS = [
+  /\bfaktura\b/i,
+  /\binvoice\b/i,
+  /\brechnung\b/i,
+  /\bfacture\b/i,
+  /\bfattura\b/i,
+  /\bfactura\b/i,
+  /\bfaktúra\b/i,
+  /\bszámla\b/i,
+  /\bfatura\b/i,
+  /\bnota\s+(?:księgowa|korygująca)\b/i,
+  /\bcredit\s+note\b/i,
+  /\bdebit\s+note\b/i,
+  /\bproforma\b/i,
+  /\bpro\s+forma\b/i,
 ];
-const NIP_PATTERN = /\b\d{3}[-\s]?\d{3}[-\s]?\d{2}[-\s]?\d{2}\b|\b\d{10}\b/;
-const DATE_PATTERN = /\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\b|\b\d{4}[.\/-]\d{2}[.\/-]\d{2}\b/;
-const INVOICE_NUMBER_PATTERN = /(?:faktura\s*(?:nr|no|vat)?|invoice\s*(?:no|number|nr)?|rechnung(?:snr)?|nr\s+faktury)[:\s#]*([A-Z0-9\/\-_]+)/i;
+
+const AMOUNT_PATTERNS = [
+  /\d[\d\s]*[,.]\d{2}\s*(pln|eur|usd|gbp|chf|czk|huf|sek|nok|dkk)/i,
+  /\d[\d\s]*[,.]\d{2}\s*(zł|€|\$|£)/i,
+  /(pln|eur|usd|gbp|zł|€|\$|£)\s*\d[\d\s]*[,.]\d{2}/i,
+  /\d+[\s\u00a0]?\d{3}[,.]\d{2}/,
+];
+
+function hasInvoiceWord(text: string): boolean {
+  for (const pattern of INVOICE_WORD_PATTERNS) {
+    if (pattern.test(text)) return true;
+  }
+  return false;
+}
+
+function hasMonetaryAmount(text: string): boolean {
+  for (const pattern of AMOUNT_PATTERNS) {
+    if (pattern.test(text)) return true;
+  }
+  return false;
+}
 
 async function runLocalInvoiceFilter(base64Data: string, filename: string): Promise<LocalFilterResult> {
   const fnLower = filename.toLowerCase();
@@ -964,77 +970,58 @@ async function runLocalInvoiceFilter(base64Data: string, filename: string): Prom
     }
   }
 
-  let text: string | null = null;
+  let fullText: string | null = null;
+  let firstPageText: string | null = null;
+
   try {
     const pdfParse = await import('npm:pdf-parse@1.1.1');
     const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const pdfData = await (pdfParse as any).default(buffer);
-    const extracted = pdfData?.text || '';
-    if (extracted.trim().length >= 30) text = extracted;
+
+    const pdfDataFull = await (pdfParse as any).default(buffer);
+    const extractedFull = pdfDataFull?.text || '';
+    if (extractedFull.trim().length >= 30) fullText = extractedFull;
+
+    const pdfDataPage1 = await (pdfParse as any).default(buffer, { max: 1 });
+    const extractedPage1 = pdfDataPage1?.text || '';
+    if (extractedPage1.trim().length >= 10) firstPageText = extractedPage1;
   } catch (_) {}
 
-  const isScanned = text === null;
+  const isScanned = fullText === null;
 
   if (isScanned) {
-    const filenameHint = fnLower.includes('faktura') || fnLower.includes('invoice') || fnLower.includes('fv') || fnLower.includes('rechnung');
     return {
-      isInvoice: true,
+      isInvoice: false,
       isScanned: true,
-      confidence: filenameHint ? 0.5 : 0.3,
-      reasons: ['scanned PDF — no extractable text, deferring to AI visual'],
+      confidence: 0,
+      reasons: ['scanned PDF — no extractable text, cannot verify invoice word or amount'],
+      rejectionReason: 'scanned_no_text',
     };
   }
 
-  const lower = text!.toLowerCase();
   const reasons: string[] = [];
-  let score = 0;
 
-  for (const kw of EXCLUDE_KEYWORDS) {
-    if (lower.includes(kw)) {
-      return { isInvoice: false, isScanned: false, confidence: 0, reasons: [`excluded keyword: "${kw}"`], rejectionReason: 'excluded_keyword' };
-    }
+  const page1Check = firstPageText ?? fullText!;
+  if (!hasInvoiceWord(page1Check)) {
+    return {
+      isInvoice: false,
+      isScanned: false,
+      confidence: 0,
+      reasons: ['missing invoice word (faktura/invoice/rechnung/etc.) on first page'],
+      rejectionReason: 'no_invoice_word_on_first_page',
+    };
   }
+  reasons.push('invoice word found on first page');
 
-  let hasStrongKeyword = false;
-  for (const kw of INVOICE_KEYWORDS_STRONG) {
-    if (lower.includes(kw)) {
-      hasStrongKeyword = true;
-      score += 30;
-      reasons.push(`strong keyword: "${kw}"`);
-      break;
-    }
+  if (!hasMonetaryAmount(fullText!)) {
+    return {
+      isInvoice: false,
+      isScanned: false,
+      confidence: 0,
+      reasons: [...reasons, 'no monetary amount found in document'],
+      rejectionReason: 'no_monetary_amount',
+    };
   }
+  reasons.push('monetary amount found');
 
-  let mediumMatches = 0;
-  for (const kw of INVOICE_KEYWORDS_MEDIUM) {
-    if (lower.includes(kw)) {
-      mediumMatches++;
-      score += 8;
-      reasons.push(`medium keyword: "${kw}"`);
-      if (mediumMatches >= 5) break;
-    }
-  }
-
-  if (NIP_PATTERN.test(text!)) { score += 15; reasons.push('NIP/tax ID pattern found'); }
-  if (DATE_PATTERN.test(text!)) { score += 5; reasons.push('date pattern found'); }
-  for (const p of AMOUNT_PATTERNS) {
-    if (p.test(text!)) { score += 15; reasons.push('monetary amount with currency found'); break; }
-  }
-  if (INVOICE_NUMBER_PATTERN.test(text!)) { score += 20; reasons.push('invoice number pattern found'); }
-
-  if (fnLower.includes('faktura') || fnLower.includes('invoice') || fnLower.includes('rechnung') || fnLower.includes('facture')) {
-    score += 10; reasons.push('filename suggests invoice');
-  }
-  if (fnLower.includes('newsletter') || fnLower.includes('promo') || fnLower.includes('oferta')) {
-    score -= 20; reasons.push('filename suggests non-invoice');
-  }
-
-  const confidence = Math.min(score / 100, 1.0);
-  const PASS_THRESHOLD = 40;
-
-  if (!hasStrongKeyword && score < PASS_THRESHOLD) {
-    return { isInvoice: false, isScanned: false, confidence, reasons, rejectionReason: `low_score:${score}` };
-  }
-
-  return { isInvoice: true, isScanned: false, confidence, reasons };
+  return { isInvoice: true, isScanned: false, confidence: 1.0, reasons };
 }
