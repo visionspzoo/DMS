@@ -1563,6 +1563,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
               body: JSON.stringify({
                 fileUrl: driveFileUrl,
                 invoiceId: currentInvoice.id,
+                skipFilter: true,
               }),
             }
           );
@@ -1656,6 +1657,7 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       const requestBody: any = {
         invoiceId: currentInvoice.id,
         mimeType: 'application/pdf',
+        skipFilter: true,
       };
 
       if (currentInvoice.pdf_base64) {
