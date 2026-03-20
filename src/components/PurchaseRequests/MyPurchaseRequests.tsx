@@ -42,6 +42,7 @@ interface PendingApproval {
   created_at: string;
   proforma_filename: string | null;
   has_director: boolean | null;
+  waiting_for_manager: boolean | null;
 }
 
 interface Department {
@@ -252,15 +253,22 @@ function ApprovalCard({
               Krok 1/2
             </span>
           )}
-          {approverRole === 'Dyrektor' && (
+          {approverRole === 'Dyrektor' && !request.waiting_for_manager && (
             <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400">
               Krok 2/2
             </span>
           )}
-          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400">
-            <Clock className="w-3 h-3" />
-            Do akceptacji
-          </span>
+          {request.waiting_for_manager ? (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400">
+              <Clock className="w-3 h-3" />
+              U kierownika
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400">
+              <Clock className="w-3 h-3" />
+              Do akceptacji
+            </span>
+          )}
           <ChevronRight className="w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark group-hover:text-brand-primary transition-colors" />
         </div>
       </div>
@@ -324,6 +332,7 @@ const filterStore: {
   monthFilter: string;
   yearFilter: string;
   page: number;
+  ownerOnly: boolean;
 } = {
   filter: 'all',
   search: '',
@@ -331,6 +340,7 @@ const filterStore: {
   monthFilter: '',
   yearFilter: '',
   page: 1,
+  ownerOnly: false,
 };
 
 export function MyPurchaseRequests() {
@@ -352,12 +362,14 @@ export function MyPurchaseRequests() {
   const [monthFilter, setMonthFilterState] = useState(filterStore.monthFilter);
   const [yearFilter, setYearFilterState] = useState(filterStore.yearFilter);
   const [page, setPageState] = useState(filterStore.page);
+  const [ownerOnly, setOwnerOnlyState] = useState(filterStore.ownerOnly);
 
   function setFilter(v: FilterTab) { filterStore.filter = v; setFilterState(v); }
   function setSearch(v: string) { filterStore.search = v; setSearchState(v); }
   function setDeptFilter(v: string) { filterStore.deptFilter = v; setDeptFilterState(v); }
   function setMonthFilter(v: string) { filterStore.monthFilter = v; setMonthFilterState(v); }
   function setYearFilter(v: string) { filterStore.yearFilter = v; setYearFilterState(v); }
+  function setOwnerOnly(v: boolean) { filterStore.ownerOnly = v; setOwnerOnlyState(v); }
   function setPage(v: number | ((p: number) => number)) {
     const next = typeof v === 'function' ? v(filterStore.page) : v;
     filterStore.page = next;
@@ -373,7 +385,7 @@ export function MyPurchaseRequests() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search, deptFilter, monthFilter, yearFilter]);
+  }, [filter, search, deptFilter, monthFilter, yearFilter, ownerOnly]);
 
   async function loadAll(canApprove?: boolean) {
     setLoading(true);
@@ -432,6 +444,14 @@ export function MyPurchaseRequests() {
   const filteredMy = useMemo(() => {
     let result = filter === 'all' ? myRequests : myRequests.filter(r => r.status === filter);
 
+    if (ownerOnly && profile) {
+      result = result.filter(r =>
+        r.user_id === profile.id
+          ? r.status === 'pending' || r.status === 'approved'
+          : r.current_approver_id === profile.id
+      );
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r =>
@@ -455,7 +475,7 @@ export function MyPurchaseRequests() {
     }
 
     return result;
-  }, [myRequests, filter, search, deptFilter, yearFilter, monthFilter]);
+  }, [myRequests, filter, search, deptFilter, yearFilter, monthFilter, ownerOnly, profile?.id]);
 
   const totalPages = Math.max(1, Math.ceil(filteredMy.length / PAGE_SIZE));
   const paginatedMy = filteredMy.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -478,13 +498,14 @@ export function MyPurchaseRequests() {
 
   const showApprovalSection = isManagerOrDirector && (filter === 'all' || filter === 'pending') && toApprove.length > 0;
 
-  const hasActiveFilters = search.trim() || deptFilter || monthFilter || yearFilter;
+  const hasActiveFilters = search.trim() || deptFilter || monthFilter || yearFilter || ownerOnly;
 
   function clearFilters() {
     setSearch('');
     setDeptFilter('');
     setMonthFilter('');
     setYearFilter('');
+    setOwnerOnly(false);
   }
 
   if (editingId) {
@@ -547,6 +568,19 @@ export function MyPurchaseRequests() {
                   : ` (${counts[key]})`}
               </button>
             ))}
+
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1" />
+            <button
+              onClick={() => setOwnerOnly(!ownerOnly)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                ownerOnly
+                  ? 'bg-sky-600 text-white'
+                  : 'bg-light-surface-variant dark:bg-dark-surface-variant text-text-primary-light dark:text-text-primary-dark hover:bg-brand-primary/10'
+              }`}
+            >
+              <User className="w-3 h-3" />
+              Właściciel
+            </button>
 
             {departments.length > 0 && (
               <>
