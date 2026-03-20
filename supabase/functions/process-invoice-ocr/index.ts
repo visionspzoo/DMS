@@ -15,8 +15,81 @@ interface OCRRequest {
   mimeType?: string;
 }
 
-const INVOICE_SYSTEM_PROMPT = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
-Przeanalizuj dokument i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
+const INVOICE_SYSTEM_PROMPT_TEXT = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
+Poniżej znajduje się tekst wyekstrahowany z faktury PDF. Przeanalizuj go i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
+
+Format odpowiedzi (DOKŁADNIE te pola):
+{
+  "invoice_number": "numer faktury lub null",
+  "supplier_name": "nazwa SPRZEDAWCY (wystawcy faktury) lub null",
+  "supplier_nip": "NIP/VAT ID/Tax ID SPRZEDAWCY (wystawcy faktury) lub null",
+  "buyer_name": "nazwa NABYWCY (odbiorcy faktury) lub null",
+  "buyer_nip": "NIP NABYWCY (odbiorcy faktury) lub null",
+  "issue_date": "YYYY-MM-DD lub null",
+  "due_date": "YYYY-MM-DD lub null",
+  "net_amount": "kwota netto jako string z kropką np. 1234.56 (BEZ SPACJI, BEZ PRZECINKÓW)",
+  "tax_amount": "kwota VAT jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
+  "gross_amount": "kwota brutto jako string z kropką (BEZ SPACJI, BEZ PRZECINKÓW)",
+  "currency": "kod waluty: PLN, EUR, USD, GBP itp.",
+  "supplier_country": "kod kraju dostawcy (US, PL, DE, GB itp.) lub null",
+  "date_format_detected": "US (MM/DD/YYYY) lub EU (DD.MM.YYYY lub DD/MM/YYYY) lub ISO (YYYY-MM-DD) lub null"
+}
+
+KRYTYCZNA ZASADA - NUMER FAKTURY (invoice_number):
+- "Invoice number" / "Numer faktury" / "Faktura nr" = NUMER FAKTURY → to jest właściwy numer faktury
+- "Customer number" / "Numer klienta" / "Numer odbiorcy" = numer klienta u dostawcy → NIE jest numerem faktury
+- "Order number" / "PO number" / "Numer zamówienia" = numer zamówienia → NIE jest numerem faktury
+- "Reference number" = numer referencyjny → NIE jest numerem faktury
+- Numery faktur często zawierają litery + cyfry (np. VF01260119, FV/2024/001, INV-2024-001)
+- Jeśli dokument ma zarówno "Invoice number: VF01260119" jak i "Customer number: 45465", zwróć "VF01260119"
+- UWAGA: PDF często ekstrahuje tekst kolumnami - etykiety mogą być w innej kolejności niż wartości.
+  Patrz na kontekst i dopasuj właściwe etykiety do wartości po ich otoczeniu w tekście.
+
+BARDZO WAŻNE - FORMATOWANIE KWOT:
+- ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
+- ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
+- USUŃ wszystkie spacje z kwot
+- USUŃ symbole walut (€, $, £) z kwot
+- Przykłady konwersji:
+  - "7 564,62" → "7564.62"
+  - "1 234 567,89" → "1234567.89"
+  - "123,45" → "123.45"
+  - "€ 44.400,00" → "44400.00" (UWAGA: tu kropka to separator tysięcy, przecinek to dziesiętny!)
+  - "€ 138.800,00" → "138800.00"
+  - "44,400.00" → "44400.00" (format angielski: przecinek = tysiące, kropka = dziesiętne)
+  - "1.234.567,89" → "1234567.89" (wiele kropek = separatory tysięcy)
+
+KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
+1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę → supplier_name, supplier_nip
+2. NABYWCA (Buyer, Customer, Bill to, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę → buyer_name, buyer_nip
+
+- Faktury polskie: LEWA strona/GÓRA = Sprzedawca, PRAWA/DÓŁ = Nabywca
+- "Bill to:" ZAWSZE = NABYWCA, nigdy Sprzedawca
+- Szukaj etykiet: "Sprzedawca:", "Nabywca:", "Seller:", "Buyer:", "From:", "Bill to:"
+
+KRYTYCZNA ZASADA - FORMATOWANIE DAT:
+Faktury od kontrahentów AMERYKAŃSKICH (USA) używają formatu MM/DD/YYYY, który RÓŻNI się od europejskiego DD/MM/YYYY.
+Musisz poprawnie rozpoznać format daty na podstawie kraju wystawcy faktury i kontekstu dokumentu.
+
+ROZPOZNAWANIE FORMATU DAT:
+- Faktura z USA/US address/$ currency → format MM/DD/YYYY → np. "01/15/2024" to 15 stycznia 2024 → YYYY-MM-DD: "2024-01-15"
+- Faktura europejska (PL, DE, FR, GB itp.) → format DD.MM.YYYY lub DD/MM/YYYY → np. "15.01.2024" to 15 stycznia 2024
+- Jeśli widzisz miesiąc słownie (January, Feb, March, Jan itp.) → zawsze konwertuj do YYYY-MM-DD
+- Zawsze zwracaj daty w formacie YYYY-MM-DD
+
+WSKAZÓWKI DO WYKRYWANIA KRAJU DOSTAWCY:
+- Adres z stanami USA (CA, NY, TX, FL, WA itp.) → kraj US
+- Adres z "United States" lub "USA" → kraj US
+- Waluta USD na fakturze od dostawcy → sugeruje US
+- NIP/VAT format: EIN xx-xxxxxxx (USA), NIP xxxxxxxxxx (PL)
+
+DODATKOWE UWAGI:
+- Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
+- Walutę zapisz jako 3-literowy kod ISO
+- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
+
+const INVOICE_SYSTEM_PROMPT_VISUAL = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
+Przeanalizuj dokument wizualnie i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
 
 Format odpowiedzi (DOKŁADNIE te pola):
 {
@@ -77,14 +150,6 @@ ROZPOZNAWANIE FORMATU DAT:
 - Jeśli widzisz miesiąc słownie (January, Feb, March, Jan itp.) → zawsze konwertuj do YYYY-MM-DD
 - Zawsze zwracaj daty w formacie YYYY-MM-DD
 
-PRZYKŁADY KONWERSJI DAT:
-- US: "01/15/2024" → "2024-01-15" (styczeń 15)
-- US: "12/31/2023" → "2023-12-31" (grudzień 31)
-- EU: "15.01.2024" → "2024-01-15" (15 styczeń)
-- EU: "31/12/2023" → "2023-12-31" (31 grudzień)
-- Słownie: "January 15, 2024" → "2024-01-15"
-- Słownie: "15 January 2024" → "2024-01-15"
-
 WSKAZÓWKI DO WYKRYWANIA KRAJU DOSTAWCY:
 - Adres z stanami USA (CA, NY, TX, FL, WA itp.) → kraj US
 - Adres z "United States" lub "USA" → kraj US
@@ -114,6 +179,51 @@ const CLAUDE_MODELS = [
   'claude-3-5-sonnet-20241022',
   'claude-3-opus-20240229',
 ];
+
+async function callClaudeWithText(extractedText: string, apiKey: string): Promise<string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  };
+
+  let lastError = '';
+  for (const model of CLAUDE_MODELS) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        max_tokens: 1000,
+        system: INVOICE_SYSTEM_PROMPT_TEXT,
+        messages: [
+          {
+            role: 'user',
+            content: `Oto tekst wyekstrahowany z faktury:\n\n${extractedText}\n\nZwróć TYLKO JSON z danymi faktury.`,
+          },
+        ],
+        temperature: 0,
+      }),
+    });
+
+    if (response.status === 404) {
+      console.warn(`Claude model ${model} not found, trying next...`);
+      lastError = `${model}: 404`;
+      continue;
+    }
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Claude API error: ${response.status} - ${err}`);
+    }
+
+    const data = await response.json();
+    console.log(`✓ Claude (text) model ${model} succeeded`);
+    return data.content[0].text;
+  }
+
+  throw new Error(`All Claude models failed. Last error: ${lastError}`);
+}
 
 async function callClaudeWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
   const isPDF = mimeType === 'application/pdf';
@@ -157,8 +267,8 @@ async function callClaudeWithDocument(base64Data: string, mimeType: string, apiK
       headers,
       body: JSON.stringify({
         model,
-        max_tokens: 2000,
-        system: INVOICE_SYSTEM_PROMPT,
+        max_tokens: 1000,
+        system: INVOICE_SYSTEM_PROMPT_VISUAL,
         messages: [
           {
             role: 'user',
@@ -176,7 +286,6 @@ async function callClaudeWithDocument(base64Data: string, mimeType: string, apiK
     });
 
     if (response.status === 404) {
-      const err = await response.text();
       console.warn(`Claude model ${model} not found, trying next...`);
       lastError = `${model}: 404`;
       continue;
@@ -188,11 +297,44 @@ async function callClaudeWithDocument(base64Data: string, mimeType: string, apiK
     }
 
     const data = await response.json();
-    console.log(`✓ Claude model ${model} succeeded`);
+    console.log(`✓ Claude (visual) model ${model} succeeded`);
     return data.content[0].text;
   }
 
   throw new Error(`All Claude models failed. Last error: ${lastError}`);
+}
+
+async function callGPT4oWithText(extractedText: string, apiKey: string): Promise<string> {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: INVOICE_SYSTEM_PROMPT_TEXT,
+        },
+        {
+          role: 'user',
+          content: `Oto tekst wyekstrahowany z faktury:\n\n${extractedText}\n\nZwróć TYLKO JSON z danymi faktury.`,
+        },
+      ],
+      max_tokens: 1000,
+      temperature: 0,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`GPT-4o-mini API error: ${response.status} - ${err}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
 }
 
 async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
@@ -229,13 +371,13 @@ async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKe
           content: [
             {
               type: 'text',
-              text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
+              text: `${INVOICE_SYSTEM_PROMPT_VISUAL}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
             },
             mediaBlock,
           ],
         },
       ],
-      max_tokens: 2000,
+      max_tokens: 1000,
       temperature: 0,
     }),
   });
@@ -267,7 +409,7 @@ async function callMistralWithDocument(base64Data: string, mimeType: string, api
           content: [
             {
               type: "text",
-              text: `${INVOICE_SYSTEM_PROMPT}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
+              text: `${INVOICE_SYSTEM_PROMPT_VISUAL}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
             },
             {
               type: "image_url",
@@ -288,6 +430,22 @@ async function callMistralWithDocument(base64Data: string, mimeType: string, api
 
   const data = await response.json();
   return data.choices[0].message.content;
+}
+
+async function extractTextFromPdf(base64Data: string): Promise<string | null> {
+  try {
+    console.log('Attempting pdf-parse text extraction...');
+    const pdfParse = await import('npm:pdf-parse@1.1.1');
+    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    const pdfData = await (pdfParse as any).default(buffer);
+    const text = pdfData?.text || '';
+    console.log(`pdf-parse extracted ${text.length} chars`);
+    if (text.trim().length < 50) return null;
+    return text;
+  } catch (e: any) {
+    console.error('pdf-parse failed:', e?.message || e);
+    return null;
+  }
 }
 
 function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDetected?: string): string | null {
@@ -329,19 +487,18 @@ function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDet
         }
       }
     }
-  const dashMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (dashMatch) {
-    const [, a, b, yearStr] = dashMatch;
-    const year = Number(yearStr);
-    const aNum = Number(a);
-    const bNum = Number(b);
-    const day = isUS ? bNum : aNum;
-    const month = isUS ? aNum : bNum;
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dashMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dashMatch) {
+      const [, a, b, yearStr] = dashMatch;
+      const year = Number(yearStr);
+      const aNum = Number(a);
+      const bNum = Number(b);
+      const day = isUS ? bNum : aNum;
+      const month = isUS ? aNum : bNum;
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
     }
-  }
-
   }
 
   const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
@@ -394,164 +551,6 @@ function createFallback() {
   };
 }
 
-function parseInvoiceFromText(text: string): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...createFallback(), supplier_country: null, date_format_detected: null };
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-  const isLabelLine = (l: string) => /[:\s]+$/.test(l) || /^[A-Za-z\s]{3,30}:$/.test(l);
-  const dateRe = /^(\d{2}[-.\/ ]\d{2}[-.\/ ]\d{4})$/;
-
-  const findAfterLabel = (labelRe: RegExp, valueRe: RegExp): string | null => {
-    for (let i = 0; i < lines.length; i++) {
-      if (!labelRe.test(lines[i])) continue;
-      const afterColon = lines[i].replace(labelRe, '').replace(/^[:\s]+/, '').trim();
-      if (afterColon) {
-        const m = afterColon.match(valueRe);
-        if (m) return m[1] ?? m[0];
-      }
-      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-        const m = lines[j].match(valueRe);
-        if (m) return m[1] ?? m[0];
-        if (isLabelLine(lines[j]) && !valueRe.test(lines[j])) break;
-      }
-    }
-    return null;
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    if (/(?:invoice\s+(?:number|nr|no)|numer\s+faktury|faktura\s+nr)/i.test(lines[i])) {
-      const inline = lines[i].match(/(?:invoice\s+(?:number|nr|no)|numer\s+faktury|faktura\s+nr)[.:\s]+([A-Z][A-Z0-9\-\/\.]{2,25})/i);
-      if (inline) { result.invoice_number = inline[1]; break; }
-      for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
-        if (/^[A-Z][A-Z0-9\-\/\.]{2,25}$/.test(lines[j]) && !/^\d+$/.test(lines[j])) {
-          result.invoice_number = lines[j];
-          break;
-        }
-      }
-      if (result.invoice_number) break;
-    }
-  }
-  if (!result.invoice_number) {
-    const m = text.match(/\b([A-Z]{1,4}[-\/]?\d{6,12})\b/);
-    if (m) result.invoice_number = m[1];
-  }
-
-  const invDateLabelIdx = lines.findIndex(l => /invoice\s+date|data\s+(?:wystawienia|faktury)|rechnungsdatum/i.test(l));
-  const dueDateLabelIdx = lines.findIndex(l => /due\s+date|termin\s+(?:p[łl]atno|zap[łl]aty)|f[äa]lligkeitsdatum/i.test(l));
-
-  const allDateLines: { idx: number; val: string }[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(dateRe);
-    if (m) allDateLines.push({ idx: i, val: m[1] });
-  }
-
-  if (invDateLabelIdx >= 0 || dueDateLabelIdx >= 0) {
-    const firstLabel = Math.min(
-      invDateLabelIdx >= 0 ? invDateLabelIdx : 9999,
-      dueDateLabelIdx >= 0 ? dueDateLabelIdx : 9999
-    );
-    const lastLabel = Math.max(invDateLabelIdx, dueDateLabelIdx);
-    const datesAfterLabels = allDateLines.filter(d => d.idx > firstLabel && d.idx <= lastLabel + 8);
-
-    if (invDateLabelIdx >= 0 && dueDateLabelIdx >= 0 && datesAfterLabels.length >= 2) {
-      if (invDateLabelIdx < dueDateLabelIdx) {
-        result.issue_date = datesAfterLabels[0].val;
-        result.due_date = datesAfterLabels[1].val;
-      } else {
-        result.due_date = datesAfterLabels[0].val;
-        result.issue_date = datesAfterLabels[1].val;
-      }
-    } else if (datesAfterLabels.length >= 1) {
-      if (invDateLabelIdx >= 0) result.issue_date = datesAfterLabels[0].val;
-      else result.due_date = datesAfterLabels[0].val;
-      if (datesAfterLabels.length >= 2) {
-        if (!result.due_date) result.due_date = datesAfterLabels[1].val;
-        else if (!result.issue_date) result.issue_date = datesAfterLabels[1].val;
-      }
-    }
-  }
-  if (!result.issue_date && !result.due_date && allDateLines.length > 0) {
-    result.issue_date = allDateLines[0].val;
-    if (allDateLines.length > 1) result.due_date = allDateLines[1].val;
-  }
-
-  if (/€|\bEUR\b/.test(text)) result.currency = 'EUR';
-  else if (/\$|\bUSD\b/.test(text)) result.currency = 'USD';
-  else if (/£|\bGBP\b/.test(text)) result.currency = 'GBP';
-  else if (/\bPLN\b|\bzł\b/i.test(text)) result.currency = 'PLN';
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (/^total\b/i.test(l) && !/total\s+vat/i.test(l) && !result.gross_amount) {
-      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
-      if (m) result.gross_amount = m[1].trim();
-    }
-    if (/total\s+vat|vat\s+amount|podatek\s+vat/i.test(l) && !result.tax_amount) {
-      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
-      if (m) result.tax_amount = m[1].trim();
-    }
-    if (/^(?:subtotal|netto|kwota\s+netto|net\s+amount)\b/i.test(l) && !result.net_amount) {
-      const m = l.match(/[€$£]?\s*([\d\s.,]+)\s*$/);
-      if (m) result.net_amount = m[1].trim();
-    }
-  }
-
-  const plNip = text.match(/\bPL\d{10}\b/);
-  if (plNip) result.buyer_nip = plNip[0];
-
-  if (!result.buyer_nip) {
-    result.buyer_nip = findAfterLabel(
-      /vat\s+id|btw\s+id|customer\s+(?:vat|nip)/i,
-      /([A-Z]{2}\d{8,12})/
-    );
-  }
-
-  const nlVat = text.match(/\bNL\s*\d{9}B\d{2}\b/);
-  if (nlVat) result.supplier_nip = nlVat[0].replace(/\s/g, '');
-
-  if (!result.supplier_nip) {
-    const allVat = [...text.matchAll(/(?:^|\s)VAT[:\s]+([A-Z]{2}\s*[\dA-Z]{8,15})/gm)];
-    if (allVat.length > 0) {
-      const last = allVat[allVat.length - 1][1].replace(/\s/g, '');
-      if (last !== (result.buyer_nip as string ?? '')) result.supplier_nip = last;
-    }
-  }
-  if (!result.supplier_nip) {
-    result.supplier_nip = findAfterLabel(
-      /(?:sprzedawca|dostawca|supplier|nip sprzedawcy)/i,
-      /([A-Z\d]{8,20})/
-    );
-  }
-
-  if (/(?:netherlands|nederland|barneveld|amsterdam)/i.test(text) || /\bNL\d{9}B\d{2}\b/.test(text.replace(/\s/g,''))) result.supplier_country = 'NL';
-  else if (/(?:germany|deutschland)/i.test(text)) result.supplier_country = 'DE';
-  else if (/(?:united\s+states|u\.s\.a\.?|usa)\b/i.test(text)) result.supplier_country = 'US';
-  else if (/(?:united\s+kingdom|england)/i.test(text)) result.supplier_country = 'GB';
-  else if (/(?:france|frankreich)/i.test(text)) result.supplier_country = 'FR';
-  else if (/(?:sp\.\s*z\s*o\.o|poland|polska)/i.test(text)) result.supplier_country = 'PL';
-
-  result.date_format_detected = result.supplier_country === 'US' ? 'US (MM/DD/YYYY)' : 'EU (DD.MM.YYYY lub DD/MM/YYYY)';
-
-  console.log('Text-based parse result:', JSON.stringify(result));
-  return result;
-}
-
-async function tryPdfTextParsing(base64Data: string): Promise<Record<string, unknown> | null> {
-  try {
-    console.log('Attempting pdf-parse text extraction...');
-    const pdfParse = await import('npm:pdf-parse@1.1.1');
-    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const pdfData = await (pdfParse as any).default(buffer);
-    const text = pdfData?.text || '';
-    console.log(`pdf-parse extracted ${text.length} chars`);
-    if (text.length < 30) return null;
-    return parseInvoiceFromText(text);
-  } catch (e: any) {
-    console.error('pdf-parse failed:', e?.message || e);
-    return null;
-  }
-}
-
 async function fetchFileFromUrl(url: string, fallbackMimeType: string): Promise<{ base64: string; mimeType: string }> {
   console.log("Fetching file from URL:", url);
   const resp = await fetch(url);
@@ -575,6 +574,71 @@ async function fetchFileFromUrl(url: string, fallbackMimeType: string): Promise<
   console.log(`File fetched: ${blob.size} bytes, mimeType=${mimeType}`);
   const base64 = await blobToBase64(blob);
   return { base64, mimeType };
+}
+
+async function callAIWithText(
+  extractedText: string,
+  claudeApiKey: string | undefined,
+  openaiApiKey: string | undefined,
+): Promise<{ content: string; usedApi: string }> {
+  if (claudeApiKey) {
+    try {
+      const content = await callClaudeWithText(extractedText, claudeApiKey);
+      return { content, usedApi: 'Claude (text)' };
+    } catch (err: any) {
+      console.error('Claude (text) failed:', err.message);
+    }
+  }
+
+  if (openaiApiKey) {
+    try {
+      const content = await callGPT4oWithText(extractedText, openaiApiKey);
+      return { content, usedApi: 'GPT-4o-mini (text)' };
+    } catch (err: any) {
+      console.error('GPT-4o-mini (text) failed:', err.message);
+    }
+  }
+
+  return { content: JSON.stringify(createFallback()), usedApi: 'Fallback (no AI key or all failed)' };
+}
+
+async function callAIVisual(
+  base64Data: string,
+  mimeType: string,
+  claudeApiKey: string | undefined,
+  openaiApiKey: string | undefined,
+  mistralApiKey: string | undefined,
+): Promise<{ content: string; usedApi: string }> {
+  const isPDF = mimeType === 'application/pdf';
+
+  if (claudeApiKey) {
+    try {
+      const content = await callClaudeWithDocument(base64Data, mimeType, claudeApiKey);
+      return { content, usedApi: isPDF ? 'Claude (visual PDF)' : 'Claude (visual image)' };
+    } catch (err: any) {
+      console.error('Claude (visual) failed:', err.message);
+    }
+  }
+
+  if (openaiApiKey) {
+    try {
+      const content = await callGPT4oWithDocument(base64Data, mimeType, openaiApiKey);
+      return { content, usedApi: isPDF ? 'GPT-4o (visual PDF)' : 'GPT-4o (visual image)' };
+    } catch (err: any) {
+      console.error('GPT-4o (visual) failed:', err.message);
+    }
+  }
+
+  if (!isPDF && mistralApiKey) {
+    try {
+      const content = await callMistralWithDocument(base64Data, mimeType, mistralApiKey);
+      return { content, usedApi: 'Mistral Pixtral (visual image)' };
+    } catch (err: any) {
+      console.error('Mistral (visual) failed:', err.message);
+    }
+  }
+
+  return { content: JSON.stringify(createFallback()), usedApi: 'Fallback (all visual APIs failed)' };
 }
 
 Deno.serve(async (req: Request) => {
@@ -643,80 +707,26 @@ Deno.serve(async (req: Request) => {
     let content: string;
     let usedApi: string;
 
-    if (claudeApiKey) {
-      try {
-        console.log("Calling Claude API...");
-        content = await callClaudeWithDocument(base64Data, resolvedMimeType, claudeApiKey);
-        usedApi = isPDF ? "Claude (PDF)" : "Claude (Image)";
-        console.log("✓ Claude success");
-      } catch (err: any) {
-        console.error("Claude failed:", err.message);
-        if (openaiApiKey) {
-          try {
-            console.log("Fallback to GPT-4o...");
-            content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
-            usedApi = isPDF ? "GPT-4o (PDF fallback)" : "GPT-4o Vision (fallback)";
-            console.log("✓ GPT-4o success");
-          } catch (gErr: any) {
-            console.error("GPT-4o also failed:", gErr.message);
-            if (!isPDF && mistralApiKey) {
-              try {
-                content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
-                usedApi = "Mistral Pixtral (fallback)";
-              } catch {
-                content = JSON.stringify(createFallback());
-                usedApi = "Fallback (all APIs failed)";
-              }
-            } else {
-              content = JSON.stringify(createFallback());
-              usedApi = `Fallback (Claude+GPT-4o failed: ${gErr.message})`;
-            }
-          }
-        } else if (!isPDF && mistralApiKey) {
-          try {
-            content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
-            usedApi = "Mistral Pixtral (fallback from Claude)";
-          } catch {
-            content = JSON.stringify(createFallback());
-            usedApi = "Fallback (Claude + Mistral failed)";
-          }
-        } else {
-          content = JSON.stringify(createFallback());
-          usedApi = `Fallback (Claude failed: ${err.message})`;
-        }
-      }
-    } else if (openaiApiKey) {
-      try {
-        console.log("Calling GPT-4o...");
-        content = await callGPT4oWithDocument(base64Data, resolvedMimeType, openaiApiKey);
-        usedApi = isPDF ? "GPT-4o (PDF)" : "GPT-4o Vision";
-        console.log("✓ GPT-4o success");
-      } catch (err: any) {
-        console.error("GPT-4o failed:", err.message);
-        if (!isPDF && mistralApiKey) {
-          try {
-            content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
-            usedApi = "Mistral Pixtral (fallback from GPT-4o)";
-          } catch {
-            content = JSON.stringify(createFallback());
-            usedApi = "Fallback (GPT-4o + Mistral failed)";
-          }
-        } else {
-          content = JSON.stringify(createFallback());
-          usedApi = `Fallback (GPT-4o failed: ${err.message})`;
-        }
-      }
-    } else if (!isPDF && mistralApiKey) {
-      try {
-        content = await callMistralWithDocument(base64Data, resolvedMimeType, mistralApiKey);
-        usedApi = "Mistral Pixtral";
-      } catch (err: any) {
-        content = JSON.stringify(createFallback());
-        usedApi = `Fallback (Mistral failed: ${err.message})`;
+    if (isPDF) {
+      console.log("Step 1: Attempting text extraction from PDF...");
+      const extractedText = await extractTextFromPdf(base64Data);
+
+      if (extractedText) {
+        console.log(`✓ Text extracted (${extractedText.length} chars) — calling AI with text (cheaper)`);
+        const result = await callAIWithText(extractedText, claudeApiKey, openaiApiKey);
+        content = result.content;
+        usedApi = result.usedApi;
+      } else {
+        console.log("PDF has no extractable text (likely scanned) — falling back to visual AI");
+        const result = await callAIVisual(base64Data, resolvedMimeType, claudeApiKey, openaiApiKey, mistralApiKey);
+        content = result.content;
+        usedApi = result.usedApi + ' [scanned PDF fallback]';
       }
     } else {
-      content = JSON.stringify(createFallback());
-      usedApi = "Fallback (no usable API key for this file type)";
+      console.log("Image file — using visual AI");
+      const result = await callAIVisual(base64Data, resolvedMimeType, claudeApiKey, openaiApiKey, mistralApiKey);
+      content = result.content;
+      usedApi = result.usedApi;
     }
 
     console.log(`Used API: ${usedApi}`);
@@ -730,21 +740,6 @@ Deno.serve(async (req: Request) => {
       console.error("JSON parse failed:", content);
       parsedData = createFallback();
       usedApi = `${usedApi} (parse error)`;
-    }
-
-    const hasAnyExtractedData = (d: Record<string, unknown>) =>
-      d.invoice_number || d.supplier_name || d.gross_amount || d.issue_date;
-
-    if (!hasAnyExtractedData(parsedData) && isPDF) {
-      console.log("AI returned no data for PDF, trying pdf-parse text extraction...");
-      const textResult = await tryPdfTextParsing(base64Data);
-      if (textResult && hasAnyExtractedData(textResult)) {
-        parsedData = textResult;
-        usedApi = "pdf-parse (text extraction, no AI)";
-        console.log("✓ Text extraction succeeded");
-      } else {
-        console.log("Text extraction also returned no data");
-      }
     }
 
     console.log("Parsed OCR data:", JSON.stringify(parsedData));
