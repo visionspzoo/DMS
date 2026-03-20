@@ -13,9 +13,228 @@ interface OCRRequest {
   pdfBase64?: string;
   fileBase64?: string;
   mimeType?: string;
+  skipFilter?: boolean;
 }
 
-const INVOICE_SYSTEM_PROMPT_TEXT = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
+// ─────────────────────────────────────────────
+// STEP 1: EXTRACT TEXT WITHOUT AI
+// ─────────────────────────────────────────────
+
+async function extractTextFromPdf(base64Data: string): Promise<string | null> {
+  try {
+    const pdfParse = await import('npm:pdf-parse@1.1.1');
+    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    const pdfData = await (pdfParse as any).default(buffer);
+    const text = pdfData?.text || '';
+    if (text.trim().length < 30) return null;
+    return text;
+  } catch (e: any) {
+    console.error('pdf-parse failed:', e?.message || e);
+    return null;
+  }
+}
+
+interface ExtractedRawData {
+  text: string | null;
+  isScanned: boolean;
+  mimeType: string;
+  base64: string;
+}
+
+async function extractRawData(base64Data: string, mimeType: string): Promise<ExtractedRawData> {
+  const isPDF = mimeType === 'application/pdf';
+
+  if (isPDF) {
+    const text = await extractTextFromPdf(base64Data);
+    return {
+      text,
+      isScanned: text === null,
+      mimeType,
+      base64: base64Data,
+    };
+  }
+
+  return {
+    text: null,
+    isScanned: false,
+    mimeType,
+    base64: base64Data,
+  };
+}
+
+// ─────────────────────────────────────────────
+// STEP 2: INVOICE FILTER ALGORITHM (NO AI)
+// Algorytm filtracji — rozwijać o kolejne zmienne
+// ─────────────────────────────────────────────
+
+interface FilterResult {
+  isInvoice: boolean;
+  confidence: number;
+  reasons: string[];
+  rejectionReason?: string;
+}
+
+const INVOICE_KEYWORDS_STRONG = [
+  // Polish
+  'faktura vat', 'faktura nr', 'faktura pro', 'faktura korygująca',
+  'nota księgowa', 'nota korygująca',
+  // Universal
+  'invoice', 'invoice no', 'invoice number', 'inv no',
+  // German
+  'rechnung', 'rechnungsnummer',
+  // French
+  'facture', 'numéro de facture',
+  // Italian
+  'fattura',
+  // Spanish
+  'factura',
+];
+
+const INVOICE_KEYWORDS_MEDIUM = [
+  'nip', 'vat', 'brutto', 'netto', 'gross', 'net amount',
+  'tax', 'podatek', 'vat rate', 'stawka vat',
+  'płatność', 'zapłata', 'payment', 'due date', 'termin płatności',
+  'sprzedawca', 'nabywca', 'seller', 'buyer', 'bill to',
+  'suma', 'razem', 'total', 'subtotal', 'amount due',
+  'data wystawienia', 'issue date', 'data sprzedaży',
+  'konto bankowe', 'bank account', 'iban', 'swift',
+  'proforma', 'pro forma',
+  'credit note', 'debit note',
+];
+
+const EXCLUDE_KEYWORDS = [
+  'newsletter', 'unsubscribe', 'wypisz się', 'zapisz się',
+  'regulamin', 'terms and conditions', 'privacy policy',
+  'polityka prywatności',
+  'oferta handlowa', 'katalog', 'brochure',
+];
+
+const AMOUNT_PATTERNS = [
+  /\d[\d\s]*[,.]\d{2}\s*(pln|eur|usd|gbp|chf|czk|huf)/i,
+  /\d[\d\s]*[,.]\d{2}\s*(zł|€|\$|£)/i,
+  /(pln|eur|usd|gbp|zł)\s*\d[\d\s]*[,.]\d{2}/i,
+];
+
+const NIP_PATTERN = /\b\d{3}[-\s]?\d{3}[-\s]?\d{2}[-\s]?\d{2}\b|\b\d{10}\b/;
+const DATE_PATTERN = /\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\b|\b\d{4}[.\/-]\d{2}[.\/-]\d{2}\b/;
+const INVOICE_NUMBER_PATTERN = /(?:faktura\s*(?:nr|no|vat)?|invoice\s*(?:no|number|nr)?|rechnung(?:snr)?|nr\s+faktury)[:\s#]*([A-Z0-9\/\-_]+)/i;
+
+export function runInvoiceFilter(text: string | null, filename?: string): FilterResult {
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (!text || text.trim().length < 30) {
+    if (filename) {
+      const fn = filename.toLowerCase();
+      if (fn.includes('faktura') || fn.includes('invoice') || fn.includes('fv') || fn.includes('rechnung')) {
+        return {
+          isInvoice: true,
+          confidence: 0.4,
+          reasons: ['filename suggests invoice, no text (scanned)'],
+        };
+      }
+    }
+    return {
+      isInvoice: false,
+      confidence: 0,
+      reasons: ['no extractable text'],
+      rejectionReason: 'no_text',
+    };
+  }
+
+  const lower = text.toLowerCase();
+
+  for (const kw of EXCLUDE_KEYWORDS) {
+    if (lower.includes(kw)) {
+      return {
+        isInvoice: false,
+        confidence: 0,
+        reasons: [`excluded keyword: "${kw}"`],
+        rejectionReason: 'excluded_keyword',
+      };
+    }
+  }
+
+  let hasStrongKeyword = false;
+  for (const kw of INVOICE_KEYWORDS_STRONG) {
+    if (lower.includes(kw)) {
+      hasStrongKeyword = true;
+      score += 30;
+      reasons.push(`strong keyword: "${kw}"`);
+      break;
+    }
+  }
+
+  let mediumMatches = 0;
+  for (const kw of INVOICE_KEYWORDS_MEDIUM) {
+    if (lower.includes(kw)) {
+      mediumMatches++;
+      score += 8;
+      reasons.push(`medium keyword: "${kw}"`);
+      if (mediumMatches >= 5) break;
+    }
+  }
+
+  if (NIP_PATTERN.test(text)) {
+    score += 15;
+    reasons.push('NIP/tax ID pattern found');
+  }
+
+  if (DATE_PATTERN.test(text)) {
+    score += 5;
+    reasons.push('date pattern found');
+  }
+
+  for (const p of AMOUNT_PATTERNS) {
+    if (p.test(text)) {
+      score += 15;
+      reasons.push('monetary amount with currency found');
+      break;
+    }
+  }
+
+  if (INVOICE_NUMBER_PATTERN.test(text)) {
+    score += 20;
+    reasons.push('invoice number pattern found');
+  }
+
+  if (filename) {
+    const fn = filename.toLowerCase();
+    if (fn.includes('faktura') || fn.includes('invoice') || fn.includes('rechnung') || fn.includes('facture')) {
+      score += 10;
+      reasons.push('filename suggests invoice');
+    }
+    if (fn.includes('newsletter') || fn.includes('promo') || fn.includes('oferta')) {
+      score -= 20;
+      reasons.push('filename suggests non-invoice');
+    }
+  }
+
+  const confidence = Math.min(score / 100, 1.0);
+  const PASS_THRESHOLD = 40;
+
+  if (!hasStrongKeyword && score < PASS_THRESHOLD) {
+    return {
+      isInvoice: false,
+      confidence,
+      reasons,
+      rejectionReason: `low_score:${score}`,
+    };
+  }
+
+  return {
+    isInvoice: true,
+    confidence,
+    reasons,
+  };
+}
+
+// ─────────────────────────────────────────────
+// STEP 3: AI FIELD MAPPING
+// Claude/GPT receives extracted text JSON, maps to invoice fields
+// ─────────────────────────────────────────────
+
+const AI_MAPPING_PROMPT = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
 Poniżej znajduje się tekst wyekstrahowany z faktury PDF. Przeanalizuj go i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
 
 Format odpowiedzi (DOKŁADNIE te pola):
@@ -35,60 +254,28 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "date_format_detected": "US (MM/DD/YYYY) lub EU (DD.MM.YYYY lub DD/MM/YYYY) lub ISO (YYYY-MM-DD) lub null"
 }
 
-KRYTYCZNA ZASADA - NUMER FAKTURY (invoice_number):
-- "Invoice number" / "Numer faktury" / "Faktura nr" = NUMER FAKTURY → to jest właściwy numer faktury
-- "Customer number" / "Numer klienta" / "Numer odbiorcy" = numer klienta u dostawcy → NIE jest numerem faktury
-- "Order number" / "PO number" / "Numer zamówienia" = numer zamówienia → NIE jest numerem faktury
-- "Reference number" = numer referencyjny → NIE jest numerem faktury
-- Numery faktur często zawierają litery + cyfry (np. VF01260119, FV/2024/001, INV-2024-001)
-- Jeśli dokument ma zarówno "Invoice number: VF01260119" jak i "Customer number: 45465", zwróć "VF01260119"
-- UWAGA: PDF często ekstrahuje tekst kolumnami - etykiety mogą być w innej kolejności niż wartości.
-  Patrz na kontekst i dopasuj właściwe etykiety do wartości po ich otoczeniu w tekście.
+KRYTYCZNA ZASADA - NUMER FAKTURY:
+- Szukaj: "Invoice number" / "Numer faktury" / "Faktura nr" / "Rechnung Nr"
+- NIE zwracaj numeru klienta, zamówienia ani referencyjnego jako numeru faktury
+- Numery faktur: litery + cyfry np. VF01260119, FV/2024/001, INV-2024-001
 
-BARDZO WAŻNE - FORMATOWANIE KWOT:
-- ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
-- ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
-- USUŃ wszystkie spacje z kwot
-- USUŃ symbole walut (€, $, £) z kwot
-- Przykłady konwersji:
-  - "7 564,62" → "7564.62"
-  - "1 234 567,89" → "1234567.89"
-  - "123,45" → "123.45"
-  - "€ 44.400,00" → "44400.00" (UWAGA: tu kropka to separator tysięcy, przecinek to dziesiętny!)
-  - "€ 138.800,00" → "138800.00"
-  - "44,400.00" → "44400.00" (format angielski: przecinek = tysiące, kropka = dziesiętne)
-  - "1.234.567,89" → "1234567.89" (wiele kropek = separatory tysięcy)
+WAŻNE - FORMATOWANIE KWOT:
+- BEZ SPACJI, BEZ symboli walut, KROPKA jako separator dziesiętny
+- "7 564,62" → "7564.62", "€ 44.400,00" → "44400.00", "44,400.00" → "44400.00"
 
-KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
-1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę → supplier_name, supplier_nip
-2. NABYWCA (Buyer, Customer, Bill to, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę → buyer_name, buyer_nip
+SPRZEDAWCA vs NABYWCA:
+- SPRZEDAWCA = firma która WYSTAWIA fakturę (Seller / From / Sprzedawca / Dostawca)
+- NABYWCA = firma która OTRZYMUJE fakturę (Buyer / Bill to / Nabywca / Kupujący)
+- "Bill to:" = ZAWSZE NABYWCA
 
-- Faktury polskie: LEWA strona/GÓRA = Sprzedawca, PRAWA/DÓŁ = Nabywca
-- "Bill to:" ZAWSZE = NABYWCA, nigdy Sprzedawca
-- Szukaj etykiet: "Sprzedawca:", "Nabywca:", "Seller:", "Buyer:", "From:", "Bill to:"
+DATY:
+- US faktura (adres USA / waluta USD) → format MM/DD/YYYY → konwertuj do YYYY-MM-DD
+- EU faktura → format DD.MM.YYYY lub DD/MM/YYYY → konwertuj do YYYY-MM-DD
+- Zawsze zwracaj YYYY-MM-DD
 
-KRYTYCZNA ZASADA - FORMATOWANIE DAT:
-Faktury od kontrahentów AMERYKAŃSKICH (USA) używają formatu MM/DD/YYYY, który RÓŻNI się od europejskiego DD/MM/YYYY.
-Musisz poprawnie rozpoznać format daty na podstawie kraju wystawcy faktury i kontekstu dokumentu.
+Zwróć TYLKO JSON, bez markdown.`;
 
-ROZPOZNAWANIE FORMATU DAT:
-- Faktura z USA/US address/$ currency → format MM/DD/YYYY → np. "01/15/2024" to 15 stycznia 2024 → YYYY-MM-DD: "2024-01-15"
-- Faktura europejska (PL, DE, FR, GB itp.) → format DD.MM.YYYY lub DD/MM/YYYY → np. "15.01.2024" to 15 stycznia 2024
-- Jeśli widzisz miesiąc słownie (January, Feb, March, Jan itp.) → zawsze konwertuj do YYYY-MM-DD
-- Zawsze zwracaj daty w formacie YYYY-MM-DD
-
-WSKAZÓWKI DO WYKRYWANIA KRAJU DOSTAWCY:
-- Adres z stanami USA (CA, NY, TX, FL, WA itp.) → kraj US
-- Adres z "United States" lub "USA" → kraj US
-- Waluta USD na fakturze od dostawcy → sugeruje US
-- NIP/VAT format: EIN xx-xxxxxxx (USA), NIP xxxxxxxxxx (PL)
-
-DODATKOWE UWAGI:
-- Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
-- Walutę zapisz jako 3-literowy kod ISO
-- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
-
-const INVOICE_SYSTEM_PROMPT_VISUAL = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
+const AI_MAPPING_PROMPT_VISUAL = `Jesteś ekspertem w analizie faktur VAT (polskich i zagranicznych).
 Przeanalizuj dokument wizualnie i zwróć TYLKO czysty JSON bez komentarzy, markdown czy dodatkowego tekstu.
 
 Format odpowiedzi (DOKŁADNIE te pola):
@@ -108,70 +295,20 @@ Format odpowiedzi (DOKŁADNIE te pola):
   "date_format_detected": "US (MM/DD/YYYY) lub EU (DD.MM.YYYY lub DD/MM/YYYY) lub ISO (YYYY-MM-DD) lub null"
 }
 
-KRYTYCZNA ZASADA - NUMER FAKTURY (invoice_number):
-- "Invoice number" / "Numer faktury" / "Faktura nr" = NUMER FAKTURY → to jest właściwy numer faktury
-- "Customer number" / "Numer klienta" / "Numer odbiorcy" = numer klienta u dostawcy → NIE jest numerem faktury
-- "Order number" / "PO number" / "Numer zamówienia" = numer zamówienia → NIE jest numerem faktury
-- "Reference number" = numer referencyjny → NIE jest numerem faktury
-- Numery faktur często zawierają litery + cyfry (np. VF01260119, FV/2024/001, INV-2024-001)
-- Jeśli dokument ma zarówno "Invoice number: VF01260119" jak i "Customer number: 45465", zwróć "VF01260119"
-- UWAGA: PDF często ekstrahuje tekst kolumnami - etykiety mogą być w innej kolejności niż wartości.
-  Patrz WIZUALNIE na dokument i dopasuj właściwe etykiety do wartości po ich pozycji na stronie.
+KRYTYCZNA ZASADA - NUMER FAKTURY:
+- Szukaj wizualnie: "Invoice number" / "Numer faktury" / "Faktura nr"
+- NIE zwracaj numeru klienta, zamówienia ani referencyjnego jako numeru faktury
 
-BARDZO WAŻNE - FORMATOWANIE KWOT:
-- ZAWSZE zwracaj kwoty BEZ SPACJI (np. zamiast "7 564,62" zwróć "7564.62")
-- ZAWSZE używaj KROPKI jako separatora dziesiętnego (nie przecinka)
-- USUŃ wszystkie spacje z kwot
-- USUŃ symbole walut (€, $, £) z kwot
-- Przykłady konwersji:
-  - "7 564,62" → "7564.62"
-  - "1 234 567,89" → "1234567.89"
-  - "123,45" → "123.45"
-  - "€ 44.400,00" → "44400.00" (UWAGA: tu kropka to separator tysięcy, przecinek to dziesiętny!)
-  - "€ 138.800,00" → "138800.00"
-  - "44,400.00" → "44400.00" (format angielski: przecinek = tysiące, kropka = dziesiętne)
-  - "1.234.567,89" → "1234567.89" (wiele kropek = separatory tysięcy)
+WAŻNE - FORMATOWANIE KWOT:
+- BEZ SPACJI, BEZ symboli walut, KROPKA jako separator dziesiętny
 
-KRYTYCZNA ZASADA - IDENTYFIKACJA SPRZEDAWCY vs NABYWCY:
-1. SPRZEDAWCA (Seller, Vendor, Supplier, Dostawca, Wystawca, Sprzedawca) - firma która WYSTAWIA fakturę → supplier_name, supplier_nip
-2. NABYWCA (Buyer, Customer, Bill to, Nabywca, Kupujący, Odbiorca) - firma która OTRZYMUJE fakturę → buyer_name, buyer_nip
+SPRZEDAWCA vs NABYWCA:
+- SPRZEDAWCA = firma która WYSTAWIA fakturę (lewa/górna część)
+- NABYWCA = "Bill to" / Nabywca (prawa/dolna część)
 
-- Faktury polskie: LEWA strona/GÓRA = Sprzedawca, PRAWA/DÓŁ = Nabywca
-- "Bill to:" ZAWSZE = NABYWCA, nigdy Sprzedawca
-- Szukaj etykiet: "Sprzedawca:", "Nabywca:", "Seller:", "Buyer:", "From:", "Bill to:"
+DATY: zawsze YYYY-MM-DD. US faktura → MM/DD/YYYY → konwertuj.
 
-KRYTYCZNA ZASADA - FORMATOWANIE DAT:
-Faktury od kontrahentów AMERYKAŃSKICH (USA) używają formatu MM/DD/YYYY, który RÓŻNI się od europejskiego DD/MM/YYYY.
-Musisz poprawnie rozpoznać format daty na podstawie kraju wystawcy faktury i kontekstu dokumentu.
-
-ROZPOZNAWANIE FORMATU DAT:
-- Faktura z USA/US address/$ currency → format MM/DD/YYYY → np. "01/15/2024" to 15 stycznia 2024 → YYYY-MM-DD: "2024-01-15"
-- Faktura europejska (PL, DE, FR, GB itp.) → format DD.MM.YYYY lub DD/MM/YYYY → np. "15.01.2024" to 15 stycznia 2024
-- Jeśli widzisz miesiąc słownie (January, Feb, March, Jan itp.) → zawsze konwertuj do YYYY-MM-DD
-- Zawsze zwracaj daty w formacie YYYY-MM-DD
-
-WSKAZÓWKI DO WYKRYWANIA KRAJU DOSTAWCY:
-- Adres z stanami USA (CA, NY, TX, FL, WA itp.) → kraj US
-- Adres z "United States" lub "USA" → kraj US
-- Waluta USD na fakturze od dostawcy → sugeruje US
-- NIP/VAT format: EIN xx-xxxxxxx (USA), NIP xxxxxxxxxx (PL)
-
-DODATKOWE UWAGI:
-- Akceptuj faktury w dowolnej walucie (PLN, EUR, USD, GBP itp.)
-- Walutę zapisz jako 3-literowy kod ISO
-- Zwróć TYLKO JSON, bez \`\`\`json ani innych oznaczeń`;
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  const ab = await blob.arrayBuffer();
-  const bytes = new Uint8Array(ab);
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
+Zwróć TYLKO JSON, bez markdown.`;
 
 const CLAUDE_MODELS = [
   'claude-opus-4-5',
@@ -180,85 +317,45 @@ const CLAUDE_MODELS = [
   'claude-3-opus-20240229',
 ];
 
-async function callClaudeWithText(extractedText: string, apiKey: string): Promise<string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-  };
-
+async function callClaudeWithText(text: string, apiKey: string): Promise<string> {
   let lastError = '';
   for (const model of CLAUDE_MODELS) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify({
         model,
         max_tokens: 1000,
-        system: INVOICE_SYSTEM_PROMPT_TEXT,
-        messages: [
-          {
-            role: 'user',
-            content: `Oto tekst wyekstrahowany z faktury:\n\n${extractedText}\n\nZwróć TYLKO JSON z danymi faktury.`,
-          },
-        ],
+        system: AI_MAPPING_PROMPT,
+        messages: [{ role: 'user', content: `Tekst faktury:\n\n${text}\n\nZwróć TYLKO JSON.` }],
         temperature: 0,
       }),
     });
-
-    if (response.status === 404) {
-      console.warn(`Claude model ${model} not found, trying next...`);
-      lastError = `${model}: 404`;
-      continue;
-    }
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${err}`);
-    }
-
+    if (response.status === 404) { lastError = `${model}: 404`; continue; }
+    if (!response.ok) throw new Error(`Claude API: ${response.status} - ${await response.text()}`);
     const data = await response.json();
-    console.log(`✓ Claude (text) model ${model} succeeded`);
+    console.log(`Claude (text) model ${model} succeeded`);
     return data.content[0].text;
   }
-
-  throw new Error(`All Claude models failed. Last error: ${lastError}`);
+  throw new Error(`All Claude models failed. Last: ${lastError}`);
 }
 
-async function callClaudeWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+async function callClaudeVisual(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
   const isPDF = mimeType === 'application/pdf';
-
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01',
   };
+  if (isPDF) headers['anthropic-beta'] = 'pdfs-2024-09-25';
 
-  if (isPDF) {
-    headers['anthropic-beta'] = 'pdfs-2024-09-25';
-  }
-
-  let mediaBlock: Record<string, unknown>;
-  if (isPDF) {
-    mediaBlock = {
-      type: 'document',
-      source: {
-        type: 'base64',
-        media_type: 'application/pdf',
-        data: base64Data,
-      },
-    };
-  } else {
-    const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-    mediaBlock = {
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: imageMime,
-        data: base64Data,
-      },
-    };
-  }
+  const mediaBlock = isPDF
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
+    : { type: 'image', source: { type: 'base64', media_type: mimeType === 'image/png' ? 'image/png' : 'image/jpeg', data: base64Data } };
 
   let lastError = '';
   for (const model of CLAUDE_MODELS) {
@@ -268,184 +365,156 @@ async function callClaudeWithDocument(base64Data: string, mimeType: string, apiK
       body: JSON.stringify({
         model,
         max_tokens: 1000,
-        system: INVOICE_SYSTEM_PROMPT_VISUAL,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              mediaBlock,
-              {
-                type: 'text',
-                text: 'Przeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.',
-              },
-            ],
-          },
-        ],
+        system: AI_MAPPING_PROMPT_VISUAL,
+        messages: [{ role: 'user', content: [mediaBlock, { type: 'text', text: 'Przeanalizuj i zwróć TYLKO JSON.' }] }],
         temperature: 0,
       }),
     });
-
-    if (response.status === 404) {
-      console.warn(`Claude model ${model} not found, trying next...`);
-      lastError = `${model}: 404`;
-      continue;
-    }
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${err}`);
-    }
-
+    if (response.status === 404) { lastError = `${model}: 404`; continue; }
+    if (!response.ok) throw new Error(`Claude API: ${response.status} - ${await response.text()}`);
     const data = await response.json();
-    console.log(`✓ Claude (visual) model ${model} succeeded`);
+    console.log(`Claude (visual) model ${model} succeeded`);
     return data.content[0].text;
   }
-
-  throw new Error(`All Claude models failed. Last error: ${lastError}`);
+  throw new Error(`All Claude models failed. Last: ${lastError}`);
 }
 
-async function callGPT4oWithText(extractedText: string, apiKey: string): Promise<string> {
+async function callGPT4oWithText(text: string, apiKey: string): Promise<string> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [
-        {
-          role: 'system',
-          content: INVOICE_SYSTEM_PROMPT_TEXT,
-        },
-        {
-          role: 'user',
-          content: `Oto tekst wyekstrahowany z faktury:\n\n${extractedText}\n\nZwróć TYLKO JSON z danymi faktury.`,
-        },
+        { role: 'system', content: AI_MAPPING_PROMPT },
+        { role: 'user', content: `Tekst faktury:\n\n${text}\n\nZwróć TYLKO JSON.` },
       ],
       max_tokens: 1000,
       temperature: 0,
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`GPT-4o-mini API error: ${response.status} - ${err}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
+  if (!response.ok) throw new Error(`GPT-4o-mini: ${response.status} - ${await response.text()}`);
+  return (await response.json()).choices[0].message.content;
 }
 
-async function callGPT4oWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+async function callGPT4oVisual(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
   const isPDF = mimeType === 'application/pdf';
-
-  let mediaBlock: Record<string, unknown>;
-  if (isPDF) {
-    mediaBlock = {
-      type: 'file',
-      file: {
-        filename: 'invoice.pdf',
-        file_data: `data:application/pdf;base64,${base64Data}`,
-      },
-    };
-  } else {
-    const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-    mediaBlock = {
-      type: 'image_url',
-      image_url: { url: `data:${imageMime};base64,${base64Data}`, detail: 'high' },
-    };
-  }
+  const mediaBlock = isPDF
+    ? { type: 'file', file: { filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${base64Data}` } }
+    : { type: 'image_url', image_url: { url: `data:${mimeType === 'image/png' ? 'image/png' : 'image/jpeg'};base64,${base64Data}`, detail: 'high' } };
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `${INVOICE_SYSTEM_PROMPT_VISUAL}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
-            },
-            mediaBlock,
-          ],
-        },
-      ],
+      messages: [{ role: 'user', content: [{ type: 'text', text: `${AI_MAPPING_PROMPT_VISUAL}\n\nZwróć TYLKO JSON.` }, mediaBlock] }],
       max_tokens: 1000,
       temperature: 0,
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`GPT-4o API error: ${response.status} - ${err}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
+  if (!response.ok) throw new Error(`GPT-4o: ${response.status} - ${await response.text()}`);
+  return (await response.json()).choices[0].message.content;
 }
 
-async function callMistralWithDocument(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
+async function callMistralVisual(base64Data: string, mimeType: string, apiKey: string): Promise<string> {
   const imageMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-  const dataUrl = `data:${imageMime};base64,${base64Data}`;
-
-  const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
+  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: "pixtral-12b-2409",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `${INVOICE_SYSTEM_PROMPT_VISUAL}\n\nPrzeanalizuj tę fakturę i wyciągnij wszystkie dane. Odpowiedz TYLKO z JSON.`,
-            },
-            {
-              type: "image_url",
-              image_url: dataUrl,
-            },
-          ],
-        },
-      ],
+      model: 'pixtral-12b-2409',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: `${AI_MAPPING_PROMPT_VISUAL}\n\nZwróć TYLKO JSON.` },
+        { type: 'image_url', image_url: `data:${imageMime};base64,${base64Data}` },
+      ]}],
       temperature: 0.1,
       max_tokens: 1000,
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Mistral API error: ${response.status} - ${err}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
+  if (!response.ok) throw new Error(`Mistral: ${response.status} - ${await response.text()}`);
+  return (await response.json()).choices[0].message.content;
 }
 
-async function extractTextFromPdf(base64Data: string): Promise<string | null> {
-  try {
-    console.log('Attempting pdf-parse text extraction...');
-    const pdfParse = await import('npm:pdf-parse@1.1.1');
-    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const pdfData = await (pdfParse as any).default(buffer);
-    const text = pdfData?.text || '';
-    console.log(`pdf-parse extracted ${text.length} chars`);
-    if (text.trim().length < 50) return null;
-    return text;
-  } catch (e: any) {
-    console.error('pdf-parse failed:', e?.message || e);
-    return null;
+async function runAIMapping(
+  raw: ExtractedRawData,
+  claudeKey?: string,
+  openaiKey?: string,
+  mistralKey?: string,
+): Promise<{ content: string; usedApi: string }> {
+  const hasText = raw.text && raw.text.length >= 30;
+
+  if (hasText) {
+    if (claudeKey) {
+      try {
+        const content = await callClaudeWithText(raw.text!, claudeKey);
+        return { content, usedApi: 'Claude (text)' };
+      } catch (e: any) { console.error('Claude text failed:', e.message); }
+    }
+    if (openaiKey) {
+      try {
+        const content = await callGPT4oWithText(raw.text!, openaiKey);
+        return { content, usedApi: 'GPT-4o-mini (text)' };
+      } catch (e: any) { console.error('GPT text failed:', e.message); }
+    }
   }
+
+  if (claudeKey) {
+    try {
+      const content = await callClaudeVisual(raw.base64, raw.mimeType, claudeKey);
+      return { content, usedApi: `Claude (visual${raw.isScanned ? ' scanned' : ''})` };
+    } catch (e: any) { console.error('Claude visual failed:', e.message); }
+  }
+  if (openaiKey) {
+    try {
+      const content = await callGPT4oVisual(raw.base64, raw.mimeType, openaiKey);
+      return { content, usedApi: `GPT-4o (visual${raw.isScanned ? ' scanned' : ''})` };
+    } catch (e: any) { console.error('GPT visual failed:', e.message); }
+  }
+  if (mistralKey && raw.mimeType !== 'application/pdf') {
+    try {
+      const content = await callMistralVisual(raw.base64, raw.mimeType, mistralKey);
+      return { content, usedApi: 'Mistral (visual)' };
+    } catch (e: any) { console.error('Mistral visual failed:', e.message); }
+  }
+
+  return { content: JSON.stringify(createFallback()), usedApi: 'Fallback (no API)' };
+}
+
+// ─────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────
+
+function createFallback() {
+  return {
+    invoice_number: null, supplier_name: null, supplier_nip: null,
+    buyer_name: null, buyer_nip: null, issue_date: null, due_date: null,
+    net_amount: null, tax_amount: null, gross_amount: null, currency: 'PLN',
+  };
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const ab = await blob.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    const chunk = bytes.subarray(i, i + 8192);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function fetchFile(url: string, fallbackMime: string): Promise<{ base64: string; mimeType: string }> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Fetch failed: ${resp.status} ${url}`);
+  const blob = await resp.blob();
+  let mimeType = fallbackMime;
+  const ct = resp.headers.get('content-type') || '';
+  if (ct && ct !== 'application/octet-stream') mimeType = ct.split(';')[0].trim();
+  else if (/\.pdf(\?|$)/i.test(url)) mimeType = 'application/pdf';
+  else if (/\.(jpg|jpeg)(\?|$)/i.test(url)) mimeType = 'image/jpeg';
+  else if (/\.png(\?|$)/i.test(url)) mimeType = 'image/png';
+  return { base64: await blobToBase64(blob), mimeType };
 }
 
 function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDetected?: string): string | null {
@@ -454,9 +523,8 @@ function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDet
   if (!s) return null;
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const [y, m, d] = s.split('-').map(Number);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return s;
-    return null;
+    const [, m, d] = s.split('-').map(Number);
+    return (m >= 1 && m <= 12 && d >= 1 && d <= 31) ? s : null;
   }
 
   const isUS = supplierCountry === 'US' || dateFormatDetected === 'US (MM/DD/YYYY)';
@@ -464,383 +532,213 @@ function normalizeDate(dateStr: unknown, supplierCountry?: string, dateFormatDet
   const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) {
     const [, a, b, y] = slashMatch.map(Number);
-    if (isUS) {
-      const month = a, day = b;
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
-    } else {
-      if (a > 12) {
-        const day = a, month = b;
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-      } else if (b > 12) {
-        const month = a, day = b;
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-      } else {
-        const day = a, month = b;
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-      }
-    }
-    const dashMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (dashMatch) {
-      const [, a, b, yearStr] = dashMatch;
-      const year = Number(yearStr);
-      const aNum = Number(a);
-      const bNum = Number(b);
-      const day = isUS ? bNum : aNum;
-      const month = isUS ? aNum : bNum;
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
-    }
+    const [month, day] = isUS ? [a, b] : (a > 12 ? [b, a] : [b > 12 ? a : b, b > 12 ? b : a]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
   const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (dotMatch) {
     const [, day, month, year] = dotMatch.map(Number);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    }
+  }
+
+  const dashMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const [, a, b, yearStr] = dashMatch;
+    const year = Number(yearStr), aNum = Number(a), bNum = Number(b);
+    const [day, month] = isUS ? [bNum, aNum] : [aNum, bNum];
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
   const MONTHS: Record<string, string> = {
-    january: '01', february: '02', march: '03', april: '04',
-    may: '05', june: '06', july: '07', august: '08',
-    september: '09', october: '10', november: '11', december: '12',
-    jan: '01', feb: '02', mar: '03', apr: '04',
-    jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    january:'01', february:'02', march:'03', april:'04', may:'05', june:'06',
+    july:'07', august:'08', september:'09', october:'10', november:'11', december:'12',
+    jan:'01', feb:'02', mar:'03', apr:'04', jun:'06', jul:'07',
+    aug:'08', sep:'09', oct:'10', nov:'11', dec:'12',
   };
-
-  const wordMatch1 = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
-  if (wordMatch1) {
-    const [, monthWord, day, year] = wordMatch1;
-    const month = MONTHS[monthWord.toLowerCase()];
-    if (month) return `${year}-${month}-${String(Number(day)).padStart(2, '0')}`;
+  const wm1 = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (wm1) {
+    const m = MONTHS[wm1[1].toLowerCase()];
+    if (m) return `${wm1[3]}-${m}-${String(Number(wm1[2])).padStart(2, '0')}`;
+  }
+  const wm2 = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (wm2) {
+    const m = MONTHS[wm2[2].toLowerCase()];
+    if (m) return `${wm2[3]}-${m}-${String(Number(wm2[1])).padStart(2, '0')}`;
   }
 
-  const wordMatch2 = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-  if (wordMatch2) {
-    const [, day, monthWord, year] = wordMatch2;
-    const month = MONTHS[monthWord.toLowerCase()];
-    if (month) return `${year}-${month}-${String(Number(day)).padStart(2, '0')}`;
-  }
-
-  console.warn(`normalizeDate: could not parse date "${s}" (country=${supplierCountry}, format=${dateFormatDetected})`);
   return null;
 }
 
-function createFallback() {
-  return {
-    invoice_number: null,
-    supplier_name: null,
-    supplier_nip: null,
-    buyer_name: null,
-    buyer_nip: null,
-    issue_date: null,
-    due_date: null,
-    net_amount: null,
-    tax_amount: null,
-    gross_amount: null,
-    currency: "PLN",
-  };
+function parseAmount(val: unknown): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  let s = String(val).replace(/\s/g, '').replace(/[€$£]/g, '');
+  const dots = (s.match(/\./g) || []).length;
+  const commas = (s.match(/,/g) || []).length;
+  if (dots >= 1 && commas === 1) {
+    s = s.lastIndexOf('.') < s.lastIndexOf(',') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (commas >= 1 && dots === 0) {
+    const parts = s.split(',');
+    s = parts.length === 2 && parts[1].length <= 2 ? s.replace(',', '.') : s.replace(/,/g, '');
+  } else if (dots >= 2) {
+    s = s.replace(/\./g, '');
+  } else if (dots === 1 && commas === 0 && (s.split('.')[1] || '').length === 3) {
+    s = s.replace('.', '');
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
 }
 
-async function fetchFileFromUrl(url: string, fallbackMimeType: string): Promise<{ base64: string; mimeType: string }> {
-  console.log("Fetching file from URL:", url);
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch file: ${resp.status} ${resp.statusText} — ${url}`);
-  }
-  const blob = await resp.blob();
-
-  let mimeType = fallbackMimeType;
-  const ct = resp.headers.get('content-type') || '';
-  if (ct && ct !== 'application/octet-stream' && ct !== 'binary/octet-stream') {
-    mimeType = ct.split(';')[0].trim();
-  } else if (url.match(/\.(jpg|jpeg)(\?|$)/i)) {
-    mimeType = 'image/jpeg';
-  } else if (url.match(/\.png(\?|$)/i)) {
-    mimeType = 'image/png';
-  } else if (url.match(/\.pdf(\?|$)/i)) {
-    mimeType = 'application/pdf';
-  }
-
-  console.log(`File fetched: ${blob.size} bytes, mimeType=${mimeType}`);
-  const base64 = await blobToBase64(blob);
-  return { base64, mimeType };
-}
-
-async function callAIWithText(
-  extractedText: string,
-  claudeApiKey: string | undefined,
-  openaiApiKey: string | undefined,
-): Promise<{ content: string; usedApi: string }> {
-  if (claudeApiKey) {
-    try {
-      const content = await callClaudeWithText(extractedText, claudeApiKey);
-      return { content, usedApi: 'Claude (text)' };
-    } catch (err: any) {
-      console.error('Claude (text) failed:', err.message);
-    }
-  }
-
-  if (openaiApiKey) {
-    try {
-      const content = await callGPT4oWithText(extractedText, openaiApiKey);
-      return { content, usedApi: 'GPT-4o-mini (text)' };
-    } catch (err: any) {
-      console.error('GPT-4o-mini (text) failed:', err.message);
-    }
-  }
-
-  return { content: JSON.stringify(createFallback()), usedApi: 'Fallback (no AI key or all failed)' };
-}
-
-async function callAIVisual(
-  base64Data: string,
-  mimeType: string,
-  claudeApiKey: string | undefined,
-  openaiApiKey: string | undefined,
-  mistralApiKey: string | undefined,
-): Promise<{ content: string; usedApi: string }> {
-  const isPDF = mimeType === 'application/pdf';
-
-  if (claudeApiKey) {
-    try {
-      const content = await callClaudeWithDocument(base64Data, mimeType, claudeApiKey);
-      return { content, usedApi: isPDF ? 'Claude (visual PDF)' : 'Claude (visual image)' };
-    } catch (err: any) {
-      console.error('Claude (visual) failed:', err.message);
-    }
-  }
-
-  if (openaiApiKey) {
-    try {
-      const content = await callGPT4oWithDocument(base64Data, mimeType, openaiApiKey);
-      return { content, usedApi: isPDF ? 'GPT-4o (visual PDF)' : 'GPT-4o (visual image)' };
-    } catch (err: any) {
-      console.error('GPT-4o (visual) failed:', err.message);
-    }
-  }
-
-  if (!isPDF && mistralApiKey) {
-    try {
-      const content = await callMistralWithDocument(base64Data, mimeType, mistralApiKey);
-      return { content, usedApi: 'Mistral Pixtral (visual image)' };
-    } catch (err: any) {
-      console.error('Mistral (visual) failed:', err.message);
-    }
-  }
-
-  return { content: JSON.stringify(createFallback()), usedApi: 'Fallback (all visual APIs failed)' };
-}
+// ─────────────────────────────────────────────
+// MAIN HANDLER
+// ─────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    console.log("=== OCR STARTED ===");
+    console.log('=== OCR PIPELINE START ===');
 
-    const claudeApiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-    const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    console.log("API Keys available:", { claude: !!claudeApiKey, openai: !!openaiApiKey, mistral: !!mistralApiKey });
-
+    const claudeKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    const mistralKey = Deno.env.get('MISTRAL_API_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const body: OCRRequest = await req.json();
-    const { fileUrl, invoiceId, pdfBase64, fileBase64, mimeType: requestMimeType } = body;
+    const { fileUrl, invoiceId, pdfBase64, fileBase64, mimeType: reqMime, skipFilter } = body;
 
-    console.log("Request:", { invoiceId, hasBase64: !!(fileBase64 || pdfBase64), hasUrl: !!fileUrl, mimeType: requestMimeType });
+    console.log('Request:', { invoiceId, hasBase64: !!(fileBase64 || pdfBase64), hasUrl: !!fileUrl });
 
-    if (!claudeApiKey && !openaiApiKey && !mistralApiKey) {
-      console.warn("No AI API keys configured — skipping OCR");
+    if (!claudeKey && !openaiKey && !mistralKey) {
+      console.warn('No AI keys — skipping OCR');
       return new Response(
-        JSON.stringify({ success: true, data: createFallback(), usedApi: "None (no API keys)", suggestedTags: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: true, data: createFallback(), usedApi: 'None', suggestedTags: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let resolvedMimeType = requestMimeType || 'application/pdf';
+    let resolvedMime = reqMime || 'application/pdf';
     let base64Data: string;
 
     if (fileBase64 || pdfBase64) {
       base64Data = fileBase64 || pdfBase64!;
-      console.log(`Using provided base64, mimeType: ${resolvedMimeType}, length: ${base64Data.length}`);
     } else {
-      let urlToFetch = fileUrl || null;
-
-      if (!urlToFetch && invoiceId) {
-        console.log("Looking up file_url from DB for invoice:", invoiceId);
-        const { data: invoiceRow, error: dbErr } = await supabase
-          .from("invoices")
-          .select("file_url")
-          .eq("id", invoiceId)
-          .maybeSingle();
-        if (dbErr) console.error("DB lookup error:", dbErr.message);
-        urlToFetch = invoiceRow?.file_url || null;
-        console.log("file_url from DB:", urlToFetch);
+      let url = fileUrl || null;
+      if (!url && invoiceId) {
+        const { data: row } = await supabase.from('invoices').select('file_url').eq('id', invoiceId).maybeSingle();
+        url = row?.file_url || null;
       }
-
-      if (!urlToFetch) {
-        throw new Error(`No file URL available for invoice ${invoiceId}`);
-      }
-
-      const fetched = await fetchFileFromUrl(urlToFetch, resolvedMimeType);
+      if (!url) throw new Error(`No file URL for invoice ${invoiceId}`);
+      const fetched = await fetchFile(url, resolvedMime);
       base64Data = fetched.base64;
-      resolvedMimeType = fetched.mimeType;
+      resolvedMime = fetched.mimeType;
     }
 
-    const isPDF = resolvedMimeType === 'application/pdf';
-    console.log(`Processing as: ${isPDF ? 'PDF document' : 'image'}, mimeType: ${resolvedMimeType}, base64 length: ${base64Data.length}`);
+    // ── STEP 1: EXTRACT ──
+    console.log('STEP 1: Extracting text...');
+    const raw = await extractRawData(base64Data, resolvedMime);
+    console.log(`Extracted: text=${raw.text ? raw.text.length + ' chars' : 'none'}, scanned=${raw.isScanned}`);
 
-    let content: string;
-    let usedApi: string;
+    // ── STEP 2: FILTER (skip for images — always go to AI) ──
+    let filterResult: FilterResult | null = null;
+    if (!skipFilter && resolvedMime === 'application/pdf') {
+      console.log('STEP 2: Running invoice filter algorithm...');
 
-    if (isPDF) {
-      console.log("Step 1: Attempting text extraction from PDF...");
-      const extractedText = await extractTextFromPdf(base64Data);
+      const { data: invoiceRow } = await supabase
+        .from('invoices').select('file_url').eq('id', invoiceId).maybeSingle();
+      const filename = invoiceRow?.file_url
+        ? invoiceRow.file_url.split('/').pop()?.split('?')[0] || undefined
+        : undefined;
 
-      if (extractedText) {
-        console.log(`✓ Text extracted (${extractedText.length} chars) — calling AI with text (cheaper)`);
-        const result = await callAIWithText(extractedText, claudeApiKey, openaiApiKey);
-        content = result.content;
-        usedApi = result.usedApi;
-      } else {
-        console.log("PDF has no extractable text (likely scanned) — falling back to visual AI");
-        const result = await callAIVisual(base64Data, resolvedMimeType, claudeApiKey, openaiApiKey, mistralApiKey);
-        content = result.content;
-        usedApi = result.usedApi + ' [scanned PDF fallback]';
+      filterResult = runInvoiceFilter(raw.text, filename);
+      console.log('Filter result:', filterResult);
+
+      if (!filterResult.isInvoice && !raw.isScanned) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            filtered: true,
+            filterResult,
+            message: `Document rejected by filter algorithm: ${filterResult.rejectionReason}`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+
+      if (raw.isScanned) {
+        console.log('Scanned PDF — skipping text filter, proceeding to AI visual analysis');
+      }
+    } else if (skipFilter) {
+      console.log('STEP 2: Filter skipped (skipFilter=true)');
     } else {
-      console.log("Image file — using visual AI");
-      const result = await callAIVisual(base64Data, resolvedMimeType, claudeApiKey, openaiApiKey, mistralApiKey);
-      content = result.content;
-      usedApi = result.usedApi;
+      console.log('STEP 2: Filter skipped (image file)');
     }
 
-    console.log(`Used API: ${usedApi}`);
-    console.log(`Raw response (first 300 chars): ${content.substring(0, 300)}`);
+    // ── STEP 3: AI FIELD MAPPING ──
+    console.log('STEP 3: AI field mapping...');
+    const { content, usedApi } = await runAIMapping(raw, claudeKey, openaiKey, mistralKey);
+    console.log(`Used: ${usedApi}`);
+    console.log(`Raw response (first 300): ${content.substring(0, 300)}`);
 
     let parsedData: Record<string, unknown>;
     try {
-      const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsedData = JSON.parse(clean);
-    } catch (e) {
-      console.error("JSON parse failed:", content);
+      parsedData = JSON.parse(content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+    } catch {
+      console.error('JSON parse failed:', content);
       parsedData = createFallback();
-      usedApi = `${usedApi} (parse error)`;
     }
 
-    console.log("Parsed OCR data:", JSON.stringify(parsedData));
+    console.log('Mapped data:', JSON.stringify(parsedData));
 
+    // ── STEP 4: PERSIST TO DATABASE ──
     const { data: existingInvoice } = await supabase
-      .from("invoices")
-      .select("*")
-      .eq("id", invoiceId)
-      .maybeSingle();
+      .from('invoices').select('*').eq('id', invoiceId).maybeSingle();
 
     const COMPANY_NIPS = ['5851490834', '8222407812'];
     const CORRECT_BUYER_NIP = '5851490834';
-
     let supplierErrorMessage: string | null = null;
     let buyerErrorMessage: string | null = null;
 
     if (parsedData.supplier_nip) {
       const clean = String(parsedData.supplier_nip).replace(/[^0-9]/g, '');
       if (COMPANY_NIPS.some(n => clean === n)) {
-        const cname = clean === '5851490834' ? 'Aura Herbals' : 'firma';
-        supplierErrorMessage = `BŁĄD: AI pomyliło strony faktury - ${cname} (NIP: ${clean}) to NABYWCA, nie SPRZEDAWCA.`;
-        console.error(supplierErrorMessage);
+        const name = clean === '5851490834' ? 'Aura Herbals' : 'firma';
+        supplierErrorMessage = `BŁĄD: AI pomyliło strony faktury - ${name} (NIP: ${clean}) to NABYWCA, nie SPRZEDAWCA.`;
         parsedData.supplier_name = `[BŁĄD: TO NABYWCA] ${parsedData.supplier_name || ''}`;
         parsedData.supplier_nip = `[BŁĄD] ${parsedData.supplier_nip}`;
       }
     }
-
     if (parsedData.buyer_nip) {
       const clean = String(parsedData.buyer_nip).replace(/[^0-9]/g, '');
-      if (clean !== CORRECT_BUYER_NIP) {
-        buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (NIP: ${parsedData.buyer_nip}).`;
-        console.warn(buyerErrorMessage);
-      }
+      if (clean !== CORRECT_BUYER_NIP) buyerErrorMessage = `BŁĘDNY ODBIORCA: NIP ${parsedData.buyer_nip}`;
     } else if (parsedData.buyer_name) {
       const bn = String(parsedData.buyer_name).toLowerCase();
-      if (!bn.includes('aura') || !bn.includes('herbals')) {
-        buyerErrorMessage = `BŁĘDNY ODBIORCA: Faktura wystawiona na inną firmę (${parsedData.buyer_name}).`;
-        console.warn(buyerErrorMessage);
-      }
+      if (!bn.includes('aura') || !bn.includes('herbals'))
+        buyerErrorMessage = `BŁĘDNY ODBIORCA: ${parsedData.buyer_name}`;
     }
+
+    const supplierCountry = typeof parsedData.supplier_country === 'string'
+      ? parsedData.supplier_country.toUpperCase() : undefined;
+    const dateFormatDetected = typeof parsedData.date_format_detected === 'string'
+      ? parsedData.date_format_detected : undefined;
 
     const updateData: Record<string, unknown> = {};
-
-    const supplierCountry = typeof parsedData.supplier_country === 'string' ? parsedData.supplier_country.toUpperCase() : undefined;
-    const dateFormatDetected = typeof parsedData.date_format_detected === 'string' ? parsedData.date_format_detected : undefined;
-
-    console.log(`Supplier country: ${supplierCountry}, date format: ${dateFormatDetected}`);
-
-    const normalizedIssueDate = normalizeDate(parsedData.issue_date, supplierCountry, dateFormatDetected);
-    const normalizedDueDate = normalizeDate(parsedData.due_date, supplierCountry, dateFormatDetected);
-
-    if (normalizedIssueDate && normalizedIssueDate !== parsedData.issue_date) {
-      console.log(`Date normalized (issue_date): "${parsedData.issue_date}" → "${normalizedIssueDate}" [country=${supplierCountry}]`);
-    }
-    if (normalizedDueDate && normalizedDueDate !== parsedData.due_date) {
-      console.log(`Date normalized (due_date): "${parsedData.due_date}" → "${normalizedDueDate}" [country=${supplierCountry}]`);
-    }
-
     if (parsedData.invoice_number) updateData.invoice_number = parsedData.invoice_number;
     if (parsedData.supplier_name) updateData.supplier_name = parsedData.supplier_name;
     if (parsedData.supplier_nip) updateData.supplier_nip = parsedData.supplier_nip;
     if (parsedData.buyer_name) updateData.buyer_name = parsedData.buyer_name;
     if (parsedData.buyer_nip) updateData.buyer_nip = parsedData.buyer_nip;
-    if (normalizedIssueDate) updateData.issue_date = normalizedIssueDate;
-    if (normalizedDueDate) updateData.due_date = normalizedDueDate;
     if (parsedData.currency) updateData.currency = parsedData.currency;
 
-    const parseAmount = (val: unknown): number | null => {
-      if (val === null || val === undefined || val === '') return null;
-      let s = String(val).replace(/\s/g, '').replace(/[€$£]/g, '');
-
-      const dotCount = (s.match(/\./g) || []).length;
-      const commaCount = (s.match(/,/g) || []).length;
-
-      if (dotCount >= 1 && commaCount === 1) {
-        const commaIdx = s.lastIndexOf(',');
-        const dotIdx = s.lastIndexOf('.');
-        if (dotIdx < commaIdx) {
-          s = s.replace(/\./g, '').replace(',', '.');
-        } else {
-          s = s.replace(/,/g, '');
-        }
-      } else if (commaCount >= 1 && dotCount === 0) {
-        const parts = s.split(',');
-        if (parts.length === 2 && parts[1].length <= 2) {
-          s = s.replace(',', '.');
-        } else {
-          s = s.replace(/,/g, '');
-        }
-      } else if (dotCount >= 2) {
-        s = s.replace(/\./g, '');
-      } else if (dotCount === 1 && commaCount === 0) {
-        const afterDot = s.split('.')[1] || '';
-        if (afterDot.length === 3) {
-          s = s.replace('.', '');
-        }
-      }
-
-      const n = parseFloat(s);
-      return isNaN(n) ? null : n;
-    };
+    const nd = normalizeDate(parsedData.issue_date, supplierCountry, dateFormatDetected);
+    const nd2 = normalizeDate(parsedData.due_date, supplierCountry, dateFormatDetected);
+    if (nd) updateData.issue_date = nd;
+    if (nd2) updateData.due_date = nd2;
 
     const net = parseAmount(parsedData.net_amount);
     const tax = parseAmount(parsedData.tax_amount);
@@ -876,32 +774,22 @@ Deno.serve(async (req: Request) => {
       updateData.exchange_rate_date = issueDate;
     }
 
-    console.log("Updating invoice with:", JSON.stringify(updateData));
-
     if (Object.keys(updateData).length > 0) {
       const { error: updateError } = await supabase
-        .from("invoices")
-        .update(updateData)
-        .eq("id", invoiceId);
-
-      if (updateError) {
-        console.error("DB update error:", updateError);
-        throw updateError;
-      }
-      console.log("✓ Invoice updated in DB");
+        .from('invoices').update(updateData).eq('id', invoiceId);
+      if (updateError) throw updateError;
+      console.log('Invoice updated in DB');
     }
 
     let suggestedTags: unknown[] = [];
     try {
       const vendorName = String(updateData.supplier_name || '').trim();
       if (vendorName) {
-        const { data: vendorTags } = await supabase
-          .from('tag_learning')
-          .select('tag_id, frequency, tags:tag_id(id, name, color)')
+        const { data: vt } = await supabase
+          .from('tag_learning').select('tag_id, frequency, tags:tag_id(id, name, color)')
           .ilike('vendor_name', vendorName);
-
-        if (vendorTags && vendorTags.length > 0) {
-          suggestedTags = vendorTags
+        if (vt?.length) {
+          suggestedTags = vt
             .filter((i: Record<string, unknown>) => i.tags)
             .sort((a: Record<string, number>, b: Record<string, number>) => b.frequency - a.frequency)
             .slice(0, 3)
@@ -911,9 +799,7 @@ Deno.serve(async (req: Request) => {
             });
         }
       }
-    } catch (e) {
-      console.error("Tags suggestion error:", e);
-    }
+    } catch (e) { console.error('Tags error:', e); }
 
     let suggestedDescription: string | null = null;
     try {
@@ -926,45 +812,37 @@ Deno.serve(async (req: Request) => {
         if (supplierNip) q = q.eq('supplier_nip', supplierNip);
         else q = q.ilike('supplier_name', vendorName);
         const { data: hist } = await q;
-        if (hist && hist.length > 0) {
+        if (hist?.length) {
           const counts: Record<string, number> = {};
-          for (const inv of hist) {
-            const d = String(inv.description).trim();
-            counts[d] = (counts[d] || 0) + 1;
-          }
+          for (const inv of hist) { const d = String(inv.description).trim(); counts[d] = (counts[d] || 0) + 1; }
           suggestedDescription = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
         }
       }
       if (suggestedDescription) {
         const { data: cur } = await supabase.from('invoices').select('description').eq('id', invoiceId).maybeSingle();
-        if (cur && (!cur.description || cur.description.trim() === '')) {
+        if (cur && (!cur.description || cur.description.trim() === ''))
           await supabase.from('invoices').update({ description: suggestedDescription }).eq('id', invoiceId);
-        }
       }
-    } catch (e) {
-      console.error("Description suggestion error:", e);
-    }
+    } catch (e) { console.error('Description error:', e); }
 
-    console.log("=== OCR COMPLETED ===");
+    console.log('=== OCR PIPELINE DONE ===');
 
     return new Response(
       JSON.stringify({
         success: true,
         data: parsedData,
         usedApi,
+        filterResult,
         suggestedTags,
         suggestedDescription,
         validationError: supplierErrorMessage,
         buyerError: buyerErrorMessage,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("=== OCR FAILED ===", msg);
-    return new Response(
-      JSON.stringify({ error: msg }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error('=== OCR PIPELINE FAILED ===', msg);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

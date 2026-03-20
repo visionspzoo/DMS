@@ -632,12 +632,27 @@ async function processEmailChunk(
 
         seenHashesThisChunk.add(fileHash);
 
-        const preCheckPass = await quickInvoicePreCheck(pdfData, part.filename);
-        if (!preCheckPass) {
-          if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "not_invoice_precheck" });
+        // ── STEP 1+2: EXTRACT TEXT & RUN FILTER ALGORITHM (no AI) ──
+        if (send) await send({ type: "filter_start", filename: part.filename });
+
+        const base64Content = uint8ToBase64(pdfData);
+        const filterResult = await runLocalInvoiceFilter(base64Content, part.filename);
+
+        if (!filterResult.isInvoice && !filterResult.isScanned) {
+          if (send) await send({
+            type: "attachment_skipped",
+            filename: part.filename,
+            reason: "not_invoice_filter",
+            filterReason: filterResult.rejectionReason,
+            filterDetails: filterResult.reasons,
+          });
+          console.log(`[filter] Rejected "${part.filename}": ${filterResult.rejectionReason}`);
           continue;
         }
 
+        if (send) await send({ type: "filter_passed", filename: part.filename, confidence: filterResult.confidence, isScanned: filterResult.isScanned });
+
+        // ── STEP 3: PERSIST INVOICE RECORD ──
         const sanitizedFilename = part.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
         const fileName = `${Date.now()}_${sanitizedFilename}`;
         const filePath = `invoices/${fileName}`;
@@ -654,7 +669,6 @@ async function processEmailChunk(
         }
 
         const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(filePath);
-        const base64Content = uint8ToBase64(pdfData);
 
         const { data: invoiceData, error: insertError } = await supabase
           .from("invoices")
@@ -674,12 +688,14 @@ async function processEmailChunk(
           } else {
             warnings.push(`Nie udało się zapisać załącznika z emaila: ${insertError.message}`);
           }
+          await supabase.storage.from("documents").remove([filePath]);
           continue;
         }
 
         if (send) await send({ type: "invoice_created", filename: part.filename, invoiceId: invoiceData.id });
 
-        let isRealInvoice = false;
+        // ── STEP 4: AI FIELD MAPPING ──
+        let ocrData: any = null;
         try {
           if (send) await send({ type: "ocr_start", filename: part.filename });
 
@@ -691,92 +707,41 @@ async function processEmailChunk(
                 Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ fileUrl: publicUrl, invoiceId: invoiceData.id }),
+              body: JSON.stringify({
+                fileUrl: publicUrl,
+                invoiceId: invoiceData.id,
+                skipFilter: true,
+              }),
             }
           );
 
           if (ocrResponse.ok) {
-            const ocrData = await ocrResponse.json();
+            ocrData = await ocrResponse.json();
             const d = ocrData.data || {};
-            const clean = (v: unknown) => v && String(v).trim().length > 1 && v !== "null" && !String(v).startsWith("[");
-            const hasInvoiceNumber = clean(d.invoice_number);
-            const hasAmount = d.gross_amount && parseFloat(String(d.gross_amount)) > 0;
-            const hasSupplierName = clean(d.supplier_name);
-            const hasSupplierNip = clean(d.supplier_nip);
-            const hasBuyerName = clean(d.buyer_name);
-            const hasBuyerNip = clean(d.buyer_nip);
-            const hasDate = clean(d.issue_date);
-            const hasStrongSignal = !!(hasInvoiceNumber || hasBuyerNip || hasSupplierNip);
-            const signals = [hasInvoiceNumber, hasAmount, hasSupplierName || hasSupplierNip, hasBuyerName || hasBuyerNip, hasDate].filter(Boolean).length;
-            isRealInvoice = hasStrongSignal && signals >= 3;
 
-            if (isRealInvoice) {
-              const INVOICE_KEYWORDS = [
-                "faktura", "invoice", "rechnung", "facture", "fattura", "factura",
-                "nota księgowa", "nota korygująca", "credit note", "debit note",
-                "proforma", "pro forma", "receipt", "paragon",
-              ];
-              try {
-                const base64Content = uint8ToBase64(pdfData);
-                const textResp = await fetch(
-                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/extract-pdf-text`,
-                  {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ pdf_base64: base64Content }),
-                  }
-                );
-                if (textResp.ok) {
-                  const { text } = await textResp.json();
-                  if (text && text.trim().length >= 40) {
-                    const lowerText = text.toLowerCase();
-                    const hasInvoiceKeyword = INVOICE_KEYWORDS.some(kw => lowerText.includes(kw));
-                    if (!hasInvoiceKeyword) {
-                      isRealInvoice = false;
-                      console.log(`Rejected "${part.filename}": no invoice keyword found in extracted text`);
-                    }
-                  }
-                }
-              } catch (_) {}
-            }
-
-            if (!isRealInvoice) {
-              await supabase.from("invoices").delete().eq("id", invoiceData.id);
-              await supabase.storage.from("documents").remove([filePath]);
-              if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "not_invoice" });
-            } else {
-              if (!job.force_reimport && d.invoice_number && (d.supplier_nip || d.supplier_name)) {
-                const nipClean = d.supplier_nip ? String(d.supplier_nip).replace(/[^0-9]/g, "") : null;
-                let dupQuery = supabase
-                  .from("invoices")
-                  .select("id")
-                  .eq("invoice_number", d.invoice_number)
-                  .neq("id", invoiceData.id);
-                if (nipClean) {
-                  dupQuery = dupQuery.not("supplier_nip", "is", null);
-                }
-                const { data: existingByNumber } = await dupQuery.maybeSingle();
-                if (existingByNumber) {
-                  await supabase.from("invoices").delete().eq("id", invoiceData.id);
-                  await supabase.storage.from("documents").remove([filePath]);
-                  if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
-                  isRealInvoice = false;
-                }
-              }
-
-              if (isRealInvoice) {
-                if (ocrData.validationError) warnings.push(`${part.filename}: ${ocrData.validationError}`);
-                if (send) await send({ type: "ocr_done", filename: part.filename });
+            if (!job.force_reimport && d.invoice_number && (d.supplier_nip || d.supplier_name)) {
+              const nipClean = d.supplier_nip ? String(d.supplier_nip).replace(/[^0-9]/g, "") : null;
+              let dupQuery = supabase
+                .from("invoices")
+                .select("id")
+                .eq("invoice_number", d.invoice_number)
+                .neq("id", invoiceData.id);
+              if (nipClean) dupQuery = dupQuery.not("supplier_nip", "is", null);
+              const { data: existingByNumber } = await dupQuery.maybeSingle();
+              if (existingByNumber) {
+                await supabase.from("invoices").delete().eq("id", invoiceData.id);
+                await supabase.storage.from("documents").remove([filePath]);
+                if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate" });
+                continue;
               }
             }
-          } else {
-            isRealInvoice = true;
+
+            if (ocrData.validationError) warnings.push(`${part.filename}: ${ocrData.validationError}`);
+            if (send) await send({ type: "ocr_done", filename: part.filename });
           }
-        } catch (ocrError) {
-          isRealInvoice = true;
+        } catch (ocrError: any) {
+          console.error(`OCR error for ${part.filename}:`, ocrError?.message);
         }
-
-        if (!isRealInvoice) continue;
 
         if (!job.force_reimport && threadId && part.filename) {
           await supabase.from("processed_email_thread_files").insert({
@@ -922,15 +887,140 @@ async function getValidAccessToken(supabase: any, config: EmailConfig): Promise<
   return config.oauth_access_token;
 }
 
-async function quickInvoicePreCheck(_pdfBytes: Uint8Array, filename: string): Promise<boolean> {
+// ─────────────────────────────────────────────
+// INVOICE FILTER ALGORITHM (NO AI)
+// Algorytm filtracji — rozwijać o kolejne zmienne
+// ─────────────────────────────────────────────
+
+interface LocalFilterResult {
+  isInvoice: boolean;
+  isScanned: boolean;
+  confidence: number;
+  reasons: string[];
+  rejectionReason?: string;
+}
+
+const INVOICE_KEYWORDS_STRONG = [
+  'faktura vat', 'faktura nr', 'faktura pro', 'faktura korygująca',
+  'nota księgowa', 'nota korygująca',
+  'invoice', 'invoice no', 'invoice number', 'inv no',
+  'rechnung', 'rechnungsnummer',
+  'facture', 'numéro de facture',
+  'fattura', 'factura',
+];
+
+const INVOICE_KEYWORDS_MEDIUM = [
+  'nip', 'vat', 'brutto', 'netto', 'gross', 'net amount',
+  'tax', 'podatek', 'vat rate', 'stawka vat',
+  'płatność', 'zapłata', 'payment', 'due date', 'termin płatności',
+  'sprzedawca', 'nabywca', 'seller', 'buyer', 'bill to',
+  'suma', 'razem', 'total', 'subtotal', 'amount due',
+  'data wystawienia', 'issue date', 'data sprzedaży',
+  'konto bankowe', 'bank account', 'iban', 'swift',
+  'proforma', 'pro forma', 'credit note', 'debit note',
+];
+
+const EXCLUDE_KEYWORDS = [
+  'newsletter', 'unsubscribe', 'wypisz się', 'zapisz się',
+  'regulamin', 'terms and conditions', 'privacy policy',
+  'polityka prywatności', 'oferta handlowa', 'katalog', 'brochure',
+];
+
+const HARD_SKIP_FILENAMES = [
+  'newsletter', 'brochure', 'katalog', 'catalog', 'catalogue',
+  'presentation', 'prezentacja', 'regulamin', 'terms_and_conditions',
+  'terms-and-conditions', 'vendo.erp',
+];
+
+const AMOUNT_PATTERNS = [
+  /\d[\d\s]*[,.]\d{2}\s*(pln|eur|usd|gbp|chf|czk|huf)/i,
+  /\d[\d\s]*[,.]\d{2}\s*(zł|€|\$|£)/i,
+  /(pln|eur|usd|gbp|zł)\s*\d[\d\s]*[,.]\d{2}/i,
+];
+const NIP_PATTERN = /\b\d{3}[-\s]?\d{3}[-\s]?\d{2}[-\s]?\d{2}\b|\b\d{10}\b/;
+const DATE_PATTERN = /\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\b|\b\d{4}[.\/-]\d{2}[.\/-]\d{2}\b/;
+const INVOICE_NUMBER_PATTERN = /(?:faktura\s*(?:nr|no|vat)?|invoice\s*(?:no|number|nr)?|rechnung(?:snr)?|nr\s+faktury)[:\s#]*([A-Z0-9\/\-_]+)/i;
+
+async function runLocalInvoiceFilter(base64Data: string, filename: string): Promise<LocalFilterResult> {
   const fnLower = filename.toLowerCase();
-  const HARD_SKIP_PATTERNS = [
-    "newsletter", "brochure", "katalog", "catalog", "catalogue",
-    "presentation", "prezentacja", "regulamin", "terms_and_conditions",
-    "terms-and-conditions", "vendo.erp",
-  ];
-  for (const pattern of HARD_SKIP_PATTERNS) {
-    if (fnLower.includes(pattern)) return false;
+
+  for (const pattern of HARD_SKIP_FILENAMES) {
+    if (fnLower.includes(pattern)) {
+      return { isInvoice: false, isScanned: false, confidence: 0, reasons: [`filename hard-skip: "${pattern}"`], rejectionReason: 'filename_excluded' };
+    }
   }
-  return true;
+
+  let text: string | null = null;
+  try {
+    const pdfParse = await import('npm:pdf-parse@1.1.1');
+    const buffer = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    const pdfData = await (pdfParse as any).default(buffer);
+    const extracted = pdfData?.text || '';
+    if (extracted.trim().length >= 30) text = extracted;
+  } catch (_) {}
+
+  const isScanned = text === null;
+
+  if (isScanned) {
+    const filenameHint = fnLower.includes('faktura') || fnLower.includes('invoice') || fnLower.includes('fv') || fnLower.includes('rechnung');
+    return {
+      isInvoice: true,
+      isScanned: true,
+      confidence: filenameHint ? 0.5 : 0.3,
+      reasons: ['scanned PDF — no extractable text, deferring to AI visual'],
+    };
+  }
+
+  const lower = text!.toLowerCase();
+  const reasons: string[] = [];
+  let score = 0;
+
+  for (const kw of EXCLUDE_KEYWORDS) {
+    if (lower.includes(kw)) {
+      return { isInvoice: false, isScanned: false, confidence: 0, reasons: [`excluded keyword: "${kw}"`], rejectionReason: 'excluded_keyword' };
+    }
+  }
+
+  let hasStrongKeyword = false;
+  for (const kw of INVOICE_KEYWORDS_STRONG) {
+    if (lower.includes(kw)) {
+      hasStrongKeyword = true;
+      score += 30;
+      reasons.push(`strong keyword: "${kw}"`);
+      break;
+    }
+  }
+
+  let mediumMatches = 0;
+  for (const kw of INVOICE_KEYWORDS_MEDIUM) {
+    if (lower.includes(kw)) {
+      mediumMatches++;
+      score += 8;
+      reasons.push(`medium keyword: "${kw}"`);
+      if (mediumMatches >= 5) break;
+    }
+  }
+
+  if (NIP_PATTERN.test(text!)) { score += 15; reasons.push('NIP/tax ID pattern found'); }
+  if (DATE_PATTERN.test(text!)) { score += 5; reasons.push('date pattern found'); }
+  for (const p of AMOUNT_PATTERNS) {
+    if (p.test(text!)) { score += 15; reasons.push('monetary amount with currency found'); break; }
+  }
+  if (INVOICE_NUMBER_PATTERN.test(text!)) { score += 20; reasons.push('invoice number pattern found'); }
+
+  if (fnLower.includes('faktura') || fnLower.includes('invoice') || fnLower.includes('rechnung') || fnLower.includes('facture')) {
+    score += 10; reasons.push('filename suggests invoice');
+  }
+  if (fnLower.includes('newsletter') || fnLower.includes('promo') || fnLower.includes('oferta')) {
+    score -= 20; reasons.push('filename suggests non-invoice');
+  }
+
+  const confidence = Math.min(score / 100, 1.0);
+  const PASS_THRESHOLD = 40;
+
+  if (!hasStrongKeyword && score < PASS_THRESHOLD) {
+    return { isInvoice: false, isScanned: false, confidence, reasons, rejectionReason: `low_score:${score}` };
+  }
+
+  return { isInvoice: true, isScanned: false, confidence, reasons };
 }
