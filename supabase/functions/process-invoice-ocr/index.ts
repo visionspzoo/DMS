@@ -23,6 +23,7 @@ interface OCRRequest {
 interface PdfExtractResult {
   text: string | null;
   pageCount: number | null;
+  isPasswordProtected: boolean;
 }
 
 async function extractTextFromPdf(base64Data: string): Promise<PdfExtractResult> {
@@ -35,16 +36,20 @@ async function extractTextFromPdf(base64Data: string): Promise<PdfExtractResult>
     return {
       text: text.trim().length < 30 ? null : text,
       pageCount,
+      isPasswordProtected: false,
     };
   } catch (e: any) {
+    const msg = String(e?.message || e).toLowerCase();
+    const isPasswordProtected = msg.includes('password') || msg.includes('encrypted') || msg.includes('incorrect password');
     console.error('pdf-parse failed:', e?.message || e);
-    return { text: null, pageCount: null };
+    return { text: null, pageCount: null, isPasswordProtected };
   }
 }
 
 interface ExtractedRawData {
   text: string | null;
   isScanned: boolean;
+  isPasswordProtected: boolean;
   mimeType: string;
   base64: string;
   pageCount: number | null;
@@ -54,10 +59,11 @@ async function extractRawData(base64Data: string, mimeType: string): Promise<Ext
   const isPDF = mimeType === 'application/pdf';
 
   if (isPDF) {
-    const { text, pageCount } = await extractTextFromPdf(base64Data);
+    const { text, pageCount, isPasswordProtected } = await extractTextFromPdf(base64Data);
     return {
       text,
-      isScanned: text === null,
+      isScanned: text === null && !isPasswordProtected,
+      isPasswordProtected,
       mimeType,
       base64: base64Data,
       pageCount,
@@ -672,7 +678,19 @@ Deno.serve(async (req: Request) => {
     // ── STEP 1: EXTRACT ──
     console.log('STEP 1: Extracting text...');
     const raw = await extractRawData(base64Data, resolvedMime);
-    console.log(`Extracted: text=${raw.text ? raw.text.length + ' chars' : 'none'}, scanned=${raw.isScanned}`);
+    console.log(`Extracted: text=${raw.text ? raw.text.length + ' chars' : 'none'}, scanned=${raw.isScanned}, passwordProtected=${raw.isPasswordProtected}`);
+
+    if (raw.isPasswordProtected) {
+      console.log('PDF is password-protected, rejecting import');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          passwordProtected: true,
+          message: 'PDF jest zabezpieczony hasłem i nie może zostać zaimportowany.',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // ── STEP 2: FILTER (skip for images — always go to AI) ──
     let filterResult: FilterResult | null = null;
