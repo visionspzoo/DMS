@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Clock, CheckCircle, XCircle, ExternalLink, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight, User, Inbox, Building2, Search, X, ChevronLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock, CheckCircle, XCircle, MapPin, Zap, Package, Calendar, CreditCard, FileText, ChevronRight, User, Inbox, Building2, Search, X, ChevronLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PurchaseRequestDetail } from './PurchaseRequestDetail';
@@ -325,9 +325,18 @@ function ApprovalCard({
 
 type FilterTab = 'all' | 'pending' | 'approved' | 'rejected' | 'paid';
 
+interface CountsState {
+  all: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  paid: number;
+}
+
 const filterStore: {
   filter: FilterTab;
   search: string;
+  searchInput: string;
   deptFilter: string;
   monthFilter: string;
   yearFilter: string;
@@ -336,6 +345,7 @@ const filterStore: {
 } = {
   filter: 'all',
   search: '',
+  searchInput: '',
   deptFilter: '',
   monthFilter: '',
   yearFilter: '',
@@ -346,8 +356,11 @@ const filterStore: {
 export function MyPurchaseRequests() {
   const { user, profile } = useAuth();
   const [myRequests, setMyRequests] = useState<PurchaseRequest[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [counts, setCounts] = useState<CountsState>({ all: 0, pending: 0, approved: 0, rejected: 0, paid: 0 });
   const [toApprove, setToApprove] = useState<PendingApproval[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [submitters, setSubmitters] = useState<Record<string, { full_name: string; email: string }>>({});
   const [approverNames, setApproverNames] = useState<Record<string, string>>({});
   const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
@@ -357,6 +370,7 @@ export function MyPurchaseRequests() {
   const [isApproverView, setIsApproverView] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const [searchInput, setSearchInputState] = useState(filterStore.searchInput);
   const [search, setSearchState] = useState(filterStore.search);
   const [deptFilter, setDeptFilterState] = useState(filterStore.deptFilter);
   const [monthFilter, setMonthFilterState] = useState(filterStore.monthFilter);
@@ -365,11 +379,26 @@ export function MyPurchaseRequests() {
   const [ownerOnly, setOwnerOnlyState] = useState(filterStore.ownerOnly);
 
   function setFilter(v: FilterTab) { filterStore.filter = v; setFilterState(v); }
-  function setSearch(v: string) { filterStore.search = v; setSearchState(v); }
-  function setDeptFilter(v: string) { filterStore.deptFilter = v; setDeptFilterState(v); }
-  function setMonthFilter(v: string) { filterStore.monthFilter = v; setMonthFilterState(v); }
-  function setYearFilter(v: string) { filterStore.yearFilter = v; setYearFilterState(v); }
-  function setOwnerOnly(v: boolean) { filterStore.ownerOnly = v; setOwnerOnlyState(v); }
+  function setSearchInput(v: string) { filterStore.searchInput = v; setSearchInputState(v); }
+  function applySearch() {
+    const val = filterStore.searchInput;
+    filterStore.search = val;
+    setSearchState(val);
+    filterStore.page = 1;
+    setPageState(1);
+  }
+  function clearSearch() {
+    filterStore.searchInput = '';
+    filterStore.search = '';
+    setSearchInputState('');
+    setSearchState('');
+    filterStore.page = 1;
+    setPageState(1);
+  }
+  function setDeptFilter(v: string) { filterStore.deptFilter = v; setDeptFilterState(v); filterStore.page = 1; setPageState(1); }
+  function setMonthFilter(v: string) { filterStore.monthFilter = v; setMonthFilterState(v); filterStore.page = 1; setPageState(1); }
+  function setYearFilter(v: string) { filterStore.yearFilter = v; setYearFilterState(v); filterStore.page = 1; setPageState(1); }
+  function setOwnerOnly(v: boolean) { filterStore.ownerOnly = v; setOwnerOnlyState(v); filterStore.page = 1; setPageState(1); }
   function setPage(v: number | ((p: number) => number)) {
     const next = typeof v === 'function' ? v(filterStore.page) : v;
     filterStore.page = next;
@@ -380,44 +409,22 @@ export function MyPurchaseRequests() {
 
   useEffect(() => {
     if (!user || !profile) return;
-    loadAll(profile.role === 'Kierownik' || profile.role === 'Dyrektor' || !!profile.is_admin);
+    loadStaticData(profile.role === 'Kierownik' || profile.role === 'Dyrektor' || !!profile.is_admin);
   }, [user, profile?.id, profile?.role, profile?.is_admin]);
 
   useEffect(() => {
-    setPage(1);
-  }, [filter, search, deptFilter, monthFilter, yearFilter, ownerOnly]);
+    if (!user || !profile) return;
+    loadPage();
+  }, [user, profile?.id, filter, search, deptFilter, monthFilter, yearFilter, ownerOnly, page]);
 
-  async function loadAll(canApprove?: boolean) {
-    setLoading(true);
-    const shouldFetchApprovals = canApprove !== undefined ? canApprove : isManagerOrDirector;
-
-    const [myRes, approveRes, deptRes] = await Promise.all([
-      supabase.from('purchase_requests').select('*').order('created_at', { ascending: false }),
-      shouldFetchApprovals
+  async function loadStaticData(canApprove: boolean) {
+    const [approveRes, deptRes, yearsRes] = await Promise.all([
+      canApprove
         ? supabase.rpc('get_purchase_requests_for_approval')
         : Promise.resolve({ data: [], error: null }),
       supabase.from('departments').select('id, name').order('name'),
+      supabase.from('purchase_requests').select('created_at').order('created_at', { ascending: true }),
     ]);
-
-    if (!myRes.error && myRes.data) {
-      setMyRequests(myRes.data);
-      const profileIds = [
-        ...new Set([
-          ...myRes.data.map((r: PurchaseRequest) => r.user_id),
-          ...myRes.data.filter((r: PurchaseRequest) => r.current_approver_id).map((r: PurchaseRequest) => r.current_approver_id as string),
-        ]),
-      ];
-      if (profileIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', profileIds);
-        if (profiles) {
-          setSubmitters(Object.fromEntries(profiles.map(p => [p.id, { full_name: p.full_name, email: p.email }])));
-          setApproverNames(Object.fromEntries(profiles.map(p => [p.id, p.full_name || p.email || ''])));
-        }
-      }
-    }
 
     if (!approveRes.error && approveRes.data) {
       setToApprove(approveRes.data as PendingApproval[]);
@@ -428,7 +435,109 @@ export function MyPurchaseRequests() {
       setDepartmentMap(Object.fromEntries(deptRes.data.map((d: Department) => [d.id, d.name])));
     }
 
+    if (!yearsRes.error && yearsRes.data) {
+      const years = [...new Set(yearsRes.data.map((r: { created_at: string }) => new Date(r.created_at).getFullYear()))].sort((a, b) => b - a);
+      setAvailableYears(years);
+    }
+
+    await loadCounts();
+  }
+
+  async function loadCounts() {
+    const statuses: FilterTab[] = ['all', 'pending', 'approved', 'rejected', 'paid'];
+    const results = await Promise.all(
+      statuses.map(s => {
+        let q = supabase.from('purchase_requests').select('id', { count: 'exact', head: true });
+        if (s !== 'all') q = q.eq('status', s);
+        return q;
+      })
+    );
+    setCounts({
+      all: results[0].count ?? 0,
+      pending: results[1].count ?? 0,
+      approved: results[2].count ?? 0,
+      rejected: results[3].count ?? 0,
+      paid: results[4].count ?? 0,
+    });
+  }
+
+  async function loadPage() {
+    setLoading(true);
+
+    let query = supabase.from('purchase_requests').select('*', { count: 'exact' });
+
+    if (filter !== 'all') {
+      query = query.eq('status', filter);
+    }
+
+    if (ownerOnly && profile) {
+      query = query.or(`user_id.eq.${profile.id},current_approver_id.eq.${profile.id}`);
+    }
+
+    if (search.trim()) {
+      query = query.or(`description.ilike.%${search.trim()}%,delivery_location.ilike.%${search.trim()}%`);
+    }
+
+    if (deptFilter) {
+      query = query.eq('department_id', deptFilter);
+    }
+
+    if (yearFilter) {
+      const y = parseInt(yearFilter);
+      query = query.gte('created_at', `${y}-01-01`).lt('created_at', `${y + 1}-01-01`);
+    }
+
+    if (monthFilter && yearFilter) {
+      const y = parseInt(yearFilter);
+      const m = parseInt(monthFilter);
+      const start = new Date(y, m - 1, 1).toISOString();
+      const end = new Date(y, m, 1).toISOString();
+      query = query.gte('created_at', start).lt('created_at', end);
+    } else if (monthFilter && !yearFilter) {
+      const m = parseInt(monthFilter).toString().padStart(2, '0');
+      query = query.like('created_at', `%-${m}-%`);
+    }
+
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to);
+
+    if (!error && data) {
+      setMyRequests(data);
+      setTotalCount(count ?? 0);
+
+      const profileIds = [
+        ...new Set([
+          ...data.map((r: PurchaseRequest) => r.user_id),
+          ...data.filter((r: PurchaseRequest) => r.current_approver_id).map((r: PurchaseRequest) => r.current_approver_id as string),
+        ]),
+      ];
+      if (profileIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', profileIds);
+        if (profiles) {
+          setSubmitters(prev => ({ ...prev, ...Object.fromEntries(profiles.map(p => [p.id, { full_name: p.full_name, email: p.email }])) }));
+          setApproverNames(prev => ({ ...prev, ...Object.fromEntries(profiles.map(p => [p.id, p.full_name || p.email || ''])) }));
+        }
+      }
+    }
+
     setLoading(false);
+  }
+
+  async function refreshAll() {
+    await Promise.all([
+      loadPage(),
+      loadCounts(),
+      isManagerOrDirector
+        ? supabase.rpc('get_purchase_requests_for_approval').then(({ data }) => {
+            if (data) setToApprove(data as PendingApproval[]);
+          })
+        : Promise.resolve(),
+    ]);
   }
 
   function openRequest(id: string, asApprover: boolean) {
@@ -436,57 +545,7 @@ export function MyPurchaseRequests() {
     setIsApproverView(asApprover);
   }
 
-  const availableYears = useMemo(() => {
-    const years = new Set(myRequests.map(r => new Date(r.created_at).getFullYear()));
-    return Array.from(years).sort((a, b) => b - a);
-  }, [myRequests]);
-
-  const filteredMy = useMemo(() => {
-    let result = filter === 'all' ? myRequests : myRequests.filter(r => r.status === filter);
-
-    if (ownerOnly && profile) {
-      result = result.filter(r =>
-        r.user_id === profile.id
-          ? r.status === 'pending' || r.status === 'approved'
-          : r.current_approver_id === profile.id
-      );
-    }
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(r =>
-        r.description?.toLowerCase().includes(q) ||
-        r.delivery_location?.toLowerCase().includes(q)
-      );
-    }
-
-    if (deptFilter) {
-      result = result.filter(r => r.department_id === deptFilter);
-    }
-
-    if (yearFilter) {
-      const y = parseInt(yearFilter);
-      result = result.filter(r => new Date(r.created_at).getFullYear() === y);
-    }
-
-    if (monthFilter) {
-      const m = parseInt(monthFilter);
-      result = result.filter(r => new Date(r.created_at).getMonth() + 1 === m);
-    }
-
-    return result;
-  }, [myRequests, filter, search, deptFilter, yearFilter, monthFilter, ownerOnly, profile?.id]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredMy.length / PAGE_SIZE));
-  const paginatedMy = filteredMy.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const counts = {
-    all: myRequests.length,
-    pending: myRequests.filter(r => r.status === 'pending').length,
-    approved: myRequests.filter(r => r.status === 'approved').length,
-    rejected: myRequests.filter(r => r.status === 'rejected').length,
-    paid: myRequests.filter(r => r.status === 'paid').length,
-  };
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const tabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'Wszystkie' },
@@ -501,11 +560,20 @@ export function MyPurchaseRequests() {
   const hasActiveFilters = search.trim() || deptFilter || monthFilter || yearFilter || ownerOnly;
 
   function clearFilters() {
-    setSearch('');
-    setDeptFilter('');
-    setMonthFilter('');
-    setYearFilter('');
-    setOwnerOnly(false);
+    filterStore.searchInput = '';
+    filterStore.search = '';
+    setSearchInputState('');
+    setSearchState('');
+    filterStore.deptFilter = '';
+    setDeptFilterState('');
+    filterStore.monthFilter = '';
+    setMonthFilterState('');
+    filterStore.yearFilter = '';
+    setYearFilterState('');
+    filterStore.ownerOnly = false;
+    setOwnerOnlyState(false);
+    filterStore.page = 1;
+    setPageState(1);
   }
 
   if (editingId) {
@@ -514,7 +582,7 @@ export function MyPurchaseRequests() {
         editRequestId={editingId}
         onEditComplete={() => {
           setEditingId(null);
-          loadAll();
+          refreshAll();
         }}
       />
     );
@@ -527,7 +595,7 @@ export function MyPurchaseRequests() {
         onBack={() => {
           setSelectedId(null);
           setIsApproverView(false);
-          loadAll();
+          refreshAll();
         }}
         isApprover={isApproverView}
         onEdit={(id) => {
@@ -652,24 +720,38 @@ export function MyPurchaseRequests() {
 
         {/* Search */}
         <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-sm border border-slate-200 dark:border-slate-700/50 p-3 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Szukaj po opisie lub miejscu dostawy..."
-              className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-text-secondary-light dark:text-text-secondary-dark transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+          <div className="relative flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary-light dark:text-text-secondary-dark pointer-events-none" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') applySearch(); }}
+                placeholder="Szukaj po opisie lub miejscu dostawy... (Enter aby szukać)"
+                className="w-full pl-10 pr-8 py-2 border border-slate-300 dark:border-slate-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary dark:bg-dark-surface-variant dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark"
+              />
+              {searchInput && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-text-secondary-light dark:text-text-secondary-dark transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={applySearch}
+              className="px-3 py-2 bg-brand-primary text-white rounded-lg text-sm font-medium hover:bg-brand-primary/90 transition-colors flex-shrink-0"
+            >
+              <Search className="w-4 h-4" />
+            </button>
           </div>
+          {search && search !== searchInput && (
+            <p className="mt-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+              Wyniki dla: <span className="font-medium text-brand-primary">"{search}"</span>
+            </p>
+          )}
         </div>
 
         {loading ? (
@@ -694,7 +776,7 @@ export function MyPurchaseRequests() {
                     onClick={() => openRequest(req.id, true)}
                   />
                 ))}
-                {paginatedMy.length > 0 && (
+                {myRequests.length > 0 && (
                   <div className="flex items-center gap-2 mt-4 mb-1">
                     <h2 className="text-sm font-semibold text-text-secondary-light dark:text-text-secondary-dark">
                       Moje wnioski
@@ -704,7 +786,7 @@ export function MyPurchaseRequests() {
               </>
             )}
 
-            {paginatedMy.length === 0 && !showApprovalSection ? (
+            {myRequests.length === 0 && !showApprovalSection ? (
               <div className="text-center py-20">
                 {hasActiveFilters ? (
                   <>
@@ -724,8 +806,8 @@ export function MyPurchaseRequests() {
                   </>
                 )}
               </div>
-            ) : paginatedMy.length === 0 && showApprovalSection ? null : (
-              paginatedMy.map(r => (
+            ) : myRequests.length === 0 && showApprovalSection ? null : (
+              myRequests.map(r => (
                 <MyRequestCard
                   key={r.id}
                   request={r}
@@ -738,7 +820,7 @@ export function MyPurchaseRequests() {
               ))
             )}
 
-            {!loading && filteredMy.length === 0 && !showApprovalSection && filter !== 'all' && !hasActiveFilters && (
+            {!loading && totalCount === 0 && !showApprovalSection && filter !== 'all' && !hasActiveFilters && (
               <div className="text-center py-20">
                 <Inbox className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak wniosków w tej kategorii</p>
@@ -748,7 +830,7 @@ export function MyPurchaseRequests() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/50 mt-2">
                 <span className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                  {filteredMy.length} wyników · strona {page} z {totalPages}
+                  {totalCount} wyników · strona {page} z {totalPages}
                 </span>
                 <div className="flex items-center gap-1">
                   <button
