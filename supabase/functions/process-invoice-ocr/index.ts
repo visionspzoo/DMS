@@ -77,17 +77,23 @@ interface FilterResult {
 const INVOICE_KEYWORDS_STRONG = [
   // Polish
   'faktura vat', 'faktura nr', 'faktura pro', 'faktura korygująca',
+  'faktura końcowa', 'faktura zaliczkowa', 'faktura', 'rachunek',
   'nota księgowa', 'nota korygująca',
   // Universal
   'invoice', 'invoice no', 'invoice number', 'inv no',
+  'receipt', 'tax receipt', 'official receipt',
   // German
-  'rechnung', 'rechnungsnummer',
+  'rechnung', 'rechnungsnummer', 'quittung',
   // French
-  'facture', 'numéro de facture',
+  'facture', 'numéro de facture', 'reçu',
   // Italian
-  'fattura',
+  'fattura', 'ricevuta',
   // Spanish
-  'factura',
+  'factura', 'recibo',
+  // Dutch
+  'factuur',
+  // Swedish / Norwegian / Danish
+  'faktura',
 ];
 
 const INVOICE_KEYWORDS_MEDIUM = [
@@ -106,7 +112,11 @@ const EXCLUDE_KEYWORDS = [
   'newsletter', 'unsubscribe', 'wypisz się', 'zapisz się',
   'regulamin', 'terms and conditions', 'privacy policy',
   'polityka prywatności',
-  'oferta handlowa', 'katalog', 'brochure',
+  'oferta handlowa', 'oferta cenowa', 'oferta specjalna', 'oferta',
+  'katalog', 'brochure',
+  'offer letter', 'price offer', 'quotation', 'quote',
+  'wycena', 'zapytanie ofertowe', 'zapytanie o wycenę',
+  'kosztorys',
 ];
 
 const AMOUNT_PATTERNS = [
