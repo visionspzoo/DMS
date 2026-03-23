@@ -25,7 +25,7 @@ function getAppFieldValue(request: Record<string, any>, appField: string): strin
     proforma_filename: () => request.proforma_filename || null,
     bez_mpk: () => (request.bez_mpk ? "Tak" : "Nie"),
     created_at: () => request.created_at ? new Date(request.created_at).toLocaleString("pl-PL") : null,
-    id: () => request.id || null,
+    id: () => request.id ? request.id.replace(/-/g, "").slice(0, 9) : null,
   };
   return fieldMap[appField]?.() ?? null;
 }
@@ -453,13 +453,16 @@ Deno.serve(async (req: Request) => {
 
     const task = await createRes.json();
 
+    const shortId = task.custom_id || String(task.id).slice(0, 9);
+    const taskUrl = task.url || null;
+
     await supabase
       .from("purchase_requests")
-      .update({ clickup_task_id: task.id })
+      .update({ clickup_task_id: shortId, clickup_task_url: taskUrl })
       .eq("id", purchase_request_id);
 
     return new Response(
-      JSON.stringify({ success: true, task_id: task.id, task_url: task.url }),
+      JSON.stringify({ success: true, task_id: shortId, task_url: taskUrl }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
