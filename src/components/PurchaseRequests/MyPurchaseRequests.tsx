@@ -353,7 +353,12 @@ const filterStore: {
   ownerOnly: false,
 };
 
-export function MyPurchaseRequests() {
+interface MyPurchaseRequestsProps {
+  deepLinkPurchaseRequestId?: string | null;
+  onDeepLinkConsumed?: () => void;
+}
+
+export function MyPurchaseRequests({ deepLinkPurchaseRequestId, onDeepLinkConsumed }: MyPurchaseRequestsProps = {}) {
   const { user, profile } = useAuth();
   const [myRequests, setMyRequests] = useState<PurchaseRequest[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -366,7 +371,7 @@ export function MyPurchaseRequests() {
   const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilterState] = useState<FilterTab>(filterStore.filter);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(deepLinkPurchaseRequestId ?? null);
   const [isApproverView, setIsApproverView] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -416,6 +421,13 @@ export function MyPurchaseRequests() {
     if (!user || !profile) return;
     loadPage();
   }, [user, profile?.id, filter, search, deptFilter, monthFilter, yearFilter, ownerOnly, page]);
+
+  useEffect(() => {
+    if (deepLinkPurchaseRequestId && !loading) {
+      setSelectedId(deepLinkPurchaseRequestId);
+      onDeepLinkConsumed?.();
+    }
+  }, [deepLinkPurchaseRequestId, loading]);
 
   async function loadStaticData(canApprove: boolean) {
     const [approveRes, deptRes, yearsRes] = await Promise.all([

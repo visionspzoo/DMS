@@ -48,7 +48,12 @@ function getUserSpecificStatus(invoice: Invoice, currentUserId: string): string 
   return invoice.status;
 }
 
-export function InvoiceList() {
+interface InvoiceListProps {
+  deepLinkInvoiceId?: string | null;
+  onDeepLinkConsumed?: () => void;
+}
+
+export function InvoiceList({ deepLinkInvoiceId, onDeepLinkConsumed }: InvoiceListProps = {}) {
   const { user, profile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -553,6 +558,16 @@ export function InvoiceList() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (deepLinkInvoiceId && invoices.length > 0 && !loading) {
+      const target = invoices.find(inv => inv.id === deepLinkInvoiceId);
+      if (target) {
+        setSelectedInvoice(target as any);
+        onDeepLinkConsumed?.();
+      }
+    }
+  }, [deepLinkInvoiceId, invoices, loading]);
 
   useEffect(() => {
     if (profile?.id) {

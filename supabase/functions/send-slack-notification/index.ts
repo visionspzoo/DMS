@@ -16,6 +16,35 @@ interface NotificationPayload {
   notification_id: string;
 }
 
+function buildDeepLink(type: string, invoiceId: string | null, purchaseRequestId: string | null, contractId: string | null): string | null {
+  const appUrl = Deno.env.get("APP_URL");
+  if (!appUrl) return null;
+
+  const base = appUrl.replace(/\/$/, "");
+
+  if (invoiceId && (
+    type === "new_invoice" || type === "status_change" || type === "pending_review" ||
+    type === "invoice_assigned" || type === "invoice_transferred" || type === "ksef_invoice_assigned" ||
+    type === "invoice_draft_received" || type === "invoice_paid" || type === "duplicate_detected"
+  )) {
+    return `${base}?view=invoices&invoice=${invoiceId}`;
+  }
+
+  if (purchaseRequestId && (
+    type === "purchase_request_assigned" || type === "purchase_request_approved" ||
+    type === "purchase_request_paid" || type === "purchase_request_rejected" ||
+    type === "purchase_request_comment"
+  )) {
+    return `${base}?view=my-purchase-requests&pr=${purchaseRequestId}`;
+  }
+
+  if (contractId && (type === "new_contract" || type === "contract_status_change")) {
+    return `${base}?view=contract-detail&contract=${contractId}`;
+  }
+
+  return null;
+}
+
 function getTypeEmoji(type: string): string {
   switch (type) {
     case "new_invoice":
@@ -196,6 +225,19 @@ Deno.serve(async (req: Request) => {
     const emoji = getTypeEmoji(payload.type);
     const label = getTypeLabel(payload.type);
 
+    const { data: notifRecord } = await supabase
+      .from("notifications")
+      .select("invoice_id, purchase_request_id")
+      .eq("id", payload.notification_id)
+      .maybeSingle();
+
+    const deepLink = buildDeepLink(
+      payload.type,
+      notifRecord?.invoice_id ?? null,
+      notifRecord?.purchase_request_id ?? null,
+      null
+    );
+
     let channelId = targetChannel;
     if (slackMapping?.slack_user_id) {
       const openDmResponse = await fetch("https://slack.com/api/conversations.open", {
@@ -212,6 +254,47 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const blocks: unknown[] = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${emoji} *${payload.title}*`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: payload.message,
+        },
+      },
+    ];
+
+    if (deepLink) {
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Otwórz w Aura DMS", emoji: true },
+            url: deepLink,
+            style: "primary",
+          },
+        ],
+      });
+    }
+
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `_${label}_ | Aura DMS`,
+        },
+      ],
+    });
+
     const slackResponse = await fetch(
       "https://slack.com/api/chat.postMessage",
       {
@@ -222,32 +305,8 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           channel: channelId,
-          text: `${payload.title}: ${payload.message}`,
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `${emoji} *${payload.title}*`,
-              },
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: payload.message,
-              },
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `_${label}_ | Aura DMS`,
-                },
-              ],
-            },
-          ],
+          text: deepLink ? `${payload.title}: ${payload.message} — ${deepLink}` : `${payload.title}: ${payload.message}`,
+          blocks,
         }),
       }
     );

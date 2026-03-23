@@ -140,12 +140,14 @@ Deno.serve(async (req: Request) => {
             ? `${Number(inv.gross_amount).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} ${inv.currency || "PLN"}`
             : "kwota nieznana";
           const date = new Date(inv.created_at).toLocaleDateString("pl-PL");
+          const appUrl = Deno.env.get("APP_URL")?.replace(/\/$/, "");
+          const invoiceLink = appUrl ? ` — <${appUrl}?view=invoices&invoice=${inv.id}|Otwórz>` : "";
 
           blocks.push({
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `• *${supplier}* — ${number}\n  Kwota: ${amount} | Dodano: ${date}`,
+              text: `• *${supplier}* — ${number}\n  Kwota: ${amount} | Dodano: ${date}${invoiceLink}`,
             },
           });
         }

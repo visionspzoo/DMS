@@ -21,9 +21,21 @@ import { supabase } from './lib/supabase';
 
 type AppView = 'dashboard' | 'invoices' | 'upload' | 'settings' | 'ai-agent' | 'contracts' | 'contract-detail' | 'ksef' | 'purchase-request' | 'my-purchase-requests' | 'configuration' | 'instructions';
 
+function parseDeepLink(): { view: AppView | null; invoiceId: string | null; purchaseRequestId: string | null; contractId: string | null } {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view') as AppView | null;
+  const invoiceId = params.get('invoice');
+  const purchaseRequestId = params.get('pr');
+  const contractId = params.get('contract');
+  return { view, invoiceId, purchaseRequestId, contractId };
+}
+
 function AppContent() {
   const { user, profile, loading, signOut } = useAuth();
+  const deepLink = parseDeepLink();
   const [appView, setAppView] = useState<AppView>('dashboard');
+  const [deepLinkInvoiceId, setDeepLinkInvoiceId] = useState<string | null>(deepLink.invoiceId);
+  const [deepLinkPurchaseRequestId, setDeepLinkPurchaseRequestId] = useState<string | null>(deepLink.purchaseRequestId);
   const [darkMode, setDarkMode] = useState(() => {
     if (profile?.theme_preference) {
       return profile.theme_preference === 'dark';
@@ -32,7 +44,7 @@ function AppContent() {
     return saved === 'true';
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(deepLink.contractId);
   const [pendingInvoicesCount, setPendingInvoicesCount] = useState(0);
   const [pendingPurchaseRequestsCount, setPendingPurchaseRequestsCount] = useState(0);
 
@@ -41,6 +53,20 @@ function AppContent() {
       setDarkMode(profile.theme_preference === 'dark');
     }
   }, [profile?.theme_preference]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const { view, contractId } = parseDeepLink();
+    if (view) {
+      setAppView(view);
+      if (view === 'contract-detail' && contractId) {
+        setSelectedContractId(contractId);
+      }
+      const url = new URL(window.location.href);
+      url.search = '';
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [profile?.id]);
 
   useEffect(() => {
     const saveThemePreference = async () => {
@@ -230,7 +256,7 @@ function AppContent() {
         {/* Content */}
         <main className="flex-1 bg-light-bg dark:bg-dark-bg overflow-auto">
           {appView === 'dashboard' && <Dashboard />}
-          {appView === 'invoices' && <InvoiceList />}
+          {appView === 'invoices' && <InvoiceList deepLinkInvoiceId={deepLinkInvoiceId} onDeepLinkConsumed={() => setDeepLinkInvoiceId(null)} />}
           {appView === 'ksef' && <KSEFInvoicesPage />}
           {appView === 'purchase-request' && <PurchaseRequestForm />}
           {appView === 'contracts' && (
@@ -250,7 +276,7 @@ function AppContent() {
               }}
             />
           )}
-          {appView === 'my-purchase-requests' && <MyPurchaseRequests />}
+          {appView === 'my-purchase-requests' && <MyPurchaseRequests deepLinkPurchaseRequestId={deepLinkPurchaseRequestId} onDeepLinkConsumed={() => setDeepLinkPurchaseRequestId(null)} />}
           {appView === 'ai-agent' && <AIAgent />}
           {appView === 'configuration' && <UserConfiguration />}
           {appView === 'settings' && (profile.is_admin || profile.role === 'Dyrektor') && <SettingsPanel />}
