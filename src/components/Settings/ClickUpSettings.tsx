@@ -13,6 +13,7 @@ interface ClickUpConfig {
   list_id: string;
   enabled: boolean;
   paid_status: string;
+  app_url: string;
   cached_custom_fields?: ClickUpField[];
   clickup_webhook_id?: string;
 }
@@ -89,6 +90,7 @@ export default function ClickUpSettings() {
   const [config, setConfig] = useState<ClickUpConfig>({
     api_token: '',
     list_id: '',
+    app_url: '',
     enabled: false,
     paid_status: '',
     cached_custom_fields: [],
@@ -133,6 +135,7 @@ export default function ClickUpSettings() {
           list_id: configRes.data.list_id || '',
           enabled: configRes.data.enabled ?? false,
           paid_status: configRes.data.paid_status || '',
+          app_url: configRes.data.app_url || '',
           cached_custom_fields: configRes.data.cached_custom_fields || [],
           clickup_webhook_id: configRes.data.clickup_webhook_id || undefined,
         });
@@ -166,6 +169,7 @@ export default function ClickUpSettings() {
             list_id: config.list_id,
             enabled: config.enabled,
             paid_status: config.paid_status,
+            app_url: config.app_url,
             updated_at: new Date().toISOString(),
             updated_by: profile.id,
           })
@@ -179,6 +183,7 @@ export default function ClickUpSettings() {
             list_id: config.list_id,
             enabled: config.enabled,
             paid_status: config.paid_status,
+            app_url: config.app_url,
             updated_by: profile.id,
           })
           .select()
@@ -748,6 +753,28 @@ export default function ClickUpSettings() {
               <p className="mt-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
                 Wpisz dokladnie tak jak nazywa sie status w ClickUp (wielkosc liter nie ma znaczenia). Jezeli pole jest puste, system uzyje domyslnych angielskich statusow (complete, done, closed, paid).
               </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1.5">
+                URL aplikacji (do generowania linkow do wnioskow)
+              </label>
+              <input
+                type="url"
+                value={config.app_url}
+                onChange={e => setConfig(prev => ({ ...prev, app_url: e.target.value }))}
+                placeholder='np. https://twoja-aplikacja.netlify.app'
+                disabled={!profile?.is_admin}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-dark-surface-2 text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-brand-primary/30 disabled:opacity-60"
+              />
+              <p className="mt-1.5 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                Podaj bazowy adres URL aplikacji. Zostanie on uzywany do generowania bezposrednich linkow do wnioskow zakupowych w zadaniach ClickUp.
+              </p>
+              {config.app_url && (
+                <p className="mt-1 text-xs text-green-600 dark:text-green-400 font-mono break-all">
+                  Przykladowy link: {config.app_url.replace(/\/$/, '')}?view=my-purchase-requests&pr=...
+                </p>
+              )}
             </div>
           </div>
         </>

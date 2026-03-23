@@ -356,6 +356,9 @@ Deno.serve(async (req: Request) => {
       id: "ID wniosku:",
     };
 
+    const appBaseUrl = config.app_url ? config.app_url.replace(/\/$/, "") : "";
+    const appLink = appBaseUrl ? `${appBaseUrl}?view=my-purchase-requests&pr=${request.id}` : null;
+
     let taskDescription: string;
     if (descMappings.length > 0) {
       const descLines = descMappings
@@ -366,6 +369,7 @@ Deno.serve(async (req: Request) => {
           return `**${label}** ${value}`;
         })
         .filter(Boolean);
+      if (appLink) descLines.push(`**Link do wniosku:** ${appLink}`);
       taskDescription = descLines.join("\n");
     } else {
       const amountFormatted = request.gross_amount
@@ -384,6 +388,7 @@ Deno.serve(async (req: Request) => {
         request.proforma_filename ? `**Proforma:** ${request.proforma_filename}` : null,
         `**Data zlozenia:** ${new Date(request.created_at).toLocaleString("pl-PL")}`,
         `**ID wniosku:** ${request.id}`,
+        appLink ? `**Link do wniosku:** ${appLink}` : null,
       ].filter(Boolean).join("\n");
     }
 
