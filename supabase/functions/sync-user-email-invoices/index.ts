@@ -577,6 +577,21 @@ async function processEmailChunk(
           continue;
         }
 
+        if (!job.force_reimport && part.filename && part.body?.size) {
+          const { data: sameFileExists } = await supabase
+            .from("processed_email_thread_files")
+            .select("id")
+            .eq("email_config_id", config.id)
+            .eq("filename", part.filename)
+            .eq("file_size", part.body.size)
+            .limit(1)
+            .maybeSingle();
+          if (sameFileExists) {
+            if (send) await send({ type: "attachment_skipped", filename: part.filename, reason: "duplicate_filename_size" });
+            continue;
+          }
+        }
+
         if (send) {
           await send({ type: "processing_attachment", email: config.email_address, filename: part.filename, subject });
         }
@@ -763,6 +778,7 @@ async function processEmailChunk(
             thread_id: threadId,
             filename: part.filename,
             message_id: messageId,
+            file_size: part.body?.size ?? null,
           }).then(({ error: tErr }: { error: any }) => {
             if (tErr && !tErr.message?.includes("idx_thread_file_unique")) {
               console.error("Error recording thread file:", tErr.message);
