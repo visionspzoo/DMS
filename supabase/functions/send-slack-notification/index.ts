@@ -16,11 +16,11 @@ interface NotificationPayload {
   notification_id: string;
 }
 
-function buildDeepLink(type: string, invoiceId: string | null, purchaseRequestId: string | null, contractId: string | null): string | null {
-  const appUrl = Deno.env.get("APP_URL");
-  if (!appUrl) return null;
+function buildDeepLink(type: string, invoiceId: string | null, purchaseRequestId: string | null, contractId: string | null, appUrl?: string | null): string | null {
+  const resolvedUrl = appUrl || Deno.env.get("APP_URL");
+  if (!resolvedUrl) return null;
 
-  const base = appUrl.replace(/\/$/, "");
+  const base = resolvedUrl.replace(/\/$/, "");
 
   if (invoiceId && (
     type === "new_invoice" || type === "status_change" || type === "pending_review" ||
@@ -231,11 +231,20 @@ Deno.serve(async (req: Request) => {
       .eq("id", payload.notification_id)
       .maybeSingle();
 
+    const { data: clickupConfig } = await supabase
+      .from("clickup_config")
+      .select("app_url")
+      .limit(1)
+      .maybeSingle();
+
+    const appUrl = clickupConfig?.app_url || null;
+
     const deepLink = buildDeepLink(
       payload.type,
       notifRecord?.invoice_id ?? null,
       notifRecord?.purchase_request_id ?? null,
-      null
+      null,
+      appUrl
     );
 
     let channelId = targetChannel;
