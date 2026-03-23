@@ -395,7 +395,7 @@ async function createOrResumeSyncJob(
     afterDate = Math.floor(fourteenDaysAgo.getTime() / 1000);
   }
 
-  let query = `after:${afterDate} has:attachment filename:pdf`;
+  let query = `after:${afterDate} has:attachment filename:pdf -in:sent`;
   if (beforeDate) query += ` before:${beforeDate}`;
 
   const { data: newJob, error } = await supabase.from("email_sync_jobs").insert({
