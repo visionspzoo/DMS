@@ -632,6 +632,7 @@ export function MyPurchaseRequests({ deepLinkPurchaseRequestId, onDeepLinkConsum
           setSelectedId(null);
           setEditingId(id);
         }}
+        onStatusChanged={refreshAll}
       />
     );
   }

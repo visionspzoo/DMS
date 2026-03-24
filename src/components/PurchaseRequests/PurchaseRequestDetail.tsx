@@ -98,11 +98,13 @@ export function PurchaseRequestDetail({
   onBack,
   isApprover = false,
   onEdit,
+  onStatusChanged,
 }: {
   requestId: string;
   onBack: () => void;
   isApprover?: boolean;
   onEdit?: (id: string) => void;
+  onStatusChanged?: () => void;
 }) {
   const { profile } = useAuth();
   const [request, setRequest] = useState<PurchaseRequest | null>(null);
@@ -205,6 +207,7 @@ export function PurchaseRequestDetail({
 
     setComment('');
     setShowRejectForm(false);
+    onStatusChanged?.();
     await loadRequest();
   }
 
