@@ -4,7 +4,7 @@ import GmailWorkspaceConfig from './GmailWorkspaceConfig';
 import AliceIntegration from './AliceIntegration';
 import AccountInfo from './AccountInfo';
 import NipAutomationRules from './NipAutomationRules';
-import { PurchaseRequestLimits } from '../PurchaseRequests/PurchaseRequestLimits';
+import MyDepartmentSection from './MyDepartmentSection';
 import { useAuth } from '../../contexts/AuthContext';
 
 type ConfigTab = 'account' | 'google' | 'alice' | 'automations' | 'purchase-limits';
@@ -58,7 +58,7 @@ export default function UserConfiguration() {
       {activeTab === 'google' && <GmailWorkspaceConfig />}
       {activeTab === 'alice' && <AliceIntegration />}
       {activeTab === 'automations' && <NipAutomationRules />}
-      {activeTab === 'purchase-limits' && <PurchaseRequestLimits />}
+      {activeTab === 'purchase-limits' && <MyDepartmentSection />}
     </div>
   );
 }

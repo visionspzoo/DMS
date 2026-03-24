@@ -69,12 +69,12 @@ export default function MyDepartmentSection() {
   }
 
   async function loadDepartments() {
-    const column = profile?.role === 'Dyrektor' ? 'director_id' : 'manager_id';
+    const isDirector = profile?.role === 'Dyrektor';
 
     const { data: depts, error: deptsErr } = await supabase
       .from('departments')
       .select('id, name, mpk_code, max_invoice_amount, max_monthly_amount')
-      .eq(column, profile!.id);
+      .eq(isDirector ? 'director_id' : 'manager_id', profile!.id);
 
     if (deptsErr || !depts || depts.length === 0) {
       setDepartments([]);
@@ -236,7 +236,9 @@ export default function MyDepartmentSection() {
         <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-            <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">Mój dział</h2>
+            <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            {profile?.role === 'Dyrektor' ? 'Moje działy i limity' : 'Mój dział i limity'}
+          </h2>
           </div>
         </div>
         <div className="flex items-center justify-center h-24">
@@ -253,10 +255,14 @@ export default function MyDepartmentSection() {
       <div className="px-4 py-3 bg-light-surface-variant dark:bg-dark-surface-variant border-b border-slate-200 dark:border-slate-700/50">
         <div className="flex items-center gap-2">
           <Building2 className="w-5 h-5 text-text-secondary-light dark:text-text-secondary-dark" />
-          <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">Mój dział</h2>
+          <h2 className="text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+            {profile?.role === 'Dyrektor' ? 'Moje działy i limity' : 'Mój dział i limity'}
+          </h2>
         </div>
         <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-0.5">
-          Struktura i limity zatwierdzania faktur oraz wniosków zakupowych dla członków Twojego działu
+          {profile?.role === 'Dyrektor'
+            ? 'Wszystkie Twoje działy — struktura, limity faktur i limity wniosków zakupowych podwładnych'
+            : 'Struktura i limity zatwierdzania faktur oraz wniosków zakupowych dla członków Twojego działu'}
         </p>
       </div>
 
@@ -280,8 +286,8 @@ export default function MyDepartmentSection() {
           const isCurrentUserDirector = profile?.role === 'Dyrektor';
           const subordinates = dept.members.filter(m => {
             if (m.id === profile?.id) return false;
-            if (!isCurrentUserDirector && m.role === 'Dyrektor') return false;
-            return true;
+            if (isCurrentUserDirector) return m.role === 'Kierownik' || m.role === 'Specjalista';
+            return m.role !== 'Dyrektor';
           });
 
           return (
