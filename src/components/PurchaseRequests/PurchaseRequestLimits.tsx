@@ -172,14 +172,43 @@ export function PurchaseRequestLimits() {
     const myDeptIds = myDepts.map(d => d.id);
     const deptsMap = Object.fromEntries((allDepts || []).map(d => [d.id, d.name]));
 
-    const { data: membersData } = await supabase
-      .from('department_members')
-      .select('user_id, department_id')
-      .in('department_id', myDeptIds);
+    let subordinateUserIds: string[] = [];
+    const userDeptMap: Record<string, string> = {};
 
-    const memberUserIds = [...new Set((membersData || []).map(m => m.user_id))].filter(id => id !== myId);
+    if (isDirector) {
+      const { data: membersData } = await supabase
+        .from('department_members')
+        .select('user_id, department_id')
+        .in('department_id', myDeptIds);
 
-    if (memberUserIds.length === 0) {
+      for (const m of membersData || []) {
+        if (m.user_id !== myId) {
+          if (!userDeptMap[m.user_id]) userDeptMap[m.user_id] = m.department_id;
+          if (!subordinateUserIds.includes(m.user_id)) subordinateUserIds.push(m.user_id);
+        }
+      }
+
+      const managerIds = myDepts.map(d => d.manager_id).filter(Boolean) as string[];
+      for (const managerId of managerIds) {
+        if (managerId !== myId && !subordinateUserIds.includes(managerId)) {
+          subordinateUserIds.push(managerId);
+        }
+      }
+    } else if (isManager) {
+      const { data: membersData } = await supabase
+        .from('department_members')
+        .select('user_id, department_id')
+        .in('department_id', myDeptIds);
+
+      for (const m of membersData || []) {
+        if (m.user_id !== myId) {
+          if (!userDeptMap[m.user_id]) userDeptMap[m.user_id] = m.department_id;
+          if (!subordinateUserIds.includes(m.user_id)) subordinateUserIds.push(m.user_id);
+        }
+      }
+    }
+
+    if (subordinateUserIds.length === 0) {
       setUsers([]);
       setLoading(false);
       return;
@@ -188,25 +217,35 @@ export function PurchaseRequestLimits() {
     const { data: profilesData } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, department_id')
-      .in('id', memberUserIds)
+      .in('id', subordinateUserIds)
+      .in('role', isDirector ? ['Kierownik', 'Specjalista'] : ['Specjalista'])
+      .order('role')
       .order('full_name');
+
+    if (!profilesData || profilesData.length === 0) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
+    const validIds = profilesData.map(p => p.id);
 
     const { data: limitsData } = await supabase
       .from('purchase_request_limits')
       .select('*')
-      .in('user_id', memberUserIds);
+      .in('user_id', validIds);
 
     const limitsMap = Object.fromEntries((limitsData || []).map(l => [l.user_id, l]));
 
-    const memberDeptMap: Record<string, string> = {};
-    for (const m of membersData || []) {
-      if (!memberDeptMap[m.user_id]) {
-        memberDeptMap[m.user_id] = m.department_id;
-      }
-    }
+    const deptForUser = (p: { id: string; department_id: string | null }) => {
+      if (userDeptMap[p.id]) return userDeptMap[p.id];
+      if (p.department_id) return p.department_id;
+      const dept = myDepts.find(d => d.manager_id === p.id);
+      return dept?.id || null;
+    };
 
-    const result: UserLimit[] = (profilesData || []).map(p => {
-      const deptId = memberDeptMap[p.id] || p.department_id;
+    const result: UserLimit[] = profilesData.map(p => {
+      const deptId = deptForUser(p);
       return {
         user_id: p.id,
         full_name: p.full_name,
@@ -301,7 +340,11 @@ export function PurchaseRequestLimits() {
       ) : users.length === 0 ? (
         <div className="text-center py-12">
           <Users className="w-10 h-10 mx-auto mb-3 text-text-secondary-light dark:text-text-secondary-dark opacity-30" />
-          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Brak podwładnych w Twoich działach</p>
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            {profile?.role === 'Dyrektor'
+              ? 'Brak kierowników i specjalistów w Twoich działach'
+              : 'Brak specjalistów w Twoich działach'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
