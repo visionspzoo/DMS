@@ -430,11 +430,15 @@ export function MyPurchaseRequests({ deepLinkPurchaseRequestId, onDeepLinkConsum
   }, [deepLinkPurchaseRequestId, loading]);
 
   async function loadStaticData(canApprove: boolean) {
-    const [approveRes, deptRes, yearsRes] = await Promise.all([
+    const isDirector = profile?.role === 'Dyrektor';
+    const isManager = profile?.role === 'Kierownik';
+    const isAdmin = !!profile?.is_admin;
+
+    const [approveRes, allDeptsRes, yearsRes] = await Promise.all([
       canApprove
         ? supabase.rpc('get_purchase_requests_for_approval')
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('departments').select('id, name').order('name'),
+      supabase.from('departments').select('id, name, manager_id, director_id').order('name'),
       supabase.from('purchase_requests').select('created_at').order('created_at', { ascending: true }),
     ]);
 
@@ -442,9 +446,23 @@ export function MyPurchaseRequests({ deepLinkPurchaseRequestId, onDeepLinkConsum
       setToApprove(approveRes.data as PendingApproval[]);
     }
 
-    if (!deptRes.error && deptRes.data) {
-      setDepartments(deptRes.data);
-      setDepartmentMap(Object.fromEntries(deptRes.data.map((d: Department) => [d.id, d.name])));
+    if (!allDeptsRes.error && allDeptsRes.data) {
+      let visibleDepts: Department[];
+      if (isAdmin) {
+        visibleDepts = allDeptsRes.data.map(d => ({ id: d.id, name: d.name }));
+      } else if (isDirector && profile?.id) {
+        visibleDepts = allDeptsRes.data
+          .filter(d => d.director_id === profile.id)
+          .map(d => ({ id: d.id, name: d.name }));
+      } else if (isManager && profile?.id) {
+        visibleDepts = allDeptsRes.data
+          .filter(d => d.manager_id === profile.id)
+          .map(d => ({ id: d.id, name: d.name }));
+      } else {
+        visibleDepts = [];
+      }
+      setDepartments(visibleDepts);
+      setDepartmentMap(Object.fromEntries(allDeptsRes.data.map((d) => [d.id, d.name])));
     }
 
     if (!yearsRes.error && yearsRes.data) {
