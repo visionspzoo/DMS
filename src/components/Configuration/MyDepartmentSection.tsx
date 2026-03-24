@@ -125,8 +125,9 @@ export default function MyDepartmentSection() {
     setEditingMember(memberId);
     setSingleInput(existing ? String(existing.single_invoice_limit) : '');
     setMonthlyInput(existing ? String(existing.monthly_limit) : '');
+    const canSetPrLimit = memberRole === 'Specjalista' || (profile?.role === 'Dyrektor' && memberRole === 'Kierownik');
     setAutoApproveInput(
-      memberRole === 'Specjalista' && prExisting?.auto_approve_limit != null
+      canSetPrLimit && prExisting?.auto_approve_limit != null
         ? String(prExisting.auto_approve_limit)
         : ''
     );
@@ -171,8 +172,9 @@ export default function MyDepartmentSection() {
         if (err) throw err;
       }
 
-      // Save auto-approve limit for Specialist role
-      if (memberRole === 'Specjalista') {
+      // Save auto-approve limit for Specialist and Manager (when set by Director)
+      const canSetPrLimit = memberRole === 'Specjalista' || (profile?.role === 'Dyrektor' && memberRole === 'Kierownik');
+      if (canSetPrLimit) {
         const autoApproveVal = autoApproveInput.trim() !== '' ? parseFloat(autoApproveInput) : null;
         if (autoApproveVal !== null && (isNaN(autoApproveVal) || autoApproveVal < 0)) {
           throw new Error('Limit auto-akceptacji musi być liczbą nieujemną');
@@ -359,6 +361,7 @@ export default function MyDepartmentSection() {
                     const memberIsDirector = member.role === 'Dyrektor';
                     const canEdit = isDirector || (!memberIsDirector && isManagerOrDirector);
                     const isSpecialist = member.role === 'Specjalista';
+                    const showPrLimit = isSpecialist || (isDirector && member.role === 'Kierownik');
 
                     return (
                       <div key={member.id} className="px-4 py-3">
@@ -398,7 +401,7 @@ export default function MyDepartmentSection() {
                         </div>
 
                         {!isEditing && (
-                          <div className={`mt-2.5 ml-11 grid gap-2 ${isSpecialist ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                          <div className={`mt-2.5 ml-11 grid gap-2 ${showPrLimit ? 'grid-cols-3' : 'grid-cols-2'}`}>
                             <div className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
                               <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark mb-0.5">Pojedyncza faktura</div>
                               {limit ? (
@@ -419,7 +422,7 @@ export default function MyDepartmentSection() {
                                 <div className="text-xs italic text-text-secondary-light dark:text-text-secondary-dark">Brak limitu</div>
                               )}
                             </div>
-                            {isSpecialist && (
+                            {showPrLimit && (
                               <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <Zap className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
@@ -470,7 +473,7 @@ export default function MyDepartmentSection() {
                               </div>
                             </div>
 
-                            {isSpecialist && (
+                            {showPrLimit && (
                               <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30">
                                 <div className="flex items-center gap-1.5 mb-2">
                                   <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
