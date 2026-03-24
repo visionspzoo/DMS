@@ -666,7 +666,10 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
       if (action === 'approved' && currentInvoice.department_id) {
         const invoiceAmount = currentInvoice.pln_gross_amount ?? currentInvoice.gross_amount ?? 0;
 
-        if (profile.role === 'Dyrektor') {
+        if (profile.role === 'CEO' || profile.is_admin) {
+          newStatus = 'accepted';
+          nextApproverId = null;
+        } else if (profile.role === 'Dyrektor') {
           const { data: canApprove } = await supabase
             .rpc('check_director_can_approve', {
               p_director_id: profile.id,
