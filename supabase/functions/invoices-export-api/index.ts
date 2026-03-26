@@ -194,177 +194,182 @@ Deno.serve(async (req: Request) => {
     const limit = Math.min(parseInt(limitParam || '100', 10), 500);
     const offset = parseInt(offsetParam || '0', 10);
 
-    let query = supabase
-      .from('invoices')
-      .select(`
-        id,
-        invoice_number,
-        supplier_name,
-        supplier_nip,
-        buyer_name,
-        buyer_nip,
-        issue_date,
-        due_date,
-        currency,
-        description,
-        internal_comment,
-        bez_mpk,
-        net_amount,
-        tax_amount,
-        gross_amount,
-        pln_gross_amount,
-        exchange_rate,
-        status,
-        paid_at,
-        payment_method,
-        created_at,
-        updated_at,
-        pdf_base64,
-        file_url,
-        pz_number,
-        uploaded_by,
-        owner:uploaded_by (
-          id,
-          full_name,
-          email
-        ),
-        department:department_id (
-          id,
-          name,
-          mpk_code
-        ),
-        cost_center:cost_center_id (
-          id,
-          code,
-          description
-        ),
-        invoice_attachments (
-          id,
-          file_name,
-          google_drive_web_view_link,
-          mime_type,
-          file_size,
-          storage_path,
-          created_at
-        )
-      `)
-      .in('status', statuses)
-      .order('updated_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    let invoiceQuery = `
+      SELECT
+        i.id,
+        i.invoice_number,
+        i.supplier_name,
+        i.supplier_nip,
+        i.buyer_name,
+        i.buyer_nip,
+        i.issue_date,
+        i.due_date,
+        i.currency,
+        i.description,
+        i.internal_comment,
+        i.bez_mpk,
+        i.net_amount,
+        i.tax_amount,
+        i.gross_amount,
+        i.pln_gross_amount,
+        i.exchange_rate,
+        i.status,
+        i.paid_at,
+        i.payment_method,
+        i.created_at,
+        i.updated_at,
+        i.pz_number,
+        i.uploaded_by,
+        i.file_url,
+        ${includePdf ? 'i.pdf_base64,' : ''}
+        p.full_name AS owner_full_name,
+        p.email AS owner_email,
+        d.id AS dept_id,
+        d.name AS dept_name,
+        d.mpk_code AS dept_mpk_code,
+        cc.id AS cc_id,
+        cc.code AS cc_code,
+        cc.description AS cc_description,
+        (
+          SELECT json_agg(json_build_object(
+            'id', ia.id,
+            'file_name', ia.file_name,
+            'url', ia.google_drive_web_view_link,
+            'mime_type', ia.mime_type,
+            'file_size', ia.file_size,
+            'created_at', ia.created_at
+          ))
+          FROM invoice_attachments ia
+          WHERE ia.invoice_id = i.id
+        ) AS attachments
+      FROM invoices i
+      LEFT JOIN profiles p ON p.id = i.uploaded_by
+      LEFT JOIN departments d ON d.id = i.department_id
+      LEFT JOIN cost_centers cc ON cc.id = i.cost_center_id
+      WHERE i.status = ANY($1::text[])
+    `;
+
+    const queryParams: any[] = [statuses];
+    let paramIdx = 2;
 
     if (fromDate) {
-      query = query.gte('issue_date', fromDate);
+      invoiceQuery += ` AND i.issue_date >= $${paramIdx}`;
+      queryParams.push(fromDate);
+      paramIdx++;
     }
     if (toDate) {
-      query = query.lte('issue_date', toDate);
+      invoiceQuery += ` AND i.issue_date <= $${paramIdx}`;
+      queryParams.push(toDate);
+      paramIdx++;
     }
 
-    const { data: invoices, error: invoiceError } = await query;
+    invoiceQuery += ` ORDER BY i.updated_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+    queryParams.push(limit, offset);
+
+    const { data: invoices, error: invoiceError } = await supabase.rpc('exec_sql_invoices_export', {
+      query_text: invoiceQuery,
+      query_params: queryParams,
+    });
 
     if (invoiceError) {
-      console.error('Error fetching invoices:', invoiceError);
-      return json({ success: false, error: 'Failed to fetch invoices' }, 500);
-    }
+      console.error('RPC error, falling back to direct query:', invoiceError);
 
-    const mpkCodes = [...new Set(
-      (invoices || [])
-        .map((inv: any) => inv.department?.mpk_code)
-        .filter(Boolean)
-    )];
+      const { data: fallbackInvoices, error: fallbackError } = await supabase
+        .from('invoices')
+        .select(`
+          id, invoice_number, supplier_name, supplier_nip, buyer_name, buyer_nip,
+          issue_date, due_date, currency, description, internal_comment, bez_mpk,
+          net_amount, tax_amount, gross_amount, pln_gross_amount, exchange_rate,
+          status, paid_at, payment_method, created_at, updated_at, pz_number,
+          uploaded_by, file_url, pdf_base64,
+          owner:profiles!invoices_uploaded_by_fkey (id, full_name, email),
+          department:departments!invoices_department_id_fkey (id, name, mpk_code),
+          cost_center:cost_centers!invoices_cost_center_id_fkey (id, code, description),
+          invoice_attachments!invoice_attachments_invoice_id_fkey (id, file_name, google_drive_web_view_link, mime_type, file_size, created_at)
+        `)
+        .in('status', statuses)
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
-    let costCentersMap: Record<string, string> = {};
-    if (mpkCodes.length > 0) {
-      const { data: costCenters } = await supabase
-        .from('cost_centers')
-        .select('code, description')
-        .in('code', mpkCodes);
-
-      if (costCenters) {
-        for (const cc of costCenters) {
-          costCentersMap[cc.code] = cc.description;
-        }
+      if (fallbackError) {
+        console.error('Fallback query error:', JSON.stringify(fallbackError));
+        return json({ success: false, error: `Failed to fetch invoices: ${fallbackError.message}` }, 500);
       }
-    }
 
-    const result = await Promise.all((invoices || []).map(async (inv: any) => {
-      const realDeptName = inv.department?.name || null;
-      const realMpkCode = inv.department?.mpk_code || null;
-      const mpkCode = realMpkCode || null;
-      const departmentName = realDeptName || null;
-      const mpkDescription = realMpkCode ? (costCentersMap[realMpkCode] || null) : null;
+      const result = await Promise.all((fallbackInvoices || []).map(async (inv: any) => {
+        const entry: Record<string, unknown> = {
+          invoice_number: inv.invoice_number,
+          owner_name: inv.owner?.full_name || null,
+          supplier_name: inv.supplier_name,
+          supplier_nip: inv.supplier_nip,
+          buyer_name: inv.buyer_name || null,
+          buyer_nip: inv.buyer_nip || null,
+          issue_date: inv.issue_date,
+          due_date: inv.due_date,
+          mpk_code: inv.department?.mpk_code || null,
+          department_name: inv.department?.name || null,
+          currency: inv.currency,
+          description: inv.description || null,
+          internal_comment: inv.internal_comment || null,
+          mpk_description: null,
+          cost_center_code: inv.cost_center?.code || null,
+          cost_center_name: inv.cost_center ? `${inv.cost_center.code} - ${inv.cost_center.description}` : null,
+          bez_mpk: inv.bez_mpk || false,
+          net_amount: inv.net_amount,
+          tax_amount: inv.tax_amount,
+          gross_amount: inv.gross_amount,
+          pln_gross_amount: inv.pln_gross_amount,
+          exchange_rate: inv.exchange_rate,
+          status: inv.status,
+          paid_at: inv.paid_at,
+          payment_method: inv.payment_method || null,
+          updated_at: inv.updated_at,
+          pz_number: inv.pz_number || null,
+          attachments: (inv.invoice_attachments || []).map((a: any) => ({
+            id: a.id,
+            file_name: a.file_name,
+            url: a.google_drive_web_view_link || null,
+            mime_type: a.mime_type,
+            file_size: a.file_size,
+            created_at: a.created_at,
+          })),
+        };
 
-      const attachments = (inv.invoice_attachments || []).map((a: any) => ({
-        id: a.id,
-        file_name: a.file_name,
-        url: a.google_drive_web_view_link || null,
-        mime_type: a.mime_type,
-        file_size: a.file_size,
-        created_at: a.created_at,
-      }));
-
-      const entry: Record<string, unknown> = {
-        invoice_number: inv.invoice_number,
-        owner_name: inv.owner?.full_name || null,
-        supplier_name: inv.supplier_name,
-        supplier_nip: inv.supplier_nip,
-        buyer_name: inv.buyer_name || null,
-        buyer_nip: inv.buyer_nip || null,
-        issue_date: inv.issue_date,
-        due_date: inv.due_date,
-        mpk_code: mpkCode,
-        department_name: departmentName,
-        currency: inv.currency,
-        description: inv.description || null,
-        internal_comment: inv.internal_comment || null,
-        mpk_description: mpkDescription,
-        cost_center_code: inv.cost_center?.code || null,
-        cost_center_name: inv.cost_center ? `${inv.cost_center.code} - ${inv.cost_center.description}` : null,
-        bez_mpk: inv.bez_mpk || false,
-        net_amount: inv.net_amount,
-        tax_amount: inv.tax_amount,
-        gross_amount: inv.gross_amount,
-        pln_gross_amount: inv.pln_gross_amount,
-        exchange_rate: inv.exchange_rate,
-        status: inv.status,
-        paid_at: inv.paid_at,
-        payment_method: inv.payment_method || null,
-        updated_at: inv.updated_at,
-        pz_number: inv.pz_number || null,
-        attachments,
-      };
-
-      if (includePdf) {
-        if (inv.pdf_base64) {
-          entry.pdf_base64 = inv.pdf_base64;
-          entry.file_mime_type = 'application/pdf';
-        } else if (inv.file_url) {
-          const fetched = await fetchFileAsBase64(inv.file_url);
-          if (fetched) {
-            entry.pdf_base64 = fetched.base64;
-            entry.file_mime_type = fetched.mimeType;
+        if (includePdf) {
+          if (inv.pdf_base64) {
+            entry.pdf_base64 = inv.pdf_base64;
+            entry.file_mime_type = 'application/pdf';
+          } else if (inv.file_url) {
+            const fetched = await fetchFileAsBase64(inv.file_url);
+            if (fetched) {
+              entry.pdf_base64 = fetched.base64;
+              entry.file_mime_type = fetched.mimeType;
+            } else {
+              entry.pdf_base64 = null;
+              entry.file_mime_type = null;
+            }
           } else {
             entry.pdf_base64 = null;
             entry.file_mime_type = null;
           }
-        } else {
-          entry.pdf_base64 = null;
-          entry.file_mime_type = null;
         }
-      }
 
-      return entry;
-    }));
+        return entry;
+      }));
+
+      return json({
+        success: true,
+        data: result,
+        meta: { total: result.length, limit, offset, statuses_included: statuses },
+      });
+    }
 
     return json({
       success: true,
-      data: result,
-      meta: {
-        total: result.length,
-        limit,
-        offset,
-        statuses_included: statuses,
-      },
+      data: invoices,
+      meta: { total: invoices?.length || 0, limit, offset, statuses_included: statuses },
     });
+
   } catch (error: any) {
     console.error('Unhandled error:', error);
     return json({ success: false, error: error.message || 'Internal server error' }, 500);
