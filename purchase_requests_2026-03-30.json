@@ -1,0 +1,86 @@
+[
+  {
+    "id": "fa1c404d-3a08-41af-9ce5-c6be7bf800a7",
+    "description": "tworzenie nowych produktów, porównanie smaku",
+    "link": "https://allegro.pl/produkt/suplement-diety-sfd-mg-b6-proszek-tutti-frutti-200-g-1e7de55b-ad49-42ef-b757-87f0fbc7b7aa?offerId=16479838344",
+    "gross_amount": 24.89,
+    "quantity": 1,
+    "delivery_location": "Botaniczna",
+    "priority": "normalny",
+    "status": "pending",
+    "proforma_filename": null,
+    "paid_at": null,
+    "clickup_task_id": null,
+    "clickup_task_url": null,
+    "submitted_at": "2026-03-30T08:20:08.118212+00:00",
+    "created_at": "2026-03-30T08:20:08.118212+00:00",
+    "updated_at": "2026-03-30T08:20:08.118212+00:00",
+    "approver_comment": null,
+    "department": {
+      "id": "8479f587-2cca-49ed-864c-f1f78086a474",
+      "name": "Rozwój Produktów",
+      "mpk_code": "2004"
+    },
+    "submitter": {
+      "id": "4bbd02ab-ee29-4b01-8f80-ce478201da04",
+      "full_name": "Katarzyna Pietkiewicz",
+      "email": "k.pietkiewicz@auraherbals.pl"
+    }
+  },
+  {
+    "id": "15f577ce-bc86-4477-882a-a0f32642ae7b",
+    "description": "tworzenie nowych produktów, porównanie smaku",
+    "link": "https://allegro.pl/oferta/allnutrition-isotonic-700-g-cytryna-nawodnienie-energia-elektrolity-sila-12036825525?bi_s=ads&bi_m=productlisting:desktop:query&bi_c=NjY5YzkwY2ItN2FhMS00YjUwLWJjZWItMWRlYWUwY2Q3ZWMzAA&bi_t=ape&referrer=proxy&emission_unit_id=fd533323-2463-4f57-b3f6-861b46a6e99a",
+    "gross_amount": 29.99,
+    "quantity": 1,
+    "delivery_location": "Botaniczna",
+    "priority": "normalny",
+    "status": "pending",
+    "proforma_filename": null,
+    "paid_at": null,
+    "clickup_task_id": null,
+    "clickup_task_url": null,
+    "submitted_at": "2026-03-30T08:20:08.118212+00:00",
+    "created_at": "2026-03-30T08:20:08.118212+00:00",
+    "updated_at": "2026-03-30T08:20:08.118212+00:00",
+    "approver_comment": null,
+    "department": {
+      "id": "8479f587-2cca-49ed-864c-f1f78086a474",
+      "name": "Rozwój Produktów",
+      "mpk_code": "2004"
+    },
+    "submitter": {
+      "id": "4bbd02ab-ee29-4b01-8f80-ce478201da04",
+      "full_name": "Katarzyna Pietkiewicz",
+      "email": "k.pietkiewicz@auraherbals.pl"
+    }
+  },
+  {
+    "id": "dc3b677d-cc85-4033-8b04-22810cff3b44",
+    "description": "tworzenie nowych produktów, porównanie smaku",
+    "link": "https://allegro.pl/produkt/allnutrition-isotonic-700g-izotonik-w-proszku-pomaranczowy-c28d443a-9b62-4932-a686-5ad822e77d16?offerId=15706233095",
+    "gross_amount": 29.99,
+    "quantity": 1,
+    "delivery_location": "Botaniczna",
+    "priority": "normalny",
+    "status": "pending",
+    "proforma_filename": null,
+    "paid_at": null,
+    "clickup_task_id": null,
+    "clickup_task_url": null,
+    "submitted_at": "2026-03-30T08:20:08.118212+00:00",
+    "created_at": "2026-03-30T08:20:08.118212+00:00",
+    "updated_at": "2026-03-30T08:20:08.118212+00:00",
+    "approver_comment": null,
+    "department": {
+      "id": "8479f587-2cca-49ed-864c-f1f78086a474",
+      "name": "Rozwój Produktów",
+      "mpk_code": "2004"
+    },
+    "submitter": {
+      "id": "4bbd02ab-ee29-4b01-8f80-ce478201da04",
+      "full_name": "Katarzyna Pietkiewicz",
+      "email": "k.pietkiewicz@auraherbals.pl"
+    }
+  }
+]
